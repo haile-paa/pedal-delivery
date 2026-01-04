@@ -264,7 +264,7 @@ const Restaurants: React.FC = () => {
       {error && (
         <div className='mb-6 rounded-lg bg-red-50 p-4'>
           <div className='flex items-center'>
-            <div className='flex-shrink-0'>
+            <div className='shrink-0'>
               <div className='h-5 w-5 text-red-400'>!</div>
             </div>
             <div className='ml-3'>
