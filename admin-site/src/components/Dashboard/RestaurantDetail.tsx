@@ -1,12 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import {
-  FiArrowLeft,
-  FiEdit2,
-  FiTrash2,
-  FiEye,
-  FiEyeOff,
-} from "react-icons/fi";
+import { FiArrowLeft, FiEdit2, FiEye, FiEyeOff } from "react-icons/fi";
 import { restaurantAPI } from "../../services/api";
 
 interface MenuItem {
@@ -380,7 +374,7 @@ const RestaurantDetail: React.FC = () => {
                     <td className='px-6 py-4'>
                       <div className='flex items-center'>
                         {item.image && (
-                          <div className='h-10 w-10 flex-shrink-0'>
+                          <div className='h-10 w-10 shrink-0'>
                             <img
                               className='h-10 w-10 rounded-full object-cover'
                               src={item.image}
