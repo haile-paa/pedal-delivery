@@ -2,7 +2,8 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { useAuth } from "../contexts/AuthContext";
-import { authAPI } from "../services/api";
+// Remove the unused authAPI import
+// import { authAPI } from "../services/api";
 
 interface PhoneFormData {
   phone: string;
@@ -21,7 +22,8 @@ const Login: React.FC = () => {
   const [success, setSuccess] = useState("");
   const [phone, setPhone] = useState("");
   const [countdown, setCountdown] = useState(0);
-  const [otpSent, setOtpSent] = useState(false);
+  // Remove unused otpSent state
+  // const [otpSent, setOtpSent] = useState(false);
 
   const phoneForm = useForm<PhoneFormData>({
     defaultValues: {
@@ -61,7 +63,8 @@ const Login: React.FC = () => {
       await sendOTP(data.phone, "admin");
 
       setPhone(data.phone);
-      setOtpSent(true);
+      // Remove unused setOtpSent call
+      // setOtpSent(true);
       setStep("otp");
       setCountdown(60); // 60 seconds countdown
       setSuccess("OTP sent successfully! Check your phone for the code.");
@@ -133,10 +136,10 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div className='min-h-screen bg-gradient-to-br from-blue-50 to-gray-100'>
+    <div className='min-h-screen bg-linear-to-br from-blue-50 to-gray-100'>
       <div className='flex min-h-screen'>
         {/* Left side - Info */}
-        <div className='hidden w-1/2 bg-gradient-to-br from-blue-600 to-blue-800 p-12 lg:block'>
+        <div className='hidden w-1/2 bg-linear-to-br from-blue-600 to-blue-800 p-12 lg:block'>
           <div className='flex h-full flex-col justify-between'>
             <div>
               <h1 className='text-4xl font-bold text-white'>FoodAdmin</h1>

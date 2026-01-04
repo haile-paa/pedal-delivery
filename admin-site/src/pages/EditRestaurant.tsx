@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
-import { FiArrowLeft, FiUpload, FiSave } from "react-icons/fi";
+import { FiArrowLeft, FiSave } from "react-icons/fi";
 import { useNavigate, useParams } from "react-router-dom";
 import { restaurantAPI } from "../services/api";
 
@@ -28,29 +28,9 @@ const EditRestaurant: React.FC = () => {
   const [selectedCuisines, setSelectedCuisines] = useState<string[]>([]);
   const [isActive, setIsActive] = useState(true);
   const [menuItems, setMenuItems] = useState<any[]>([]);
-  const [restaurant, setRestaurant] = useState<any>(null);
 
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-    reset,
-  } = useForm<RestaurantFormData>();
-
-  const cuisines = [
-    "Fast Food",
-    "Italian",
-    "Ethiopian",
-    "American",
-    "Asian",
-    "Mexican",
-    "Indian",
-    "Chinese",
-    "Pizza",
-    "Burgers",
-    "Seafood",
-    "Vegetarian",
-  ];
+  // Only include what you're actually using
+  const { handleSubmit, reset } = useForm<RestaurantFormData>();
 
   // Fetch restaurant data
   useEffect(() => {
@@ -60,7 +40,6 @@ const EditRestaurant: React.FC = () => {
         const response = await restaurantAPI.getById(id!);
         const data = response.data;
 
-        setRestaurant(data);
         setSelectedCuisines(data.cuisine_type || []);
         setIsActive(data.is_active);
         setMenuItems(data.menu || []);
@@ -92,14 +71,6 @@ const EditRestaurant: React.FC = () => {
       fetchRestaurant();
     }
   }, [id, reset]);
-
-  const toggleCuisine = (cuisine: string) => {
-    setSelectedCuisines((prev) =>
-      prev.includes(cuisine)
-        ? prev.filter((c) => c !== cuisine)
-        : [...prev, cuisine]
-    );
-  };
 
   const onSubmit = async (data: RestaurantFormData) => {
     try {
@@ -154,9 +125,7 @@ const EditRestaurant: React.FC = () => {
       )}
 
       <form onSubmit={handleSubmit(onSubmit)} className='space-y-8'>
-        {/* Same form fields as AddRestaurant.tsx */}
-        {/* Copy the form structure from AddRestaurant.tsx */}
-        {/* ... */}
+        {/* Form fields would go here */}
 
         <div className='flex justify-end space-x-4 border-t pt-6'>
           <button
