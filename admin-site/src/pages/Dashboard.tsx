@@ -6,6 +6,14 @@ import TopRestaurants from "../components/Dashboard/TopRestaurants";
 import RevenueChart from "../components/Dashboard/RevenueChart";
 import OrderStatusChart from "../components/Dashboard/OrderStatusChart";
 
+// Import the Order type from RecentOrders if it's exported, or define it locally
+interface Order {
+  id: string;
+  customer: string;
+  amount: number;
+  status: "delivered" | "preparing" | "pending" | "picked_up" | "cancelled";
+}
+
 const Dashboard: React.FC = () => {
   const stats = {
     totalOrders: 0,
@@ -14,7 +22,8 @@ const Dashboard: React.FC = () => {
     activeDrivers: 0,
   };
 
-  const recentOrders = [
+  // Explicitly type the orders array with the Order interface
+  const recentOrders: Order[] = [
     {
       id: "ORD-8542",
       customer: "Alex Johnson",
@@ -27,7 +36,12 @@ const Dashboard: React.FC = () => {
       amount: 888.0,
       status: "preparing",
     },
-    { id: "ORD-8544", customer: "John Doe", amount: 572.0, status: "pending" },
+    {
+      id: "ORD-8544",
+      customer: "John Doe",
+      amount: 572.0,
+      status: "pending",
+    },
     {
       id: "ORD-8545",
       customer: "Emily Brown",

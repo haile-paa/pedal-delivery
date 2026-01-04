@@ -1,13 +1,6 @@
 import React, { useState, useRef } from "react";
 import { useForm } from "react-hook-form";
-import {
-  FiArrowLeft,
-  FiUpload,
-  FiSave,
-  FiX,
-  FiCamera,
-  FiImage,
-} from "react-icons/fi";
+import { FiArrowLeft, FiUpload, FiSave, FiX } from "react-icons/fi";
 import { useNavigate } from "react-router-dom";
 import { restaurantAPI, uploadAPI } from "../services/api";
 
@@ -830,9 +823,9 @@ const AddRestaurant: React.FC = () => {
                         {/* Hidden file input for menu item */}
                         <input
                           type='file'
-                          ref={(el) =>
-                            (menuItemImageInputRefs.current[index] = el)
-                          }
+                          ref={(el) => {
+                            menuItemImageInputRefs.current[index] = el;
+                          }}
                           className='hidden'
                           accept='image/*'
                           onChange={(e) => {
