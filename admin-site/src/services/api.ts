@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const API_URL = "http://localhost:8080/api/v1";
+const API_URL = "https://pedal-delivery-back.onrender.com/api/v1";
 
 const api = axios.create({
   baseURL: API_URL,
@@ -29,7 +29,7 @@ api.interceptors.response.use(
       window.location.href = "/login";
     }
     return Promise.reject(error);
-  }
+  },
 );
 
 export const authAPI = {
@@ -70,7 +70,7 @@ export const menuAPI = {
   toggleAvailability: (
     restaurantId: string,
     itemId: string,
-    available: boolean
+    available: boolean,
   ) =>
     api.patch(`/restaurants/${restaurantId}/menu/${itemId}/availability`, {
       is_available: available,

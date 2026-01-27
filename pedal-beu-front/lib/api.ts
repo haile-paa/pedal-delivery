@@ -12,8 +12,8 @@ import {
 } from "../src/types";
 
 const API_BASE_URL = __DEV__
-  ? "http://10.251.158.44:8080/api/v1"
-  : "https://your-production-url.com/api/v1";
+  ? "https://pedal-delivery-back.onrender.com/api/v1"
+  : "https://pedal-delivery-back.onrender.com/api/v1";
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -36,7 +36,7 @@ api.interceptors.request.use(
     }
     return config;
   },
-  (error) => Promise.reject(error)
+  (error) => Promise.reject(error),
 );
 
 // Response interceptor
@@ -72,14 +72,14 @@ api.interceptors.response.use(
     }
 
     throw error;
-  }
+  },
 );
 
 export const authAPI = {
   // Send OTP
   sendOTP: async (
     phone: string,
-    role?: "customer" | "driver"
+    role?: "customer" | "driver",
   ): Promise<OTPResponse> => {
     try {
       const formattedPhone = formatPhoneNumber(phone);
@@ -97,7 +97,7 @@ export const authAPI = {
   verifyOTP: async (
     phone: string,
     code: string,
-    role?: "customer" | "driver"
+    role?: "customer" | "driver",
   ): Promise<VerifyOTPResponse> => {
     try {
       const formattedPhone = formatPhoneNumber(phone);

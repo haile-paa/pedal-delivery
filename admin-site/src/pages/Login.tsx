@@ -252,7 +252,7 @@ const Login: React.FC = () => {
 
                   <div className='rounded-lg bg-blue-50 p-4'>
                     <p className='text-sm text-blue-800'>
-                      <strong>Demo phone:</strong> 0911111111
+                      <strong>Demo phone:</strong> 0911111114
                     </p>
                     <p className='mt-1 text-xs text-blue-700'>
                       For development, OTP will be logged in backend console

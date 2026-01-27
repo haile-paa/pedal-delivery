@@ -49,12 +49,12 @@ const WelcomeScreen: React.FC = () => {
   React.useEffect(() => {
     logoScale.value = withDelay(
       300,
-      withSpring(1, { damping: 12, stiffness: 100 })
+      withSpring(1, { damping: 12, stiffness: 100 }),
     );
     logoOpacity.value = withDelay(300, withTiming(1, { duration: 800 }));
     textSlide.value = withDelay(
       500,
-      withSpring(0, { damping: 15, stiffness: 100 })
+      withSpring(0, { damping: 15, stiffness: 100 }),
     );
 
     pulseAnim.value = withDelay(
@@ -62,8 +62,8 @@ const WelcomeScreen: React.FC = () => {
       withRepeat(
         withTiming(1, { duration: 2000, easing: Easing.inOut(Easing.sin) }),
         -1,
-        true
-      )
+        true,
+      ),
     );
   }, []);
 
@@ -98,17 +98,14 @@ const WelcomeScreen: React.FC = () => {
 
     try {
       // Just send OTP - backend will handle registration status
-      const res = await fetch(
-        "http://10.251.158.44:8080/api/v1/auth/send-otp",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            phone: phoneNumber,
-            role: "customer",
-          }),
-        }
-      );
+      const res = await fetch("https://pedal-delivery-back.onrender.com/api/v1/auth/send-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone: phoneNumber,
+          role: "customer",
+        }),
+      });
 
       const data = await res.json();
 
@@ -145,17 +142,14 @@ const WelcomeScreen: React.FC = () => {
 
     try {
       // Send OTP for driver login/registration
-      const res = await fetch(
-        "http://10.251.158.44:8080/api/v1/auth/send-otp",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            phone: phoneNumber,
-            role: "driver",
-          }),
-        }
-      );
+      const res = await fetch("https://pedal-delivery-back.onrender.com/api/v1/auth/send-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone: phoneNumber,
+          role: "driver",
+        }),
+      });
 
       const data = await res.json();
 
