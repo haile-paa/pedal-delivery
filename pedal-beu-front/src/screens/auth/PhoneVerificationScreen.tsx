@@ -62,7 +62,7 @@ const PhoneVerificationScreen: React.FC = () => {
       withTiming(10, { duration: 50 }),
       withTiming(-10, { duration: 50 }),
       withTiming(10, { duration: 50 }),
-      withTiming(0, { duration: 50 })
+      withTiming(0, { duration: 50 }),
     );
   };
 
@@ -109,7 +109,7 @@ const PhoneVerificationScreen: React.FC = () => {
       console.log("OTP:", otpString);
 
       const res = await fetch(
-        "http://10.251.158.44:8080/api/v1/auth/verify-otp",
+        "https://pedal-delivery-back.onrender.com/api/v1/auth/verify-otp",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -118,7 +118,7 @@ const PhoneVerificationScreen: React.FC = () => {
             code: otpString,
             role: role,
           }),
-        }
+        },
       );
 
       console.log("Response status:", res.status);
@@ -143,7 +143,7 @@ const PhoneVerificationScreen: React.FC = () => {
           if (data.tokens.refreshToken) {
             await AsyncStorage.setItem(
               "refreshToken",
-              data.tokens.refreshToken
+              data.tokens.refreshToken,
             );
           }
 
@@ -199,17 +199,14 @@ const PhoneVerificationScreen: React.FC = () => {
 
     try {
       console.log("Resending OTP for phone:", phone, "role:", role);
-      const res = await fetch(
-        "http://10.251.158.44:8080/api/v1/auth/send-otp",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            phone,
-            role,
-          }),
-        }
-      );
+      const res = await fetch("https://pedal-delivery-back.onrender.com/api/v1/auth/send-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone,
+          role,
+        }),
+      });
 
       const data = await res.json();
       if (res.ok) {
@@ -240,7 +237,7 @@ const PhoneVerificationScreen: React.FC = () => {
       } else {
         Alert.alert(
           "Error",
-          data.message || data.error || "Failed to resend OTP"
+          data.message || data.error || "Failed to resend OTP",
         );
       }
     } catch (err) {
@@ -270,7 +267,7 @@ const PhoneVerificationScreen: React.FC = () => {
             }
           },
         },
-      ]
+      ],
     );
   };
 
@@ -289,7 +286,7 @@ const PhoneVerificationScreen: React.FC = () => {
           text: "Resend & Show",
           onPress: handleResendOtp,
         },
-      ]
+      ],
     );
   };
 
