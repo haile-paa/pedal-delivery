@@ -161,10 +161,10 @@ func main() {
 				}
 
 				// Construct the URL (use localhost for dev)
-				serverURL := "http://10.251.158.44:8080"
+				serverURL := "https://pedal-delivery-back.onrender.com"
 				if cfg.Server.Environment == "production" {
 					// In production, use your actual domain
-					serverURL = "https://your-domain.com"
+					serverURL = "https://pedal-delivery-back.onrender.com"
 				}
 
 				fileURL := fmt.Sprintf("%s/uploads/%s/%s", serverURL, fileType, filename)
@@ -206,9 +206,9 @@ func main() {
 				}
 
 				var uploadedFiles []gin.H
-				serverURL := "http://10.251.158.44:8080"
+				serverURL := "https://pedal-delivery-back.onrender.com"
 				if cfg.Server.Environment == "production" {
-					serverURL = "https://your-domain.com"
+					serverURL = "https://pedal-delivery-back.onrender.com"
 				}
 
 				for _, file := range files {
@@ -299,9 +299,9 @@ func main() {
 					}
 
 					// Construct the URL
-					serverURL := "http://10.251.158.44:8080"
+					serverURL := "https://pedal-delivery-back.onrender.com"
 					if cfg.Server.Environment == "production" {
-						serverURL = "https://your-domain.com"
+						serverURL = "https://pedal-delivery-back.onrender.com"
 					}
 
 					fileURL := fmt.Sprintf("%s/uploads/%s/%s", serverURL, fileType, filename)
