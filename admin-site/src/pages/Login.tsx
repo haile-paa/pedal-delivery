@@ -55,7 +55,7 @@ const Login: React.FC = () => {
       const phoneRegex = /^(?:\+251|0)?9\d{8}$/;
       if (!phoneRegex.test(data.phone)) {
         setError(
-          "Please enter a valid Ethiopian phone number (e.g., 0912345678)"
+          "Please enter a valid Ethiopian phone number (e.g., 0912345678)",
         );
         return;
       }
