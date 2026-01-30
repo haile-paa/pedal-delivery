@@ -10,11 +10,12 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Restaurants from "./pages/Restaurants";
 import AddRestaurant from "./pages/AddRestaurant";
+import RestaurantDetail from "./components/Dashboard/RestaurantDetail";
+import AddMenuItem from "./pages/AddMenuItem"; // You need to create this component
 import Drivers from "./pages/Drivers";
 import Orders from "./pages/Orders";
 import Analytics from "./pages/Analytics";
 import Layout from "./components/Layout/Layout";
-import RestaurantDetail from "./components/Dashboard/RestaurantDetail";
 
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({
   children,
@@ -38,8 +39,8 @@ const App: React.FC = () => {
       <Router>
         <Routes>
           <Route path='/login' element={<Login />} />
-          <Route path='/' element={<Navigate to='/dashboard' replace />} />
 
+          {/* Protected Routes */}
           <Route
             path='/'
             element={
@@ -48,14 +49,27 @@ const App: React.FC = () => {
               </PrivateRoute>
             }
           >
+            <Route index element={<Navigate to='/dashboard' replace />} />
             <Route path='dashboard' element={<Dashboard />} />
-            <Route path='restaurants' element={<Restaurants />} />
-            <Route path='/restaurants/:id' element={<RestaurantDetail />} />
-            <Route path='restaurants/add' element={<AddRestaurant />} />
+
+            {/* Restaurant Routes */}
+            <Route path='restaurants'>
+              <Route index element={<Restaurants />} />
+              <Route path='add' element={<AddRestaurant />} />
+              <Route path=':id'>
+                <Route index element={<RestaurantDetail />} />
+                <Route path='menu/add' element={<AddMenuItem />} />
+                <Route path='edit' element={<AddRestaurant />} />
+              </Route>
+            </Route>
+
             <Route path='drivers' element={<Drivers />} />
             <Route path='orders' element={<Orders />} />
             <Route path='analytics' element={<Analytics />} />
           </Route>
+
+          {/* Catch-all redirect */}
+          <Route path='*' element={<Navigate to='/dashboard' replace />} />
         </Routes>
       </Router>
     </AuthProvider>
