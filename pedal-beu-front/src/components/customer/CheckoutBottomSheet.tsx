@@ -58,8 +58,7 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
 }) => {
   const router = useRouter();
   const translateY = useRef(new Animated.Value(0)).current;
-  const [selectedPaymentMethod, setSelectedPaymentMethod] =
-    useState("telebirr");
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("cash"); // Default to cash
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
   const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
   const [locationPermission, setLocationPermission] = useState(false);
@@ -164,7 +163,7 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
           latitude,
           longitude,
           restaurant.location.coordinates[1], // latitude
-          restaurant.location.coordinates[0] // longitude
+          restaurant.location.coordinates[0], // longitude
         );
         setDistanceToRestaurant(distance);
       } else {
@@ -191,7 +190,7 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
           9.032,
           38.746,
           restaurant.location.coordinates[1] || 9.032,
-          restaurant.location.coordinates[0] || 38.746
+          restaurant.location.coordinates[0] || 38.746,
         );
         setDistanceToRestaurant(distance);
       } else {
@@ -213,7 +212,7 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
           text: "Enable Location",
           onPress: getUserLocation,
         },
-      ]
+      ],
     );
   };
 
@@ -221,7 +220,7 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
     lat1: number,
     lon1: number,
     lat2: number,
-    lon2: number
+    lon2: number,
   ): number => {
     const R = 6371; // Earth's radius in km
     const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -259,8 +258,21 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
       Alert.alert(
         "Out of Delivery Range",
         `You are ${distanceToRestaurant}km away from ${restaurant.name}. 
-        Delivery is only available within 5km of the restaurant.`,
-        [{ text: "OK" }]
+      Delivery is only available within 5km of the restaurant.`,
+        [{ text: "OK" }],
+      );
+      return;
+    }
+
+    // Show "Coming Soon" for Telebirr and CBE
+    if (
+      selectedPaymentMethod === "telebirr" ||
+      selectedPaymentMethod === "cbe"
+    ) {
+      Alert.alert(
+        "Coming Soon",
+        `${selectedPaymentMethod === "telebirr" ? "Telebirr" : "CBE"} payment is coming soon. Please use Cash on Delivery for now.`,
+        [{ text: "OK" }],
       );
       return;
     }
@@ -304,29 +316,53 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
       // Call the onPlaceOrder prop function
       onPlaceOrder(selectedPaymentMethod);
 
-      // For now, just show success and close
+      // FIRST: Navigate to tracking screen BEFORE closing the modal
+      const tempOrderId = `order_${Date.now()}`;
+
+      router.push({
+        pathname: "/(customer)/order-traking",
+        params: {
+          orderId: tempOrderId,
+          restaurantName: restaurant.name,
+          restaurantId: restaurant.id,
+        },
+      });
+
+      // THEN: Close the modal after navigation
       handleClose();
+
+      // Show success message (optional)
       Alert.alert(
         "Order Placed Successfully!",
         `Your order from ${restaurant.name} has been placed.`,
         [
           {
-            text: "OK", 
+            text: "OK",
             onPress: () => {
-              // Navigate to tracking screen
-              router.push("/(customer)/order-tracking" as any);
+              // Already navigated, so nothing to do here
             },
           },
-        ]
+        ],
       );
     } catch (error: any) {
       console.error("Order placement error:", error);
       Alert.alert(
         "Order Failed",
-        error.message || "Something went wrong. Please try again."
+        error.message || "Something went wrong. Please try again.",
       );
     } finally {
       setIsPlacingOrder(false);
+    }
+  };
+  const handlePaymentMethodSelect = (method: string) => {
+    if (method === "telebirr" || method === "cbe") {
+      Alert.alert(
+        "Coming Soon",
+        `${method === "telebirr" ? "Telebirr" : "CBE"} payment is coming soon. Please use Cash on Delivery for now.`,
+        [{ text: "OK" }],
+      );
+    } else {
+      setSelectedPaymentMethod(method);
     }
   };
 
@@ -458,7 +494,7 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
                   selectedPaymentMethod === "telebirr" &&
                     styles.selectedPaymentOption,
                 ]}
-                onPress={() => setSelectedPaymentMethod("telebirr")}
+                onPress={() => handlePaymentMethodSelect("telebirr")}
               >
                 <View style={styles.paymentOptionLeft}>
                   <View style={styles.paymentIconContainer}>
@@ -472,7 +508,7 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
                   <View style={styles.paymentInfo}>
                     <Text style={styles.paymentName}>Telebirr</Text>
                     <Text style={styles.paymentDescription}>
-                      Mobile money payment
+                      Mobile money payment • Coming Soon
                     </Text>
                   </View>
                 </View>
@@ -500,7 +536,7 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
                   selectedPaymentMethod === "cbe" &&
                     styles.selectedPaymentOption,
                 ]}
-                onPress={() => setSelectedPaymentMethod("cbe")}
+                onPress={() => handlePaymentMethodSelect("cbe")}
               >
                 <View style={styles.paymentOptionLeft}>
                   <View
@@ -521,7 +557,7 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
                       CBE (Commercial Bank of Ethiopia)
                     </Text>
                     <Text style={styles.paymentDescription}>
-                      Bank transfer or CBE Birr
+                      Bank transfer or CBE Birr • Coming Soon
                     </Text>
                   </View>
                 </View>
@@ -549,7 +585,7 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
                   selectedPaymentMethod === "cash" &&
                     styles.selectedPaymentOption,
                 ]}
-                onPress={() => setSelectedPaymentMethod("cash")}
+                onPress={() => handlePaymentMethodSelect("cash")}
               >
                 <View style={styles.paymentOptionLeft}>
                   <View

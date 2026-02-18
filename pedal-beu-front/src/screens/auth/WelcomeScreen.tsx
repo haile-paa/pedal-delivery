@@ -34,7 +34,7 @@ const WelcomeScreen: React.FC = () => {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // FIX: Stable function so input does not re-render unexpectedly
+  // Stable function for phone number input
   const handlePhoneNumberChange = useCallback((text: string) => {
     const cleaned = text.replace(/[^0-9]/g, "");
     setPhoneNumber(cleaned);
@@ -97,15 +97,17 @@ const WelcomeScreen: React.FC = () => {
     setLoading(true);
 
     try {
-      // Just send OTP - backend will handle registration status
-      const res = await fetch("https://pedal-delivery-back.onrender.com/api/v1/auth/send-otp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          phone: phoneNumber,
-          role: "customer",
-        }),
-      });
+      const res = await fetch(
+        "https://pedal-delivery-back.onrender.com/api/v1/auth/send-otp",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            phone: phoneNumber,
+            role: "customer",
+          }),
+        },
+      );
 
       const data = await res.json();
 
@@ -141,20 +143,21 @@ const WelcomeScreen: React.FC = () => {
     setLoading(true);
 
     try {
-      // Send OTP for driver login/registration
-      const res = await fetch("https://pedal-delivery-back.onrender.com/api/v1/auth/send-otp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          phone: phoneNumber,
-          role: "driver",
-        }),
-      });
+      const res = await fetch(
+        "https://pedal-delivery-back.onrender.com/api/v1/auth/send-otp",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            phone: phoneNumber,
+            role: "driver",
+          }),
+        },
+      );
 
       const data = await res.json();
 
       if (res.ok) {
-        // OTP sent successfully
         router.push({
           pathname: "/(auth)/phone-verification",
           params: {
@@ -163,7 +166,6 @@ const WelcomeScreen: React.FC = () => {
           },
         });
       } else {
-        // If OTP fails (driver not registered), go to driver registration
         if (data.error && data.error.includes("not registered")) {
           router.push({
             pathname: "/(auth)/driver-form",
@@ -174,7 +176,6 @@ const WelcomeScreen: React.FC = () => {
         }
       }
     } catch (err) {
-      // On network error, still allow driver registration
       router.push({
         pathname: "/(auth)/driver-form",
         params: { phone: phoneNumber },
@@ -200,145 +201,6 @@ const WelcomeScreen: React.FC = () => {
     transform: [{ scale: 1 + pulseAnim.value * 0.2 }],
   }));
 
-  // NO useMemo — keeps TextInput stable
-  const PhoneInputScreen = () => (
-    <View style={[styles.screen, styles.screen2]}>
-      <LinearGradient
-        colors={["#f8fafc", "#e2e8f0"]}
-        style={StyleSheet.absoluteFill}
-      />
-
-      <View style={styles.screen2Content}>
-        <TouchableOpacity style={styles.backButton} onPress={goBackToWelcome}>
-          <Text style={styles.backButtonText}>←</Text>
-        </TouchableOpacity>
-
-        {/* Driver Button */}
-        <View style={styles.driverTopButtonContainer}>
-          <TouchableOpacity
-            style={styles.driverTopButton}
-            onPress={handleDriverButton}
-            disabled={loading}
-          >
-            <LinearGradient
-              colors={["#FF6B6B", "#FF8E53"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={[
-                styles.driverTopButtonGradient,
-                loading && styles.buttonDisabled,
-              ]}
-            >
-              <Text style={styles.driverTopButtonText}>
-                🚗 If you are a driver
-              </Text>
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.titleContainer}>
-          <Text style={styles.phoneTitle}>Enter Your Phone Number</Text>
-          <Text style={styles.phoneSubtitle}>
-            For customers only. Drivers should use the button above.
-          </Text>
-        </View>
-
-        <View style={styles.phoneInputContainer}>
-          <View style={styles.phoneInputWrapper}>
-            <View style={styles.countryCodeContainer}>
-              <Text style={styles.countryCodeText}>+251</Text>
-            </View>
-
-            <TextInput
-              style={styles.phoneInput}
-              placeholder='912345678'
-              placeholderTextColor={colors.gray400}
-              value={phoneNumber}
-              onChangeText={handlePhoneNumberChange}
-              keyboardType='numeric'
-              maxLength={9}
-              autoFocus
-              editable={!loading}
-              returnKeyType='done'
-              clearButtonMode='while-editing'
-            />
-          </View>
-
-          <Text style={styles.phoneHint}>
-            Enter your 9-digit phone number starting with 9
-          </Text>
-        </View>
-
-        <View style={styles.nextButtonContainer}>
-          <TouchableOpacity
-            style={[
-              styles.nextButtonArrow,
-              (!validatePhoneNumber(phoneNumber) || loading) &&
-                styles.nextButtonDisabled,
-            ]}
-            onPress={handleContinueAsCustomer}
-            disabled={!validatePhoneNumber(phoneNumber) || loading}
-          >
-            <LinearGradient
-              colors={["#667eea", "#764ba2"]}
-              style={[
-                styles.nextButtonArrowGradient,
-                loading && styles.buttonDisabled,
-              ]}
-            >
-              <Text style={styles.nextButtonArrowText}>
-                {loading ? "..." : "→"}
-              </Text>
-            </LinearGradient>
-          </TouchableOpacity>
-
-          <Text style={styles.nextButtonLabel}>Continue as Customer</Text>
-        </View>
-      </View>
-    </View>
-  );
-
-  const LogoWelcomeScreen = () => (
-    <View style={[styles.screen, styles.screen1]}>
-      <LinearGradient
-        colors={["#667eea", "#764ba2"]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={StyleSheet.absoluteFill}
-      />
-
-      <View style={styles.screenContent}>
-        <Animated.View style={[styles.pulseCircle, pulseAnimatedStyle]} />
-        <Animated.View
-          style={[
-            styles.pulseCircle,
-            pulseAnimatedStyle,
-            { width: 320, height: 320 },
-          ]}
-        />
-        <Animated.View style={[styles.logoContainer, logoAnimatedStyle]}>
-          <Image
-            source={require("../../../assets/images/logo-nobg.png")}
-            style={styles.logoImage}
-            resizeMode='contain'
-          />
-        </Animated.View>
-
-        <Animated.View style={[styles.textContainer, textAnimatedStyle]} />
-
-        <View style={styles.buttonContainer}>
-          <AnimatedButton
-            title='Get Started'
-            onPress={goToPhoneScreen}
-            variant='primary'
-            style={styles.nextButton}
-            fullWidth
-          />
-        </View>
-      </View>
-    </View>
-  );
-
   return (
     <View style={styles.container}>
       <StatusBar
@@ -346,7 +208,147 @@ const WelcomeScreen: React.FC = () => {
         backgroundColor={showPhoneScreen ? "#f8fafc" : "#667eea"}
       />
 
-      {showPhoneScreen ? <PhoneInputScreen /> : <LogoWelcomeScreen />}
+      {showPhoneScreen ? (
+        <View style={[styles.screen, styles.screen2]}>
+          <LinearGradient
+            colors={["#f8fafc", "#e2e8f0"]}
+            style={StyleSheet.absoluteFill}
+          />
+
+          <View style={styles.screen2Content}>
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={goBackToWelcome}
+            >
+              <Text style={styles.backButtonText}>←</Text>
+            </TouchableOpacity>
+
+            {/* Driver Button */}
+            <View style={styles.driverTopButtonContainer}>
+              <TouchableOpacity
+                style={styles.driverTopButton}
+                onPress={handleDriverButton}
+                disabled={loading}
+              >
+                <LinearGradient
+                  colors={["#FF6B6B", "#FF8E53"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={[
+                    styles.driverTopButtonGradient,
+                    loading && styles.buttonDisabled,
+                  ]}
+                >
+                  <Text style={styles.driverTopButtonText}>
+                    🚗 If you are a driver
+                  </Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.titleContainer}>
+              <Text style={styles.phoneTitle}>Enter Your Phone Number</Text>
+              <Text style={styles.phoneSubtitle}>
+                For customers only. Drivers should use the button above.
+              </Text>
+            </View>
+
+            <View style={styles.phoneInputContainer}>
+              <View style={styles.phoneInputWrapper}>
+                <View style={styles.countryCodeContainer}>
+                  <Text style={styles.countryCodeText}>+251</Text>
+                </View>
+
+                {/* SIMPLE TextInput without complex handlers */}
+                <TextInput
+                  style={styles.phoneInput}
+                  placeholder='912345678'
+                  placeholderTextColor={colors.gray400}
+                  value={phoneNumber}
+                  onChangeText={handlePhoneNumberChange}
+                  keyboardType='number-pad'
+                  maxLength={9}
+                  autoFocus={true}
+                  editable={!loading}
+                  returnKeyType='done'
+                  clearButtonMode='while-editing'
+                  keyboardAppearance='light'
+                  onBlur={() => Keyboard.dismiss()}
+                />
+              </View>
+
+              <Text style={styles.phoneHint}>
+                Enter your 9-digit phone number starting with 9
+              </Text>
+            </View>
+
+            <View style={styles.nextButtonContainer}>
+              <TouchableOpacity
+                style={[
+                  styles.nextButtonArrow,
+                  (!validatePhoneNumber(phoneNumber) || loading) &&
+                    styles.nextButtonDisabled,
+                ]}
+                onPress={handleContinueAsCustomer}
+                disabled={!validatePhoneNumber(phoneNumber) || loading}
+              >
+                <LinearGradient
+                  colors={["#667eea", "#764ba2"]}
+                  style={[
+                    styles.nextButtonArrowGradient,
+                    loading && styles.buttonDisabled,
+                  ]}
+                >
+                  <Text style={styles.nextButtonArrowText}>
+                    {loading ? "..." : "→"}
+                  </Text>
+                </LinearGradient>
+              </TouchableOpacity>
+
+              <Text style={styles.nextButtonLabel}>Continue as Customer</Text>
+            </View>
+          </View>
+        </View>
+      ) : (
+        <View style={[styles.screen, styles.screen1]}>
+          <LinearGradient
+            colors={["#667eea", "#764ba2"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+
+          <View style={styles.screenContent}>
+            <Animated.View style={[styles.pulseCircle, pulseAnimatedStyle]} />
+            <Animated.View
+              style={[
+                styles.pulseCircle,
+                pulseAnimatedStyle,
+                { width: 320, height: 320 },
+              ]}
+            />
+            <Animated.View style={[styles.logoContainer, logoAnimatedStyle]}>
+              <Image
+                source={require("../../../assets/images/logo-nobg.png")}
+                style={styles.logoImage}
+                resizeMode='contain'
+              />
+            </Animated.View>
+
+            <Animated.View style={[styles.textContainer, textAnimatedStyle]} />
+
+            <View style={styles.buttonContainer}>
+              <AnimatedButton
+                title='Get Started'
+                onPress={goToPhoneScreen}
+                variant='primary'
+                style={styles.nextButton}
+                fullWidth
+              />
+            </View>
+          </View>
+        </View>
+      )}
     </View>
   );
 };

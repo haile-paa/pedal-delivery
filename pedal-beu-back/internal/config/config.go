@@ -15,6 +15,12 @@ type Config struct {
 	AWS      AWSConfig      `mapstructure:"aws"`
 	JWT      JWTConfig      `mapstructure:"jwt"`
 	SMS      SMSConfig      `mapstructure:"sms"`
+	Shipday  ShipdayConfig  `mapstructure:"shipday"`
+}
+
+type ShipdayConfig struct {
+    APIKey string `mapstructure:"api_key"`
+    BaseURL string `mapstructure:"base_url"` // optional, default to production
 }
 
 type ServerConfig struct {
@@ -78,6 +84,8 @@ func Load() *Config {
 		viper.SetDefault("server.write_timeout", 10*time.Second)
 		viper.SetDefault("jwt.expire_hours", 24*time.Hour)
 		viper.SetDefault("jwt.refresh_exp_hours", 168*time.Hour)
+		
+		viper.SetDefault("shipday.base_url", "https://api.shipday.com")
 
 		if err := viper.ReadInConfig(); err != nil {
 			log.Printf("Error reading config file: %v", err)

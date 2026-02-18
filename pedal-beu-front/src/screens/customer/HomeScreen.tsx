@@ -1,5 +1,5 @@
 // components/customer/HomeScreen.tsx
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -26,7 +26,7 @@ const HomeScreen: React.FC = () => {
   const { state, dispatch } = useAppState();
   const router = useRouter();
   const [filteredRestaurants, setFilteredRestaurants] = useState<Restaurant[]>(
-    []
+    [],
   );
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
@@ -36,6 +36,12 @@ const HomeScreen: React.FC = () => {
   const [locationLoading, setLocationLoading] = useState(false);
   const [hasLocationPermission, setHasLocationPermission] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
+
+  // Debounce and API call tracking refs - FIXED: Using number for React Native timeout ID
+  const fetchTimeoutRef = useRef<number | null>(null);
+  const isFetchingRef = useRef(false);
+  const lastFetchTimeRef = useRef<number>(0);
+  const shouldFetchRef = useRef(true);
 
   // Get user's first name
   const getUserFirstName = () => {
@@ -49,89 +55,66 @@ const HomeScreen: React.FC = () => {
     return "Guest";
   };
 
-  // Request location permission using Expo Location
-  const requestLocationPermission = async () => {
-    setLocationLoading(true);
-    setLocationError(null);
+  // Cleanup function for debounce timeout
+  const cleanupFetch = () => {
+    if (fetchTimeoutRef.current !== null) {
+      clearTimeout(fetchTimeoutRef.current);
+      fetchTimeoutRef.current = null;
+    }
+  };
 
-    try {
-      console.log("Requesting location permissions...");
+  // Debounced restaurant loader
+  const loadRestaurantsDebounced = useCallback(
+    (
+      useLocation: boolean = false,
+      location?: { latitude: number; longitude: number },
+      forceRefresh: boolean = false,
+    ) => {
+      // Clear any existing timeout
+      cleanupFetch();
 
-      // First, check if location services are enabled
-      const enabled = await Location.hasServicesEnabledAsync();
-      if (!enabled) {
-        setLocationError("Location services are disabled on your device");
-        setLocationLoading(false);
-        loadRestaurants();
+      // If already fetching and not forcing refresh, skip
+      if (isFetchingRef.current && !forceRefresh) {
+        console.log("Already fetching, skipping duplicate call");
         return;
       }
 
-      // Request permissions
-      const { status } = await Location.requestForegroundPermissionsAsync();
+      // Check if we should fetch (min 2 seconds between calls unless forced)
+      const now = Date.now();
+      if (!forceRefresh && now - lastFetchTimeRef.current < 2000) {
+        console.log("Too soon since last fetch, debouncing...");
 
-      if (status === "granted") {
-        console.log("Location permission granted");
-        setHasLocationPermission(true);
-        getCurrentLocation();
-      } else {
-        console.log("Location permission denied:", status);
-        setLocationError("Location permission denied");
-        setHasLocationPermission(false);
-        setLocationLoading(false);
-        loadRestaurants();
+        // Schedule the fetch for later
+        fetchTimeoutRef.current = setTimeout(
+          () => {
+            loadRestaurantsDebounced(useLocation, location, forceRefresh);
+          },
+          2000 - (now - lastFetchTimeRef.current),
+        ) as unknown as number;
+        return;
       }
-    } catch (error: any) {
-      console.error("Error requesting location permission:", error);
-      setLocationError(error.message || "Failed to get location permission");
-      setHasLocationPermission(false);
-      setLocationLoading(false);
-      loadRestaurants();
-    }
-  };
 
-  // Get current location
-  const getCurrentLocation = async () => {
-    setLocationLoading(true);
-    setLocationError(null);
+      // Set timeout for the actual fetch
+      fetchTimeoutRef.current = setTimeout(async () => {
+        await loadRestaurants(useLocation, location, forceRefresh);
+      }, 300) as unknown as number; // 300ms debounce delay
+    },
+    [],
+  );
 
-    try {
-      console.log("Getting current location...");
-
-      const location = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-
-      const { latitude, longitude } = location.coords;
-      console.log("Got location:", latitude, longitude);
-
-      // Store location in state
-      dispatch({
-        type: "SET_LOCATION",
-        payload: { latitude, longitude },
-      });
-
-      setHasLocationPermission(true);
-      setLocationError(null);
-
-      // Load restaurants with location
-      loadRestaurants(true, { latitude, longitude });
-    } catch (error: any) {
-      console.error("Error getting location:", error);
-      setLocationError(error.message || "Failed to get location");
-      setHasLocationPermission(false);
-      setLocationLoading(false);
-
-      // Load restaurants without location
-      loadRestaurants();
-    }
-  };
-
-  // Load restaurants from API - SIMPLIFIED VERSION
+  // Actual restaurant loader function
   const loadRestaurants = async (
     useLocation: boolean = false,
-    location?: { latitude: number; longitude: number }
+    location?: { latitude: number; longitude: number },
+    forceRefresh: boolean = false,
   ) => {
+    if (isFetchingRef.current && !forceRefresh) {
+      console.log("Already fetching, skipping...");
+      return;
+    }
+
     console.log("Loading restaurants, useLocation:", useLocation);
+    isFetchingRef.current = true;
     setLoading(true);
 
     try {
@@ -164,7 +147,7 @@ const HomeScreen: React.FC = () => {
         if (response.data.length > 0) {
           console.log(
             "First restaurant data:",
-            JSON.stringify(response.data[0], null, 2)
+            JSON.stringify(response.data[0], null, 2),
           );
         }
 
@@ -185,25 +168,112 @@ const HomeScreen: React.FC = () => {
           }
         });
         setCategories(allCategories.slice(0, 10));
+
+        // Update last fetch time on success
+        lastFetchTimeRef.current = Date.now();
       } else {
-        console.error("Failed to load restaurants:", response.error);
-        Alert.alert("Error", response.error || "Failed to load restaurants");
+        console.warn("Failed to load restaurants:", response.error);
+        // Don't show alert for network errors
+        if (response.error && !response.error.includes("Network")) {
+          Alert.alert("Error", response.error || "Failed to load restaurants");
+        }
       }
     } catch (error: any) {
-      console.error("Error loading restaurants:", error);
-      console.error("Error details:", {
+      console.warn("Error loading restaurants:", error.message);
+      console.warn("Error details:", {
         message: error.message,
         code: error.code,
         stack: error.stack,
       });
 
-      Alert.alert(
-        "Connection Error",
-        "Unable to connect to the server. Please check your internet connection and try again."
-      );
+      // Don't show alert for network/timeout errors
+      if (error.code !== "ECONNABORTED" && error.message !== "Network Error") {
+        Alert.alert(
+          "Connection Error",
+          "Unable to connect to the server. Please check your internet connection and try again.",
+        );
+      }
     } finally {
+      isFetchingRef.current = false;
       setLoading(false);
       setLocationLoading(false);
+    }
+  };
+
+  // Request location permission using Expo Location
+  const requestLocationPermission = async () => {
+    setLocationLoading(true);
+    setLocationError(null);
+
+    try {
+      console.log("Requesting location permissions...");
+
+      // First, check if location services are enabled
+      const enabled = await Location.hasServicesEnabledAsync();
+      if (!enabled) {
+        setLocationError("Location services are disabled on your device");
+        setLocationLoading(false);
+        loadRestaurantsDebounced(false, undefined, true);
+        return;
+      }
+
+      // Request permissions
+      const { status } = await Location.requestForegroundPermissionsAsync();
+
+      if (status === "granted") {
+        console.log("Location permission granted");
+        setHasLocationPermission(true);
+        getCurrentLocation();
+      } else {
+        console.log("Location permission denied:", status);
+        setLocationError("Location permission denied");
+        setHasLocationPermission(false);
+        setLocationLoading(false);
+        loadRestaurantsDebounced(false, undefined, true);
+      }
+    } catch (error: any) {
+      console.error("Error requesting location permission:", error);
+      setLocationError(error.message || "Failed to get location permission");
+      setHasLocationPermission(false);
+      setLocationLoading(false);
+      loadRestaurantsDebounced(false, undefined, true);
+    }
+  };
+
+  // Get current location
+  const getCurrentLocation = async () => {
+    setLocationLoading(true);
+    setLocationError(null);
+
+    try {
+      console.log("Getting current location...");
+
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+
+      const { latitude, longitude } = location.coords;
+      console.log("Got location:", latitude, longitude);
+
+      // Store location in state
+      dispatch({
+        type: "SET_LOCATION",
+        payload: { latitude, longitude },
+      });
+
+      setHasLocationPermission(true);
+      setLocationError(null);
+
+      // Load restaurants with location (debounced)
+      loadRestaurantsDebounced(true, { latitude, longitude }, true);
+    } catch (error: any) {
+      console.error("Error getting location:", error);
+      setLocationError(error.message || "Failed to get location");
+      setHasLocationPermission(false);
+      setLocationLoading(false);
+
+      // Load restaurants without location (debounced)
+      loadRestaurantsDebounced(false, undefined, true);
     }
   };
 
@@ -218,8 +288,8 @@ const HomeScreen: React.FC = () => {
           restaurant.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
           (restaurant.cuisine_type &&
             restaurant.cuisine_type.some((cuisine: string) =>
-              cuisine.toLowerCase().includes(searchQuery.toLowerCase())
-            ))
+              cuisine.toLowerCase().includes(searchQuery.toLowerCase()),
+            )),
       );
     }
 
@@ -228,30 +298,56 @@ const HomeScreen: React.FC = () => {
       filtered = filtered.filter(
         (restaurant) =>
           restaurant.cuisine_type &&
-          restaurant.cuisine_type.includes(selectedCategory)
+          restaurant.cuisine_type.includes(selectedCategory),
       );
     }
 
     setFilteredRestaurants(filtered);
   }, [searchQuery, selectedCategory, state.restaurants.list]);
 
-  // Initial load
+  // Initial load with debounce
   useEffect(() => {
     const initialize = async () => {
       // Try to get location first, then load restaurants
       await requestLocationPermission();
     };
-    initialize();
+
+    // Debounce the initial call
+    if (shouldFetchRef.current) {
+      shouldFetchRef.current = false;
+
+      // Add a small delay to initial load for better UX
+      fetchTimeoutRef.current = setTimeout(() => {
+        initialize();
+      }, 100) as unknown as number;
+    }
+
+    // Cleanup on unmount
+    return () => {
+      cleanupFetch();
+    };
   }, []);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadRestaurants(
+    // Use debounced version for refresh too, but with force refresh
+    loadRestaurantsDebounced(
       hasLocationPermission,
-      state.location.currentLocation || undefined
+      state.location.currentLocation || undefined,
+      true,
     );
-    setRefreshing(false);
-  }, [hasLocationPermission, state.location.currentLocation]);
+    // Use a timeout to ensure minimum refresh display time
+    const refreshTimeout = setTimeout(() => {
+      setRefreshing(false);
+    }, 500) as unknown as number;
+
+    // Clean up the timeout
+    return () => clearTimeout(refreshTimeout);
+  }, [
+    hasLocationPermission,
+    state.location.currentLocation,
+    loadRestaurantsDebounced,
+  ]);
 
   const handleRestaurantPress = (restaurant: Restaurant) => {
     dispatch({ type: "SET_CURRENT_RESTAURANT", payload: restaurant });
@@ -265,12 +361,12 @@ const HomeScreen: React.FC = () => {
     ({ item }: { item: Restaurant }) => (
       <RestaurantCard item={item} onPress={handleRestaurantPress} />
     ),
-    []
+    [],
   );
 
   const renderSkeleton = useCallback(
     () => <LoadingSkeleton type='restaurant' count={3} />,
-    []
+    [],
   );
 
   const renderLocationHeader = () => {
