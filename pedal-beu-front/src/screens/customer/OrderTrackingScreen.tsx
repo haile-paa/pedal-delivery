@@ -188,7 +188,7 @@ const OrderTrackingScreen: React.FC = () => {
             console.error("Location error:", error);
             resolve(); // Continue without location
           },
-          { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+          { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 },
         );
       } else {
         resolve(); // Continue without location
@@ -206,7 +206,7 @@ const OrderTrackingScreen: React.FC = () => {
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
           },
-        }
+        },
       );
 
       const data = await response.json();
@@ -287,7 +287,7 @@ const OrderTrackingScreen: React.FC = () => {
     Alert.alert(
       "Driver Assigned!",
       `${data.driver.name} has accepted your order and will be arriving soon.`,
-      [{ text: "OK" }]
+      [{ text: "OK" }],
     );
   };
 
@@ -327,7 +327,7 @@ const OrderTrackingScreen: React.FC = () => {
     setCurrentStatus("accepted");
     Alert.alert(
       "Order Accepted",
-      "The restaurant has accepted your order and started preparing it."
+      "The restaurant has accepted your order and started preparing it.",
     );
   };
 
@@ -344,7 +344,7 @@ const OrderTrackingScreen: React.FC = () => {
     setCurrentStatus("picked_up");
     Alert.alert(
       "On the Way!",
-      "Your order has been picked up and is on its way to you!"
+      "Your order has been picked up and is on its way to you!",
     );
   };
 
@@ -360,7 +360,7 @@ const OrderTrackingScreen: React.FC = () => {
             Alert.alert("Rating", "Rate your order feature coming soon!");
           },
         },
-      ]
+      ],
     );
   };
 
@@ -433,14 +433,14 @@ const OrderTrackingScreen: React.FC = () => {
                   Authorization: `Bearer ${token}`,
                   "Content-Type": "application/json",
                 },
-              }
+              },
             );
 
             if (response.ok) {
               setCurrentStatus("cancelled");
               Alert.alert(
                 "Order Cancelled",
-                "Your order has been cancelled successfully."
+                "Your order has been cancelled successfully.",
               );
 
               setTimeout(() => {

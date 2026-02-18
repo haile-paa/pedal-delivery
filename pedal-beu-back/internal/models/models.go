@@ -281,6 +281,7 @@ type Order struct {
 	Cancellation  *CancellationInfo   `bson:"cancellation,omitempty" json:"cancellation,omitempty"`
 	CreatedAt     time.Time           `bson:"created_at" json:"created_at"`
 	UpdatedAt     time.Time           `bson:"updated_at" json:"updated_at"`
+	ShipdayOrderID string `bson:"shipday_order_id,omitempty" json:"shipday_order_id,omitempty"`
 }
 
 type OrderRating struct {

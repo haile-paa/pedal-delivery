@@ -186,6 +186,30 @@ func main() {
 	router.Use(middleware.LoggingMiddleware())
 	router.Use(gin.Recovery())
 
+	// WebSocket routes
+websocket.SetupWebSocketRoutes(router.Group(""), middleware.AuthMiddleware())
+
+shipdayWebhookHandler := handlers.NewShipdayWebhookHandler(orderService, wsService)
+router.POST("/webhooks/shipday", shipdayWebhookHandler.Handle)
+
+// Add WebSocket health check endpoint (public)
+router.GET("/ws-health", websocket.WebSocketHealthCheck)
+
+// Add WebSocket info endpoint (protected)
+router.GET("/ws-info", middleware.AuthMiddleware(), func(c *gin.Context) {
+	userID, _ := c.Get("userID")
+	hub := websocket.GetHub()
+	
+	c.JSON(http.StatusOK, gin.H{
+		"user_id": userID,
+		"status": "WebSocket server is running",
+		"stats": gin.H{
+			"total_clients": len(hub.clients),
+			"total_rooms":   len(hub.rooms),
+		},
+	})
+})
+
 	// Health check
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{

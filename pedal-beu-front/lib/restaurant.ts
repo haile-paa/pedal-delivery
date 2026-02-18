@@ -1,7 +1,43 @@
+// lib/restaurant.ts
 import api from "./api";
 import { Restaurant, MenuItem, Addon } from "../src/types";
 
-// REMOVED: const isDevelopment = __DEV__; - Use actual endpoints only
+// Retry function for network requests
+const retryRequest = async <T>(
+  requestFn: () => Promise<T>,
+  maxRetries: number = 3,
+  delayMs: number = 1000,
+): Promise<T> => {
+  let lastError: any;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await requestFn();
+    } catch (error: any) {
+      lastError = error;
+
+      // Only retry on network/timeout errors
+      const shouldRetry =
+        error.code === "ECONNABORTED" ||
+        error.message === "Network Error" ||
+        error.code === "ERR_NETWORK";
+
+      if (!shouldRetry || attempt === maxRetries - 1) {
+        throw error;
+      }
+
+      console.log(
+        `Retry attempt ${attempt + 1}/${maxRetries} after error:`,
+        error.message,
+      );
+      await new Promise((resolve) =>
+        setTimeout(resolve, delayMs * (attempt + 1)),
+      );
+    }
+  }
+
+  throw lastError;
+};
 
 export const restaurantAPI = {
   // lib/restaurant.ts
@@ -21,19 +57,25 @@ export const restaurantAPI = {
       if (params?.location) {
         queryParams.latitude = params.location.latitude;
         queryParams.longitude = params.location.longitude;
-        queryParams.radius = params.location.radius || 10000;
+        params.radius = params.location.radius || 10000;
         queryParams.calculate_distance = true;
       }
 
       console.log(
         "Making API request to /restaurants with params:",
-        queryParams
+        queryParams,
       );
 
-      const response = await api.get("/restaurants", {
-        params: queryParams,
-        timeout: 10000,
-      });
+      // Wrap the API call with retry logic
+      const response = await retryRequest(
+        () =>
+          api.get("/restaurants", {
+            params: queryParams,
+            timeout: 30000, // Increased from 10000 to 30000
+          }),
+        3, // max retries
+        1000, // initial delay
+      );
 
       console.log("API Response received:", {
         status: response.status,
@@ -147,7 +189,23 @@ export const restaurantAPI = {
         },
       };
     } catch (error: any) {
-      console.error("Error in restaurantAPI.getAll:", error);
+      // Don't log as error if it's a network/timeout error
+      if (
+        error.code === "ECONNABORTED" ||
+        error.message === "Network Error" ||
+        error.code === "ERR_NETWORK"
+      ) {
+        console.log(
+          "Network/timeout error in restaurantAPI.getAll after retries:",
+          {
+            message: error.message,
+            code: error.code,
+          },
+        );
+      } else {
+        console.error("Error in restaurantAPI.getAll:", error);
+      }
+
       return {
         success: false,
         data: [],
@@ -158,15 +216,20 @@ export const restaurantAPI = {
       };
     }
   },
-  // Get restaurant by ID
+
+  // Get restaurant by ID with retry
   getById: async (id: string) => {
     try {
       console.log(`Fetching restaurant ${id}...`);
-      const response = await api.get(`/restaurants/${id}`);
+      const response = await retryRequest(
+        () => api.get(`/restaurants/${id}`),
+        2, // max retries
+        500, // initial delay
+      );
       console.log(`Restaurant ${id} response:`, response.data);
       return { success: true, data: response.data };
     } catch (error: any) {
-      console.error(`Error fetching restaurant ${id}:`, error);
+      console.log(`Error fetching restaurant ${id}:`, error.message);
       return {
         success: false,
         error: error.response?.data?.error || "Failed to fetch restaurant",
@@ -174,16 +237,21 @@ export const restaurantAPI = {
     }
   },
 
-  // Get nearby restaurants
+  // Get nearby restaurants with retry
   getNearby: async (
     latitude: number,
     longitude: number,
-    radius: number = 10000 // Default 10km to match backend
+    radius: number = 10000, // Default 10km to match backend
   ): Promise<{ success: boolean; data: Restaurant[]; error?: string }> => {
     try {
-      const response = await api.get("/restaurants/nearby", {
-        params: { latitude, longitude, radius },
-      });
+      const response = await retryRequest(
+        () =>
+          api.get("/restaurants/nearby", {
+            params: { latitude, longitude, radius },
+          }),
+        2,
+        500,
+      );
       return { success: true, data: response.data.data || response.data };
     } catch (error: any) {
       return {
@@ -195,10 +263,10 @@ export const restaurantAPI = {
     }
   },
 
-  // Search restaurants
+  // Search restaurants with retry
   search: async (
     query: string,
-    location?: { latitude: number; longitude: number }
+    location?: { latitude: number; longitude: number },
   ): Promise<{ success: boolean; data: Restaurant[]; error?: string }> => {
     try {
       const params: any = { q: query };
@@ -206,7 +274,11 @@ export const restaurantAPI = {
         params.latitude = location.latitude;
         params.longitude = location.longitude;
       }
-      const response = await api.get("/restaurants/search", { params });
+      const response = await retryRequest(
+        () => api.get("/restaurants/search", { params }),
+        2,
+        500,
+      );
       return { success: true, data: response.data.data || response.data };
     } catch (error: any) {
       return {
@@ -217,13 +289,16 @@ export const restaurantAPI = {
     }
   },
 
-  // Get menu items for restaurant
+  // Get menu items for restaurant with retry
   getMenu: async (
-    restaurantId: string
+    restaurantId: string,
   ): Promise<{ success: boolean; data: MenuItem[]; error?: string }> => {
     try {
-      // ✅ Use actual endpoint
-      const response = await api.get(`/restaurants/${restaurantId}/menu`);
+      const response = await retryRequest(
+        () => api.get(`/restaurants/${restaurantId}/menu`),
+        2,
+        500,
+      );
       return { success: true, data: response.data };
     } catch (error: any) {
       return {
@@ -234,7 +309,7 @@ export const restaurantAPI = {
     }
   },
 
-  // Admin functions (require admin token)
+  // ... rest of the functions remain the same (Admin functions)
   createRestaurant: async (data: {
     name: string;
     description: string;
@@ -249,8 +324,11 @@ export const restaurantAPI = {
     delivery_time: number;
   }): Promise<{ success: boolean; data?: Restaurant; error?: string }> => {
     try {
-      // ✅ Use actual endpoint (requires admin token)
-      const response = await api.post("/restaurants", data);
+      const response = await retryRequest(
+        () => api.post("/restaurants", data),
+        2,
+        500,
+      );
       return {
         success: true,
         data: response.data.data || response.data,
@@ -265,10 +343,14 @@ export const restaurantAPI = {
 
   updateRestaurant: async (
     id: string,
-    data: Partial<Restaurant>
+    data: Partial<Restaurant>,
   ): Promise<{ success: boolean; data?: Restaurant; error?: string }> => {
     try {
-      const response = await api.put(`/restaurants/${id}`, data);
+      const response = await retryRequest(
+        () => api.put(`/restaurants/${id}`, data),
+        2,
+        500,
+      );
       return { success: true, data: response.data.data || response.data };
     } catch (error: any) {
       return {
@@ -289,12 +371,13 @@ export const restaurantAPI = {
       addons?: Addon[];
       preparation_time: number;
       image?: string;
-    }
+    },
   ): Promise<{ success: boolean; data?: MenuItem; error?: string }> => {
     try {
-      const response = await api.post(
-        `/restaurants/${restaurantId}/menu`,
-        data
+      const response = await retryRequest(
+        () => api.post(`/restaurants/${restaurantId}/menu`, data),
+        2,
+        500,
       );
       return { success: true, data: response.data.data || response.data };
     } catch (error: any) {
@@ -308,12 +391,13 @@ export const restaurantAPI = {
   updateMenuItem: async (
     restaurantId: string,
     itemId: string,
-    data: Partial<MenuItem>
+    data: Partial<MenuItem>,
   ): Promise<{ success: boolean; data?: MenuItem; error?: string }> => {
     try {
-      const response = await api.put(
-        `/restaurants/${restaurantId}/menu/${itemId}`,
-        data
+      const response = await retryRequest(
+        () => api.put(`/restaurants/${restaurantId}/menu/${itemId}`, data),
+        2,
+        500,
       );
       return { success: true, data: response.data.data || response.data };
     } catch (error: any) {
@@ -326,10 +410,14 @@ export const restaurantAPI = {
 
   deleteMenuItem: async (
     restaurantId: string,
-    itemId: string
+    itemId: string,
   ): Promise<{ success: boolean; error?: string }> => {
     try {
-      await api.delete(`/restaurants/${restaurantId}/menu/${itemId}`);
+      await retryRequest(
+        () => api.delete(`/restaurants/${restaurantId}/menu/${itemId}`),
+        2,
+        500,
+      );
       return { success: true };
     } catch (error: any) {
       return {
