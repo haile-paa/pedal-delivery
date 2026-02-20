@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 )
@@ -72,13 +73,17 @@ func (c *Client) SendSMS(to, message string) (*SendSMSResponse, error) {
 	}
 	defer resp.Body.Close()
 
+	// Read the full body for debugging (in case of error)
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
 	var result SendSMSResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, err
+	if err := json.Unmarshal(bodyBytes, &result); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %v, body: %s", err, string(bodyBytes))
 	}
 
 	if result.Acknowledge != "success" {
-		return nil, fmt.Errorf("sms send failed: %s", result.Acknowledge)
+		// Include the full response in the error message
+		return nil, fmt.Errorf("afromessage error: %s - response: %+v", result.Acknowledge, result.Response)
 	}
 
 	return &result, nil
