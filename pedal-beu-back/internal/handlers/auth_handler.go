@@ -14,6 +14,7 @@ import (
 	"github.com/haile-paa/pedal-delivery/internal/repositories"
 	"github.com/haile-paa/pedal-delivery/internal/services"
 	"github.com/haile-paa/pedal-delivery/pkg/auth"
+	"github.com/haile-paa/pedal-delivery/pkg/sms"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
@@ -37,15 +38,17 @@ var adminRepo repositories.AdminRepository
 
 type AuthHandler struct {
 	authService services.AuthService
+	smsClient   *sms.Client
 }
 
 func SetAdminRepository(repo repositories.AdminRepository) {
 	adminRepo = repo
 }
 
-func NewAuthHandler(authService services.AuthService) *AuthHandler {
+func NewAuthHandler(authService services.AuthService, smsClient *sms.Client) *AuthHandler {
 	return &AuthHandler{
 		authService: authService,
+		smsClient:   smsClient,
 	}
 }
 
@@ -89,7 +92,7 @@ func normalizePhone(phone string) string {
 }
 
 // ===============================
-// ✅ OTP HANDLERS
+// ✅ OTP HANDLERS (methods)
 // ===============================
 
 // @Summary Send OTP
@@ -101,7 +104,7 @@ func normalizePhone(phone string) string {
 // @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} map[string]interface{}
 // @Router /api/v1/auth/send-otp [post]
-func SendOTP(c *gin.Context) {
+func (h *AuthHandler) SendOTP(c *gin.Context) {
 	var req models.SendOTPRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -129,7 +132,7 @@ func SendOTP(c *gin.Context) {
 		}
 	}
 
-	// Store OTP in memory (for development) - store with both formats
+	// Store OTP in memory - store with both formats
 	otpMutex.Lock()
 	otpStore[req.Phone] = OTPData{
 		Code:      otp,
@@ -141,7 +144,20 @@ func SendOTP(c *gin.Context) {
 	}
 	otpMutex.Unlock()
 
-	// ✅ TEMP: LOG OTP (replace with SMS later)
+	// Send SMS via provider
+	message := fmt.Sprintf("Your verification code is: %s", otp)
+	if h.smsClient != nil {
+		resp, err := h.smsClient.SendSMS(normalizedPhone, message)
+		if err != nil {
+			log.Printf("❌ Failed to send SMS: %v", err)
+		} else {
+			log.Printf("✅ SMS sent successfully, message_id: %s", resp.Response.MessageID)
+		}
+	} else {
+		log.Println("⚠️ SMS client not configured, OTP not sent via SMS")
+	}
+
+	// TEMP: LOG OTP (remove in production)
 	log.Println("✅ OTP for", req.Phone, "=", otp, "for role:", req.Role)
 
 	c.JSON(http.StatusOK, gin.H{
@@ -160,7 +176,7 @@ func SendOTP(c *gin.Context) {
 // @Success 201 {object} map[string]interface{}
 // @Failure 400 {object} map[string]interface{}
 // @Router /api/v1/auth/register-driver [post]
-func RegisterDriver(c *gin.Context) {
+func (h *AuthHandler) RegisterDriver(c *gin.Context) {
 	var req models.RegisterDriverRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -217,6 +233,19 @@ func RegisterDriver(c *gin.Context) {
 		ExpiresAt: time.Now().Add(5 * time.Minute),
 	}
 	otpMutex.Unlock()
+
+	// Send SMS
+	message := fmt.Sprintf("Your verification code is: %s", otp)
+	if h.smsClient != nil {
+		resp, err := h.smsClient.SendSMS(normalizedPhone, message)
+		if err != nil {
+			log.Printf("❌ Failed to send SMS: %v", err)
+		} else {
+			log.Printf("✅ SMS sent successfully, message_id: %s", resp.Response.MessageID)
+		}
+	} else {
+		log.Println("⚠️ SMS client not configured, OTP not sent via SMS")
+	}
 
 	log.Println("✅ Driver registered. OTP for", normalizedPhone, "=", otp)
 
@@ -448,7 +477,7 @@ func VerifyOTPOnly(c *gin.Context) {
 }
 
 // ===============================
-// ✅ AUTH HANDLER METHODS
+// ✅ AUTH HANDLER METHODS (unchanged)
 // ===============================
 
 // @Summary Register a new user (Simplified)

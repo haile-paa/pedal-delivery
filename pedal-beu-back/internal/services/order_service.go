@@ -9,7 +9,6 @@ import (
 
 	"github.com/haile-paa/pedal-delivery/internal/models"
 	"github.com/haile-paa/pedal-delivery/internal/repositories"
-	"github.com/haile-paa/pedal-delivery/internal/shipday"
 
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
@@ -27,50 +26,24 @@ type OrderService interface {
 	RateOrder(ctx context.Context, orderID primitive.ObjectID, rating *models.OrderRating) error
 	CalculateDeliveryFee(ctx context.Context, restaurantLocation, deliveryLocation models.GeoLocation) (float64, error)
 	GetOrderStatistics(ctx context.Context, restaurantID primitive.ObjectID) (map[string]interface{}, error)
-	UpdateDriverLocation(ctx context.Context, driverID primitive.ObjectID, location models.GeoLocation, orderID string) error
-	GetActiveOrderForDriver(ctx context.Context, driverID primitive.ObjectID) (*models.Order, error)
-	GetOrderByDriverAndStatus(ctx context.Context, driverID primitive.ObjectID, status models.OrderStatus) (*models.Order, error)
-	 FindByShipdayID(ctx context.Context, shipdayID string) (*models.Order, error)
-    UpdateOrderStatusFromWebhook(ctx context.Context, orderID primitive.ObjectID, status models.OrderStatus) error
 }
 
 type orderService struct {
 	orderRepo      repositories.OrderRepository
 	restaurantRepo repositories.RestaurantRepository
 	userRepo       repositories.UserRepository
-	wsService      WebSocketService
-	shipdayClient  *shipday.Client
 }
 
 func NewOrderService(
 	orderRepo repositories.OrderRepository,
 	restaurantRepo repositories.RestaurantRepository,
 	userRepo repositories.UserRepository,
-	cfg *config.Config,
 ) OrderService {
 	return &orderService{
 		orderRepo:      orderRepo,
 		restaurantRepo: restaurantRepo,
 		userRepo:       userRepo,
-		wsService:      NewWebSocketService(),
-		 shipdayClient:  shipday.NewClient(cfg),
 	}
-}
-
-func (s *orderService) FindByShipdayID(ctx context.Context, shipdayID string) (*models.Order, error) {
-    // You need a repository method for this
-    return s.orderRepo.FindByShipdayID(ctx, shipdayID)
-}
-
-func (s *orderService) UpdateOrderStatusFromWebhook(ctx context.Context, orderID primitive.ObjectID, status models.OrderStatus) error {
-    // Use the same status update logic but with system actor
-    actorID := primitive.NilObjectID
-    actorRole := "system"
-    err := s.UpdateOrderStatus(ctx, orderID, status, actorID, actorRole)
-    if err != nil {
-        return err
-    }
-    return nil
 }
 
 func (s *orderService) CreateOrder(ctx context.Context, customerID primitive.ObjectID, req *models.CreateOrderRequest) (*models.Order, error) {
@@ -223,9 +196,6 @@ func (s *orderService) CreateOrder(ctx context.Context, customerID primitive.Obj
 		return nil, err
 	}
 
-	// Send WebSocket notification for order creation
-	s.wsService.NotifyOrderStatusChange(order)
-
 	return order, nil
 }
 
@@ -304,30 +274,7 @@ func (s *orderService) UpdateOrderStatus(ctx context.Context, orderID primitive.
 		return errors.New("invalid status transition")
 	}
 
-	// Update order status
-	err = s.orderRepo.UpdateStatus(ctx, orderID, status, actorID, actorRole)
-	if err != nil {
-		return err
-	}
-
-	// Fetch updated order
-	updatedOrder, err := s.orderRepo.FindByID(ctx, orderID)
-	if err != nil {
-		return err
-	}
-
-	// Send WebSocket notification
-	s.wsService.NotifyOrderStatusChange(updatedOrder)
-
-	// Special handling for picked_up status
-	if status == models.OrderPickedUp && updatedOrder.DriverID != nil && !updatedOrder.DriverID.IsZero() {
-		driver, err := s.userRepo.FindByID(ctx, *updatedOrder.DriverID)
-		if err == nil {
-			s.wsService.NotifyDriverAssigned(updatedOrder, driver)
-		}
-	}
-
-	return nil
+	return s.orderRepo.UpdateStatus(ctx, orderID, status, actorID, actorRole)
 }
 
 func (s *orderService) isValidStatusTransition(current, new models.OrderStatus, actorRole string) bool {
@@ -374,58 +321,7 @@ func (s *orderService) isValidStatusTransition(current, new models.OrderStatus, 
 }
 
 func (s *orderService) AssignDriver(ctx context.Context, orderID, driverID primitive.ObjectID) error {
-	// Check if driver exists and is available
-	driver, err := s.userRepo.FindByID(ctx, driverID)
-	if err != nil {
-		return errors.New("driver not found")
-	}
-
-	// Check if driver is available (check if driver role and is active)
-	if driver.Role != "driver" {
-		return errors.New("user is not a driver")
-	}
-
-	// Assuming User model has an IsActive field
-	if !driver.IsActive {
-		return errors.New("driver is not active")
-	}
-
-	// Check if driver already has an active order
-	activeOrder, err := s.GetActiveOrderForDriver(ctx, driverID)
-	if err == nil && activeOrder != nil {
-		return errors.New("driver already has an active order")
-	}
-
-	// Assign driver to order
-	err = s.orderRepo.AssignDriver(ctx, orderID, driverID)
-	if err != nil {
-		return err
-	}
-
-	// Fetch updated order
-	order, err := s.orderRepo.FindByID(ctx, orderID)
-	if err != nil {
-		return err
-	}
-
-	// Update order status to accepted (if it was pending)
-	if order.Status == models.OrderPending {
-		err = s.orderRepo.UpdateStatus(ctx, orderID, models.OrderAccepted, driverID, "driver")
-		if err != nil {
-			return err
-		}
-
-		// Fetch order again to get updated status
-		order, err = s.orderRepo.FindByID(ctx, orderID)
-		if err != nil {
-			return err
-		}
-	}
-
-	// Send WebSocket notification
-	s.wsService.NotifyDriverAssigned(order, driver)
-
-	return nil
+	return s.orderRepo.AssignDriver(ctx, orderID, driverID)
 }
 
 func (s *orderService) GetAvailableOrders(ctx context.Context, driverLocation models.GeoLocation, radius float64) ([]models.Order, error) {
@@ -433,44 +329,13 @@ func (s *orderService) GetAvailableOrders(ctx context.Context, driverLocation mo
 }
 
 func (s *orderService) CancelOrder(ctx context.Context, orderID primitive.ObjectID, userID primitive.ObjectID, userRole, reason string) error {
-	order, err := s.orderRepo.FindByID(ctx, orderID)
-	if err != nil {
-		return err
-	}
-
-	// Check if order can be cancelled
-	if order.Status == models.OrderDelivered || order.Status == models.OrderCancelled {
-		return errors.New("order cannot be cancelled")
-	}
-
 	cancellation := models.CancellationInfo{
 		Reason:      reason,
 		CancelledBy: userID,
 		Role:        userRole,
 	}
 
-	// Cancel the order
-	err = s.orderRepo.CancelOrder(ctx, orderID, cancellation)
-	if err != nil {
-		return err
-	}
-
-	// Update order status to cancelled
-	err = s.orderRepo.UpdateStatus(ctx, orderID, models.OrderCancelled, userID, userRole)
-	if err != nil {
-		return err
-	}
-
-	// Fetch updated order
-	updatedOrder, err := s.orderRepo.FindByID(ctx, orderID)
-	if err != nil {
-		return err
-	}
-
-	// Send WebSocket notification
-	s.wsService.NotifyOrderStatusChange(updatedOrder)
-
-	return nil
+	return s.orderRepo.CancelOrder(ctx, orderID, cancellation)
 }
 
 func (s *orderService) RateOrder(ctx context.Context, orderID primitive.ObjectID, rating *models.OrderRating) error {
@@ -499,9 +364,9 @@ func (s *orderService) CalculateDeliveryFee(ctx context.Context, restaurantLocat
 		deliveryLocation.Coordinates[0],   // lon2
 	)
 
-	// Base fee + distance fee (in Ethiopian Birr)
-	baseFee := 15.0               // 15 Birr base fee
-	distanceFee := distance * 2.0 // 2 Birr per km
+	// Base fee + distance fee
+	baseFee := 2.0
+	distanceFee := distance * 0.5 // $0.5 per km
 
 	return baseFee + distanceFee, nil
 }
@@ -563,92 +428,4 @@ func (s *orderService) GetOrderStatistics(ctx context.Context, restaurantID prim
 	stats["status_counts"] = statusCounts
 
 	return stats, nil
-}
-
-func (s *orderService) UpdateDriverLocation(ctx context.Context, driverID primitive.ObjectID, location models.GeoLocation, orderID string) error {
-	// Parse orderID
-	orderObjID, err := primitive.ObjectIDFromHex(orderID)
-	if err != nil {
-		return errors.New("invalid order ID")
-	}
-
-	// Get order to verify driver assignment
-	order, err := s.orderRepo.FindByID(ctx, orderObjID)
-	if err != nil {
-		return errors.New("order not found")
-	}
-
-	// Check if driver is assigned to this order
-	if order.DriverID == nil || *order.DriverID != driverID {
-		return errors.New("driver not assigned to this order")
-	}
-
-	// Check if order is in a status that allows location updates
-	if order.Status != models.OrderPickedUp && order.Status != models.OrderOnTheWay {
-		return errors.New("cannot update location for this order status")
-	}
-
-	// Update driver location in the order
-	// Note: You need to add this method to your OrderRepository
-	// err = s.orderRepo.UpdateDriverLocation(ctx, orderObjID, location)
-	// if err != nil {
-	//     return err
-	// }
-
-	// For now, we'll just send the WebSocket notification
-	// TODO: Implement UpdateDriverLocation in OrderRepository
-
-	// Send WebSocket notification
-	s.wsService.NotifyDriverLocationUpdate(driverID, location, orderID)
-
-	return nil
-}
-
-func (s *orderService) GetActiveOrderForDriver(ctx context.Context, driverID primitive.ObjectID) (*models.Order, error) {
-	// Get driver's orders with active statuses
-	activeStatuses := []models.OrderStatus{
-		models.OrderAccepted,
-		models.OrderPreparing,
-		models.OrderReady,
-		models.OrderPickedUp,
-		models.OrderOnTheWay,
-	}
-
-	orders, _, err := s.orderRepo.FindByDriverID(ctx, driverID, repositories.Pagination{
-		Page:  1,
-		Limit: 10,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	// Find active order
-	for _, order := range orders {
-		for _, status := range activeStatuses {
-			if order.Status == status {
-				return &order, nil
-			}
-		}
-	}
-
-	return nil, nil
-}
-
-func (s *orderService) GetOrderByDriverAndStatus(ctx context.Context, driverID primitive.ObjectID, status models.OrderStatus) (*models.Order, error) {
-	orders, _, err := s.orderRepo.FindByDriverID(ctx, driverID, repositories.Pagination{
-		Page:  1,
-		Limit: 10,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	// Find order with specific status
-	for _, order := range orders {
-		if order.Status == status {
-			return &order, nil
-		}
-	}
-
-	return nil, nil
 }
