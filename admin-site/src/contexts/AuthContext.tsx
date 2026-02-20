@@ -71,7 +71,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const verifyOTP = async (
     phone: string,
     code: string,
-    role: string = "admin"
+    role: string = "admin",
   ) => {
     try {
       const response = await authAPI.verifyOTP(phone, code, role);
@@ -106,7 +106,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     localStorage.removeItem("pending_phone");
     localStorage.removeItem("pending_role");
     setUser(null);
-    window.location.href = "/login";
+    window.location.href = "/";
   };
 
   return (
