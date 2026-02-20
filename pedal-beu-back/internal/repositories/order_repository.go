@@ -49,34 +49,6 @@ func NewOrderRepository() OrderRepository {
 		collection: collections.Orders,
 	}
 }
-func (r *orderRepository) FindByShipdayID(ctx context.Context, shipdayID string) (*models.Order, error) {
-    var order models.Order
-    err := r.collection.FindOne(ctx, bson.M{"shipday_order_id": shipdayID}).Decode(&order)
-    if err != nil {
-        if err == mongo.ErrNoDocuments {
-            return nil, errors.New("order not found")
-        }
-        return nil, err
-    }
-    return &order, nil
-}
-
-func (r *orderRepository) UpdateShipdayID(ctx context.Context, orderID primitive.ObjectID, shipdayID string) error {
-    update := bson.M{
-        "$set": bson.M{
-            "shipday_order_id": shipdayID,
-            "updated_at":       time.Now(),
-        },
-    }
-    result, err := r.collection.UpdateOne(ctx, bson.M{"_id": orderID}, update)
-    if err != nil {
-        return err
-    }
-    if result.MatchedCount == 0 {
-        return errors.New("order not found")
-    }
-    return nil
-}
 
 func (r *orderRepository) Create(ctx context.Context, order *models.Order) error {
 	order.CreatedAt = time.Now()

@@ -23,6 +23,7 @@ import (
 	"github.com/haile-paa/pedal-delivery/internal/services"
 	"github.com/haile-paa/pedal-delivery/internal/websocket"
 	"github.com/haile-paa/pedal-delivery/pkg/database"
+	"github.com/haile-paa/pedal-delivery/pkg/sms"
 
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
@@ -34,18 +35,15 @@ var cld *cloudinary.Cloudinary
 
 // Initialize Cloudinary
 func initCloudinary() error {
-	// Get Cloudinary credentials from environment variables
 	cloudName := os.Getenv("CLOUDINARY_CLOUD_NAME")
 	apiKey := os.Getenv("CLOUDINARY_API_KEY")
 	apiSecret := os.Getenv("CLOUDINARY_API_SECRET")
 
-	// Check if Cloudinary is configured
 	if cloudName == "" || apiKey == "" || apiSecret == "" {
 		log.Println("⚠️  Cloudinary credentials not found. Using local storage fallback.")
 		return fmt.Errorf("cloudinary credentials not configured")
 	}
 
-	// Initialize Cloudinary instance
 	cldInstance, err := cloudinary.NewFromParams(cloudName, apiKey, apiSecret)
 	if err != nil {
 		log.Printf("⚠️  Failed to initialize Cloudinary: %v", err)
@@ -63,18 +61,15 @@ func uploadToCloudinary(file multipart.File, fileType, publicID string) (*upload
 		return nil, fmt.Errorf("cloudinary not initialized")
 	}
 
-	// Map folder names for Cloudinary
 	folder := fileType
 	if fileType == "menu" {
 		folder = "menu_items"
 	}
 
-	// Upload the file
 	ctx := context.Background()
 	uploadResult, err := cld.Upload.Upload(ctx, file, uploader.UploadParams{
-		PublicID: publicID,
-		Folder:   folder,
-		// Optional: Add transformations
+		PublicID:       publicID,
+		Folder:         folder,
 		Transformation: "q_auto,f_auto",
 		ResourceType:   "image",
 	})
@@ -95,18 +90,15 @@ func uploadFileToCloudinary(filePath, fileType, publicID string) (*uploader.Uplo
 
 // Get image URL - prefers Cloudinary, falls back to local
 func getImageURL(cfg *config.Config, fileType, filename string) string {
-	// If Cloudinary is available, return Cloudinary URL
 	if cld != nil {
 		folder := fileType
 		if fileType == "menu" {
 			folder = "menu_items"
 		}
-		// Generate Cloudinary URL
 		return fmt.Sprintf("https://res.cloudinary.com/%s/image/upload/%s/%s",
 			os.Getenv("CLOUDINARY_CLOUD_NAME"), folder, filename)
 	}
 
-	// Fallback to local URL
 	serverURL := "https://pedal-delivery-back.onrender.com"
 	if cfg.Server.Environment == "development" {
 		serverURL = "http://localhost:8080"
@@ -165,17 +157,31 @@ func main() {
 	orderRepo := repositories.NewOrderRepository()
 	restaurantRepo := repositories.NewRestaurantRepository()
 
+	// Initialize SMS client
+	var smsClient *sms.Client
+	if cfg.SMS.APIToken != "" {
+		smsClient = sms.NewClient(
+			cfg.SMS.APIToken,
+			cfg.SMS.From,
+			cfg.SMS.Sender,
+			cfg.SMS.APIBase,
+		)
+		log.Println("✅ SMS client initialized (Afromessage)")
+	} else {
+		log.Println("⚠️ SMS client not configured (missing API token)")
+	}
+
 	// Initialize services
 	authService := services.NewAuthService(userRepo, adminRepo)
 	orderService := services.NewOrderService(orderRepo, restaurantRepo, userRepo)
 	restaurantService := services.NewRestaurantService(restaurantRepo)
 
-	// Initialize handlers
-	authHandler := handlers.NewAuthHandler(authService)
+	// Initialize handlers with SMS client
+	authHandler := handlers.NewAuthHandler(authService, smsClient)
 	orderHandler := handlers.NewOrderHandler(orderService)
 	restaurantHandler := handlers.NewRestaurantHandler(restaurantService)
 
-	// ✅ SET USER REPOSITORY FOR OTP HANDLERS
+	// Set repositories for standalone functions
 	handlers.SetUserRepository(userRepo)
 	handlers.SetAdminRepository(adminRepo)
 
@@ -186,36 +192,13 @@ func main() {
 	router.Use(middleware.LoggingMiddleware())
 	router.Use(gin.Recovery())
 
-	// WebSocket routes
-websocket.SetupWebSocketRoutes(router.Group(""), middleware.AuthMiddleware())
-
-shipdayWebhookHandler := handlers.NewShipdayWebhookHandler(orderService, wsService)
-router.POST("/webhooks/shipday", shipdayWebhookHandler.Handle)
-
-// Add WebSocket health check endpoint (public)
-router.GET("/ws-health", websocket.WebSocketHealthCheck)
-
-// Add WebSocket info endpoint (protected)
-router.GET("/ws-info", middleware.AuthMiddleware(), func(c *gin.Context) {
-	userID, _ := c.Get("userID")
-	hub := websocket.GetHub()
-	
-	c.JSON(http.StatusOK, gin.H{
-		"user_id": userID,
-		"status": "WebSocket server is running",
-		"stats": gin.H{
-			"total_clients": len(hub.clients),
-			"total_rooms":   len(hub.rooms),
-		},
-	})
-})
-
 	// Health check
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"status":      "healthy",
 			"timestamp":   time.Now().Unix(),
 			"cloudinary":  cld != nil,
+			"sms_enabled": smsClient != nil,
 			"environment": cfg.Server.Environment,
 		})
 	})
@@ -229,12 +212,10 @@ router.GET("/ws-info", middleware.AuthMiddleware(), func(c *gin.Context) {
 		// Authentication routes (public)
 		auth := api.Group("/auth")
 		{
-			// OTP endpoints (standalone functions)
-			auth.POST("/send-otp", handlers.SendOTP)
+			// OTP endpoints (now using authHandler methods)
+			auth.POST("/send-otp", authHandler.SendOTP)
 			auth.POST("/verify-otp", handlers.VerifyOTPOnly)
-
-			// Driver registration (standalone function)
-			auth.POST("/register-driver", handlers.RegisterDriver)
+			auth.POST("/register-driver", authHandler.RegisterDriver)
 
 			// Existing AuthHandler endpoints
 			auth.POST("/register", authHandler.Register)
@@ -242,8 +223,6 @@ router.GET("/ws-info", middleware.AuthMiddleware(), func(c *gin.Context) {
 			auth.POST("/refresh", authHandler.RefreshToken)
 			auth.POST("/forgot-password", authHandler.ForgotPassword)
 			auth.POST("/reset-password", authHandler.ResetPassword)
-
-			// Add the check phone endpoint
 			auth.GET("/check-phone", handlers.CheckPhoneExists)
 		}
 
@@ -252,20 +231,17 @@ router.GET("/ws-info", middleware.AuthMiddleware(), func(c *gin.Context) {
 		{
 			// Single image upload
 			upload.POST("", func(c *gin.Context) {
-				// Single file
 				file, err := c.FormFile("image")
 				if err != nil {
 					c.JSON(http.StatusBadRequest, gin.H{"error": "No file uploaded", "details": err.Error()})
 					return
 				}
 
-				// Get file type from form or default to "restaurants"
 				fileType := c.PostForm("type")
 				if fileType == "" {
 					fileType = "restaurants"
 				}
 
-				// Open the file
 				src, err := file.Open()
 				if err != nil {
 					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to open file", "details": err.Error()})
@@ -273,17 +249,14 @@ router.GET("/ws-info", middleware.AuthMiddleware(), func(c *gin.Context) {
 				}
 				defer src.Close()
 
-				// Generate unique filename
 				ext := filepath.Ext(file.Filename)
 				filename := uuid.New().String() + ext
 
-				// Upload to Cloudinary if available
 				if cld != nil {
-					publicID := filename[:len(filename)-len(ext)] // Remove extension for Cloudinary public ID
+					publicID := filename[:len(filename)-len(ext)]
 					uploadResult, err := uploadToCloudinary(src, fileType, publicID)
 					if err != nil {
 						log.Printf("Cloudinary upload failed: %v", err)
-						// Fall back to local storage
 					} else {
 						c.JSON(http.StatusOK, gin.H{
 							"url":        uploadResult.SecureURL,
@@ -299,18 +272,15 @@ router.GET("/ws-info", middleware.AuthMiddleware(), func(c *gin.Context) {
 					}
 				}
 
-				// If Cloudinary failed or not available, save locally
-				// Reset file reader since we already read it for Cloudinary
+				// Fallback to local
 				src.Seek(0, 0)
 
-				// Create folder if not exists
 				uploadDir := filepath.Join(uploadsDir, fileType)
 				if err := os.MkdirAll(uploadDir, 0755); err != nil {
 					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create upload directory", "details": err.Error()})
 					return
 				}
 
-				// Save the file locally
 				filePath := filepath.Join(uploadDir, filename)
 				dst, err := os.Create(filePath)
 				if err != nil {
@@ -324,7 +294,6 @@ router.GET("/ws-info", middleware.AuthMiddleware(), func(c *gin.Context) {
 					return
 				}
 
-				// Construct the URL
 				fileURL := getImageURL(cfg, fileType, filename)
 
 				c.JSON(http.StatusOK, gin.H{
@@ -351,7 +320,6 @@ router.GET("/ws-info", middleware.AuthMiddleware(), func(c *gin.Context) {
 					return
 				}
 
-				// Get file type
 				fileType := c.PostForm("type")
 				if fileType == "" {
 					fileType = "restaurants"
@@ -361,24 +329,20 @@ router.GET("/ws-info", middleware.AuthMiddleware(), func(c *gin.Context) {
 				var uploadErrors []string
 
 				for _, file := range files {
-					// Open the file
 					src, err := file.Open()
 					if err != nil {
 						uploadErrors = append(uploadErrors, fmt.Sprintf("Failed to open %s: %v", file.Filename, err))
 						continue
 					}
 
-					// Generate unique filename
 					ext := filepath.Ext(file.Filename)
 					filename := uuid.New().String() + ext
 					publicID := filename[:len(filename)-len(ext)]
 
-					// Try Cloudinary first
 					if cld != nil {
 						uploadResult, err := uploadToCloudinary(src, fileType, publicID)
 						if err != nil {
 							log.Printf("Cloudinary upload failed for %s: %v", filename, err)
-							// Fall back to local
 						} else {
 							uploadedFiles = append(uploadedFiles, gin.H{
 								"url":        uploadResult.SecureURL,
@@ -394,10 +358,9 @@ router.GET("/ws-info", middleware.AuthMiddleware(), func(c *gin.Context) {
 						}
 					}
 
-					// Reset and save locally
+					// Fallback to local
 					src.Seek(0, 0)
 
-					// Create folder if not exists
 					uploadDir := filepath.Join(uploadsDir, fileType)
 					if err := os.MkdirAll(uploadDir, 0755); err != nil {
 						uploadErrors = append(uploadErrors, fmt.Sprintf("Failed to create directory for %s: %v", filename, err))
@@ -405,7 +368,6 @@ router.GET("/ws-info", middleware.AuthMiddleware(), func(c *gin.Context) {
 						continue
 					}
 
-					// Save the file locally
 					filePath := filepath.Join(uploadDir, filename)
 					dst, err := os.Create(filePath)
 					if err != nil {
@@ -483,7 +445,6 @@ router.GET("/ws-info", middleware.AuthMiddleware(), func(c *gin.Context) {
 		// Restaurant routes (public)
 		restaurants := api.Group("/restaurants")
 		{
-			// Public restaurant endpoints
 			restaurants.GET("", restaurantHandler.GetRestaurants)
 			restaurants.GET("/nearby", restaurantHandler.GetNearbyRestaurants)
 			restaurants.GET("/search", restaurantHandler.SearchRestaurants)
@@ -504,17 +465,14 @@ router.GET("/ws-info", middleware.AuthMiddleware(), func(c *gin.Context) {
 
 				// Protected image upload for users
 				user.POST("/upload", func(c *gin.Context) {
-					// Single file
 					file, err := c.FormFile("image")
 					if err != nil {
 						c.JSON(http.StatusBadRequest, gin.H{"error": "No file uploaded", "details": err.Error()})
 						return
 					}
 
-					// Get file type from form or default to "users"
 					fileType := "users"
 
-					// Open the file
 					src, err := file.Open()
 					if err != nil {
 						c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to open file", "details": err.Error()})
@@ -522,17 +480,14 @@ router.GET("/ws-info", middleware.AuthMiddleware(), func(c *gin.Context) {
 					}
 					defer src.Close()
 
-					// Generate unique filename
 					ext := filepath.Ext(file.Filename)
 					filename := uuid.New().String() + ext
 
-					// Upload to Cloudinary if available
 					if cld != nil {
 						publicID := filename[:len(filename)-len(ext)]
 						uploadResult, err := uploadToCloudinary(src, fileType, publicID)
 						if err != nil {
 							log.Printf("Cloudinary upload failed: %v", err)
-							// Fall back to local storage
 						} else {
 							c.JSON(http.StatusOK, gin.H{
 								"url":        uploadResult.SecureURL,
@@ -547,17 +502,15 @@ router.GET("/ws-info", middleware.AuthMiddleware(), func(c *gin.Context) {
 						}
 					}
 
-					// If Cloudinary failed or not available, save locally
+					// Fallback to local
 					src.Seek(0, 0)
 
-					// Create folder if not exists
 					uploadDir := filepath.Join(uploadsDir, fileType)
 					if err := os.MkdirAll(uploadDir, 0755); err != nil {
 						c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create upload directory", "details": err.Error()})
 						return
 					}
 
-					// Save the file locally
 					filePath := filepath.Join(uploadDir, filename)
 					dst, err := os.Create(filePath)
 					if err != nil {
@@ -571,7 +524,6 @@ router.GET("/ws-info", middleware.AuthMiddleware(), func(c *gin.Context) {
 						return
 					}
 
-					// Construct the URL
 					fileURL := getImageURL(cfg, fileType, filename)
 
 					c.JSON(http.StatusOK, gin.H{
@@ -608,13 +560,8 @@ router.GET("/ws-info", middleware.AuthMiddleware(), func(c *gin.Context) {
 			restaurantAdmin := protected.Group("/restaurants")
 			restaurantAdmin.Use(middleware.AdminOnly())
 			{
-				// Create new restaurant - admin only
 				restaurantAdmin.POST("", restaurantHandler.CreateRestaurant)
-
-				// Update restaurant - admin only
 				restaurantAdmin.PUT("/:id", restaurantHandler.UpdateRestaurant)
-
-				// Add more admin-only routes
 				restaurantAdmin.DELETE("/:id", restaurantHandler.DeleteRestaurant)
 				restaurantAdmin.POST("/:id/menu", restaurantHandler.AddMenuItem)
 				restaurantAdmin.PUT("/:id/menu/:itemId", restaurantHandler.UpdateMenuItem)
@@ -638,7 +585,6 @@ router.GET("/ws-info", middleware.AuthMiddleware(), func(c *gin.Context) {
 		WriteTimeout: cfg.Server.WriteTimeout,
 	}
 
-	// Graceful shutdown
 	go func() {
 		log.Printf("Server starting on port %s in %s mode", cfg.Server.Port, cfg.Server.Environment)
 		log.Printf("Cloudinary enabled: %v", cld != nil)
@@ -647,7 +593,6 @@ router.GET("/ws-info", middleware.AuthMiddleware(), func(c *gin.Context) {
 		}
 	}()
 
-	// Wait for interrupt signal
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
