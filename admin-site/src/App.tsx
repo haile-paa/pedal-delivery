@@ -11,7 +11,7 @@ import Dashboard from "./pages/Dashboard";
 import Restaurants from "./pages/Restaurants";
 import AddRestaurant from "./pages/AddRestaurant";
 import RestaurantDetail from "./components/Dashboard/RestaurantDetail";
-import AddMenuItem from "./pages/AddMenuItem"; // You need to create this component
+import AddMenuItem from "./pages/AddMenuItem";
 import Drivers from "./pages/Drivers";
 import Orders from "./pages/Orders";
 import Analytics from "./pages/Analytics";
@@ -30,7 +30,7 @@ const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({
     );
   }
 
-  return isAuthenticated ? <>{children}</> : <Navigate to='/login' />;
+  return isAuthenticated ? <>{children}</> : <Navigate to='/' />;
 };
 
 const App: React.FC = () => {
@@ -38,7 +38,7 @@ const App: React.FC = () => {
     <AuthProvider>
       <Router>
         <Routes>
-          <Route path='/login' element={<Login />} />
+          <Route path='/' element={<Login />} />
 
           {/* Protected Routes */}
           <Route
