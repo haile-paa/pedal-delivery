@@ -106,7 +106,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     localStorage.removeItem("pending_phone");
     localStorage.removeItem("pending_role");
     setUser(null);
-    window.location.href = "/";
+    window.location.href = "/login";
   };
 
   return (

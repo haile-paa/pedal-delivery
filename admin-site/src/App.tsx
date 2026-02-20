@@ -30,7 +30,7 @@ const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({
     );
   }
 
-  return isAuthenticated ? <>{children}</> : <Navigate to='/' />;
+  return isAuthenticated ? <>{children}</> : <Navigate to='/login' />;
 };
 
 const App: React.FC = () => {
@@ -38,7 +38,7 @@ const App: React.FC = () => {
     <AuthProvider>
       <Router>
         <Routes>
-          <Route path='/' element={<Login />} />
+          <Route path='/login' element={<Login />} />
 
           {/* Protected Routes */}
           <Route
