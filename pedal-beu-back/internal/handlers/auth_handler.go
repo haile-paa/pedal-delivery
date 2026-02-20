@@ -145,7 +145,8 @@ func (h *AuthHandler) SendOTP(c *gin.Context) {
 	otpMutex.Unlock()
 
 	// Send SMS via provider
-	message := fmt.Sprintf("Your verification code is: %s", otp)
+	// Updated message format
+	message := fmt.Sprintf("Welcome to Pedal Delivery! Your OTP is: %s. Valid for 5 minutes.", otp)
 	if h.smsClient != nil {
 		resp, err := h.smsClient.SendSMS(normalizedPhone, message)
 		if err != nil {
@@ -235,7 +236,8 @@ func (h *AuthHandler) RegisterDriver(c *gin.Context) {
 	otpMutex.Unlock()
 
 	// Send SMS
-	message := fmt.Sprintf("Your verification code is: %s", otp)
+	// Updated message format
+	message := fmt.Sprintf("Welcome to Pedal Delivery! Your OTP is: %s. Valid for 5 minutes.", otp)
 	if h.smsClient != nil {
 		resp, err := h.smsClient.SendSMS(normalizedPhone, message)
 		if err != nil {
