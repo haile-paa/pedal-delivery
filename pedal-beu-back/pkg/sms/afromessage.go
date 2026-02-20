@@ -73,7 +73,6 @@ func (c *Client) SendSMS(to, message string) (*SendSMSResponse, error) {
 	}
 	defer resp.Body.Close()
 
-	// Read the full body for debugging (in case of error)
 	bodyBytes, _ := io.ReadAll(resp.Body)
 
 	var result SendSMSResponse
@@ -82,8 +81,8 @@ func (c *Client) SendSMS(to, message string) (*SendSMSResponse, error) {
 	}
 
 	if result.Acknowledge != "success" {
-		// Include the full response in the error message
-		return nil, fmt.Errorf("afromessage error: %s - response: %+v", result.Acknowledge, result.Response)
+		// Include the raw response body to see the actual error
+		return nil, fmt.Errorf("afromessage error: %s - raw response: %s", result.Acknowledge, string(bodyBytes))
 	}
 
 	return &result, nil
