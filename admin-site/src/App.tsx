@@ -14,7 +14,8 @@ import RestaurantDetail from "./components/Dashboard/RestaurantDetail";
 import AddMenuItem from "./pages/AddMenuItem";
 import Drivers from "./pages/Drivers";
 import Orders from "./pages/Orders";
-import Analytics from "./pages/Analytics";
+// import Analytics from "./pages/Analytics";
+import Settings from "./pages/Settings";
 import Layout from "./components/Layout/Layout";
 
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({
@@ -65,7 +66,8 @@ const App: React.FC = () => {
 
             <Route path='drivers' element={<Drivers />} />
             <Route path='orders' element={<Orders />} />
-            <Route path='analytics' element={<Analytics />} />
+            {/* <Route path='analytics' element={<Analytics />} /> */}
+            <Route path='settings' element={<Settings />} />
           </Route>
 
           {/* Catch-all redirect */}
