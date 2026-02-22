@@ -18,7 +18,7 @@ const Sidebar: React.FC = () => {
     { path: "/restaurants", icon: FiShoppingBag, label: "Restaurants" },
     { path: "/drivers", icon: FiTruck, label: "Drivers" },
     { path: "/orders", icon: FiBarChart2, label: "Orders" },
-    { path: "/analytics", icon: FiBarChart2, label: "Analytics" },
+    // { path: "/analytics", icon: FiBarChart2, label: "Analytics" },
     { path: "/settings", icon: FiSettings, label: "Settings" },
   ];
 
