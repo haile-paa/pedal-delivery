@@ -1,4 +1,3 @@
-// services/websocket.service.ts
 import { io, Socket } from "socket.io-client";
 import { Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -39,6 +38,7 @@ class WebSocketService {
       console.error("WebSocket connection error:", error);
     }
   }
+
   private setupEventListeners() {
     if (!this.socket) return;
 
@@ -87,13 +87,12 @@ class WebSocketService {
     });
   }
 
-  // Add connection status check
+  // Connection status check
   checkConnection(): Promise<boolean> {
     return new Promise((resolve) => {
       if (this.socket?.connected) {
         resolve(true);
       } else {
-        // Wait for connection or timeout
         const timeout = setTimeout(() => resolve(false), 3000);
         const handleConnect = () => {
           clearTimeout(timeout);
@@ -105,7 +104,6 @@ class WebSocketService {
     });
   }
 
-  // Rest of your methods remain exactly the same...
   on(event: string, callback: Function) {
     if (!this.listeners.has(event)) {
       this.listeners.set(event, []);
@@ -167,96 +165,6 @@ class WebSocketService {
   getSocketId(): string | null {
     return this.socket?.id || null;
   }
-
-  setupWebSocketWithFallback = async () => {
-    try {
-      const token = await AsyncStorage.getItem("userToken");
-
-      if (!token) {
-        console.log("❌ No token available, using fallback");
-        setUseFallback(true);
-        startPolling();
-        return;
-      }
-
-      console.log(
-        "🔌 Setting up WebSocket with token:",
-        token.substring(0, 20) + "...",
-      );
-
-      // Add connection status listener FIRST
-      WebSocketService.on("connect", () => {
-        console.log("✅ WebSocket connected successfully!");
-        setWebSocketConnected(true);
-        setUseFallback(false);
-
-        // Join order room after connection
-        WebSocketService.joinOrderRoom(orderId);
-        console.log(`Joined order room: ${orderId}`);
-      });
-
-      WebSocketService.on("connect_error", (error) => {
-        console.error("❌ WebSocket connection error:", error);
-        setWebSocketConnected(false);
-      });
-
-      WebSocketService.on("disconnect", (reason) => {
-        console.log("⚠️ WebSocket disconnected:", reason);
-        setWebSocketConnected(false);
-        setUseFallback(true);
-        startPolling();
-      });
-
-      // Setup other event listeners
-      WebSocketService.on("driver:assigned", (data: any) => {
-        console.log("🚗 Driver assigned via WebSocket:", data);
-        handleDriverAssigned(data);
-      });
-
-      WebSocketService.on("driver:location_update", (data: any) => {
-        console.log("📍 Driver location update via WebSocket:", data);
-        handleDriverLocationUpdate(data);
-      });
-
-      WebSocketService.on("order:status_update", (data: any) => {
-        console.log("📦 Order status update via WebSocket:", data);
-        handleOrderStatusUpdate(data);
-      });
-
-      // Try to connect
-      WebSocketService.connect(token);
-
-      // Check connection status after 2 seconds
-      setTimeout(async () => {
-        const isConnected = await WebSocketService.checkConnection();
-        console.log("🔍 WebSocket connection check after 2s:", isConnected);
-
-        if (!isConnected) {
-          console.log("🔄 WebSocket failed to connect, using fallback polling");
-          setUseFallback(true);
-          startPolling();
-        }
-      }, 2000);
-
-      // Fallback to polling after 10 seconds if still not connected
-      const fallbackTimeout = setTimeout(() => {
-        if (!webSocketConnected) {
-          console.log(
-            "⏰ WebSocket connection timeout, falling back to polling",
-          );
-          setUseFallback(true);
-          startPolling();
-        }
-      }, 10000);
-
-      // Clean up timeout
-      return () => clearTimeout(fallbackTimeout);
-    } catch (error) {
-      console.error("❌ WebSocket setup error:", error);
-      setUseFallback(true);
-      startPolling();
-    }
-  };
 }
 
 export default WebSocketService.getInstance();
