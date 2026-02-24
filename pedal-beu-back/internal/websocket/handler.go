@@ -4,8 +4,18 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
+
+var upgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool {
+		// Allow all origins in development; restrict in production.
+		return true
+	},
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+}
 
 var hub *Hub
 
@@ -35,7 +45,7 @@ func ChatWebSocketHandler(c *gin.Context) {
 }
 
 func wsHandler(c *gin.Context, channel string) {
-	// Get user from context (requires AuthMiddleware before this handler)
+	// Get user from context (set by AuthMiddleware)
 	userID, exists := c.Get("userID")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
@@ -62,16 +72,4 @@ func wsHandler(c *gin.Context, channel string) {
 
 	go client.writePump()
 	go client.readPump()
-}
-
-// WebSocket routes setup
-func SetupWebSocketRoutes(router *gin.RouterGroup, authMiddleware gin.HandlerFunc) {
-	ws := router.Group("/ws")
-	ws.Use(authMiddleware)
-	{
-		ws.GET("/orders", OrderWebSocketHandler)
-		ws.GET("/location", LocationWebSocketHandler)
-		ws.GET("/notifications", NotificationWebSocketHandler)
-		ws.GET("/chat", ChatWebSocketHandler)
-	}
 }

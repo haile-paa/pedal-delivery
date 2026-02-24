@@ -5,23 +5,32 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/haile-paa/pedal-delivery/pkg/auth"
-
 	"github.com/gin-gonic/gin"
+	"github.com/haile-paa/pedal-delivery/pkg/auth"
 )
 
 func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		var tokenString string
+
+		// Check Authorization header first
 		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})
-			c.Abort()
-			return
+		if authHeader != "" {
+			tokenString = strings.TrimPrefix(authHeader, "Bearer ")
+			if tokenString == authHeader {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "Bearer token required"})
+				c.Abort()
+				return
+			}
 		}
 
-		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-		if tokenString == authHeader {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Bearer token required"})
+		// If this is a WebSocket upgrade, also check query param "token"
+		if tokenString == "" && c.GetHeader("Upgrade") == "websocket" {
+			tokenString = c.Query("token")
+		}
+
+		if tokenString == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization token required"})
 			c.Abort()
 			return
 		}
