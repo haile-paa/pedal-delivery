@@ -163,6 +163,26 @@ const cartItemsMatch = (item1: CartItem, item2: CartItem): boolean => {
   return JSON.stringify(addons1) === JSON.stringify(addons2);
 };
 
+// Normalize user object from backend to frontend shape
+const normalizeUser = (backendUser: any): User => {
+  return {
+    id: backendUser.id || backendUser._id,
+    phone: backendUser.phone,
+    email: backendUser.email,
+    role: backendUser.role?.type || backendUser.role,
+    name: backendUser.profile?.first_name || backendUser.username || "",
+    profile: {
+      first_name: backendUser.profile?.first_name || "",
+      last_name: backendUser.profile?.last_name || "",
+      avatar: backendUser.profile?.avatar,
+      addresses: backendUser.profile?.addresses || [],
+    },
+    is_verified: backendUser.is_verified || false,
+    created_at: backendUser.created_at,
+    updated_at: backendUser.updated_at,
+  };
+};
+
 const appReducer = (state: AppState, action: AppAction): AppState => {
   switch (action.type) {
     case "SET_LOADING":
@@ -181,7 +201,7 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
       return {
         ...state,
         auth: {
-          user: action.payload.user,
+          user: normalizeUser(action.payload.user),
           token: action.payload.token,
           role: action.payload.role,
           isLoading: false,
@@ -200,20 +220,20 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
         ...state,
         auth: {
           ...state.auth,
-          user: action.payload,
+          user: normalizeUser(action.payload),
         },
       };
 
     case "ADD_TO_CART":
       const existingItem = state.customer.cart.find((item) =>
-        cartItemsMatch(item, action.payload)
+        cartItemsMatch(item, action.payload),
       );
 
       if (existingItem) {
         const updatedCart = state.customer.cart.map((item) =>
           cartItemsMatch(item, action.payload)
             ? { ...item, quantity: item.quantity + action.payload.quantity }
-            : item
+            : item,
         );
         return {
           ...state,
@@ -231,7 +251,6 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
 
     case "REMOVE_FROM_CART":
       const filteredCart = state.customer.cart.filter((item) => {
-        // If selectedAddonsIds are provided, match both id and addons
         if (action.payload.selectedAddonsIds) {
           const itemAddonIds = item.selected_addons.map((a) => a.id).sort();
           const targetAddonIds = action.payload.selectedAddonsIds.sort();
@@ -240,7 +259,6 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
             JSON.stringify(itemAddonIds) === JSON.stringify(targetAddonIds)
           );
         }
-        // Otherwise, just match by id
         return item.id !== action.payload.id;
       });
       return {
@@ -251,7 +269,6 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
     case "UPDATE_CART_QUANTITY":
       const updatedCart = state.customer.cart
         .map((item) => {
-          // If selectedAddonsIds are provided, match both
           if (action.payload.selectedAddonsIds) {
             const itemAddonIds = item.selected_addons.map((a) => a.id).sort();
             const targetAddonIds = action.payload.selectedAddonsIds.sort();
@@ -262,7 +279,6 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
               return { ...item, quantity: action.payload.quantity };
             }
           } else if (item.id === action.payload.id) {
-            // Match by id only when no addons specified
             return { ...item, quantity: action.payload.quantity };
           }
           return item;
@@ -316,13 +332,13 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
       const updatedCustomerOrders = state.customer.orders.map((order) =>
         order.id === action.payload.orderId
           ? { ...order, status: action.payload.status as any }
-          : order
+          : order,
       );
 
       const updatedDriverOrders = state.driver.availableOrders.map((order) =>
         order.id === action.payload.orderId
           ? { ...order, status: action.payload.status as any }
-          : order
+          : order,
       );
 
       return {
@@ -423,7 +439,7 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
         restaurants: {
           ...state.restaurants,
           list: state.restaurants.list.map((restaurant) =>
-            restaurant.id === action.payload.id ? action.payload : restaurant
+            restaurant.id === action.payload.id ? action.payload : restaurant,
           ),
           currentRestaurant:
             state.restaurants.currentRestaurant?.id === action.payload.id
@@ -455,7 +471,7 @@ const AppStateContext = createContext<{
     loadRestaurantDetails: (restaurantId: string) => Promise<Restaurant | null>;
     searchRestaurants: (
       query: string,
-      location?: { latitude: number; longitude: number }
+      location?: { latitude: number; longitude: number },
     ) => Promise<Restaurant[]>;
     getRestaurantMenu: (restaurantId: string) => Promise<MenuItem[]>;
   };
@@ -475,9 +491,8 @@ export const AppStateProvider: React.FC<{ children: ReactNode }> = ({
           // Get token from AsyncStorage
           const token = await (async () => {
             try {
-              const AsyncStorage = await import(
-                "@react-native-async-storage/async-storage"
-              );
+              const AsyncStorage =
+                await import("@react-native-async-storage/async-storage");
               return await AsyncStorage.default.getItem("access_token");
             } catch (error) {
               console.error("Error getting token:", error);
@@ -498,7 +513,7 @@ export const AppStateProvider: React.FC<{ children: ReactNode }> = ({
             // Load additional data based on role
             if (authStatus.user.role === "customer") {
               await loadCustomerOrders();
-              await loadRestaurants(); // Load restaurants after login
+              await loadRestaurants();
             } else if (authStatus.user.role === "driver") {
               await loadDriverOrders();
             }
@@ -559,20 +574,18 @@ export const AppStateProvider: React.FC<{ children: ReactNode }> = ({
     try {
       dispatch({ type: "SET_RESTAURANTS_LOADING", payload: true });
 
-      // Try to fetch restaurants from API
       const response = await restaurantAPI.getAll({
         page: 1,
         limit: 20,
         ...(location && {
           location: {
             ...location,
-            radius: 10000, // 10km radius
+            radius: 10000,
           },
         }),
       });
 
       if (response.success && response.data.length > 0) {
-        // Map backend restaurant data to frontend format
         const restaurants: Restaurant[] = response.data.map(
           (restaurant: any) => ({
             id: restaurant.id || restaurant._id || "",
@@ -607,7 +620,7 @@ export const AppStateProvider: React.FC<{ children: ReactNode }> = ({
             delivery_time: restaurant.delivery_time || 30,
             created_at: restaurant.created_at || new Date().toISOString(),
             updated_at: restaurant.updated_at || new Date().toISOString(),
-          })
+          }),
         );
 
         dispatch({ type: "SET_RESTAURANTS", payload: restaurants });
@@ -617,90 +630,19 @@ export const AppStateProvider: React.FC<{ children: ReactNode }> = ({
       }
     } catch (error) {
       console.error("Error loading restaurants:", error);
-      // Fallback to dummy restaurants on error
-      // await loadDummyRestaurants();
     } finally {
       dispatch({ type: "SET_RESTAURANTS_LOADING", payload: false });
     }
   };
 
-  // const loadDummyRestaurants = async () => {
-  //   const dummyRestaurants: Restaurant[] = [
-  //     {
-  //       id: "dummy-1",
-  //       owner_id: "owner-1",
-  //       name: "Burger Palace",
-  //       description: "Best burgers in town, fresh ingredients daily",
-  //       cuisine_type: ["Burgers", "American", "Fast Food"],
-  //       images: [
-  //         "https://images.unsplash.com/photo-1572802419224-296b0aeee0d9?w=500",
-  //       ],
-  //       rating: 4.5,
-  //       delivery_time: 25,
-  //       delivery_fee: 2.99,
-  //       min_order: 10,
-  //       location: {
-  //         type: "Point",
-  //         coordinates: [38.746, 9.032], // [longitude, latitude]
-  //       },
-  //       address: "Bole Road, Addis Ababa",
-  //       phone: "+251912345678",
-  //       email: "info@burgerpalace.com",
-  //       is_active: true,
-  //       is_verified: true,
-  //       total_reviews: 125,
-  //       opening_hours: {
-  //         monday: [{ open: "08:00", close: "22:00" }],
-  //         tuesday: [{ open: "08:00", close: "22:00" }],
-  //         wednesday: [{ open: "08:00", close: "22:00" }],
-  //         thursday: [{ open: "08:00", close: "22:00" }],
-  //         friday: [{ open: "08:00", close: "23:00" }],
-  //         saturday: [{ open: "09:00", close: "23:00" }],
-  //         sunday: [{ open: "10:00", close: "21:00" }],
-  //       },
-  //       menu: [
-  //         {
-  //           id: "menu-1",
-  //           name: "Classic Cheeseburger",
-  //           description:
-  //             "Beef patty with cheese, lettuce, tomato, and special sauce",
-  //           price: 12.99,
-  //           image:
-  //             "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=500",
-  //           category: "Burgers",
-  //           ingredients: ["Beef", "Cheese", "Lettuce", "Tomato", "Sauce"],
-  //           is_available: true,
-  //           addons: [
-  //             {
-  //               id: "addon-1",
-  //               name: "Extra Cheese",
-  //               price: 1.5,
-  //               is_active: true,
-  //             },
-  //             { id: "addon-2", name: "Bacon", price: 2.0, is_active: true },
-  //           ],
-  //           preparation_time: 15,
-  //           created_at: new Date().toISOString(),
-  //           updated_at: new Date().toISOString(),
-  //         },
-  //       ],
-  //       created_at: new Date().toISOString(),
-  //       updated_at: new Date().toISOString(),
-  //     },
-  //   ];
-
-  //   dispatch({ type: "SET_RESTAURANTS", payload: dummyRestaurants });
-  // };
-
   const loadRestaurantDetails = async (
-    restaurantId: string
+    restaurantId: string,
   ): Promise<Restaurant | null> => {
     try {
       dispatch({ type: "SET_RESTAURANTS_LOADING", payload: true });
 
-      // First, check if restaurant is already in list
       const existingRestaurant = state.restaurants.list.find(
-        (r) => r.id === restaurantId
+        (r) => r.id === restaurantId,
       );
       if (existingRestaurant) {
         dispatch({
@@ -710,7 +652,6 @@ export const AppStateProvider: React.FC<{ children: ReactNode }> = ({
         return existingRestaurant;
       }
 
-      // If not in list, fetch from API
       const response = await restaurantAPI.getById(restaurantId);
       if (response.success && response.data) {
         const restaurant = response.data as Restaurant;
@@ -729,7 +670,7 @@ export const AppStateProvider: React.FC<{ children: ReactNode }> = ({
 
   const searchRestaurants = async (
     query: string,
-    location?: { latitude: number; longitude: number }
+    location?: { latitude: number; longitude: number },
   ): Promise<Restaurant[]> => {
     try {
       const response = await restaurantAPI.search(query, location);
@@ -777,7 +718,7 @@ export const AppStateProvider: React.FC<{ children: ReactNode }> = ({
   };
 
   const getRestaurantMenu = async (
-    restaurantId: string
+    restaurantId: string,
   ): Promise<MenuItem[]> => {
     try {
       const response = await restaurantAPI.getMenu(restaurantId);
@@ -793,7 +734,6 @@ export const AppStateProvider: React.FC<{ children: ReactNode }> = ({
 
   const updateDriverStatus = async (isOnline: boolean) => {
     try {
-      // TODO: Implement driver status API
       dispatch({ type: "SET_DRIVER_ONLINE", payload: isOnline });
     } catch (error) {
       console.error("Error updating driver status:", error);
@@ -804,7 +744,6 @@ export const AppStateProvider: React.FC<{ children: ReactNode }> = ({
   const createOrder = async (orderData: any) => {
     try {
       dispatch({ type: "SET_LOADING", payload: true });
-      // TODO: Implement create order API
       const newOrder: Order = {
         id: Date.now().toString(),
         order_number: `ORD-${Date.now()}`,
@@ -849,7 +788,6 @@ export const AppStateProvider: React.FC<{ children: ReactNode }> = ({
         payload: [newOrder, ...state.customer.orders],
       });
 
-      // Clear cart
       dispatch({ type: "CLEAR_CART" });
 
       return newOrder;

@@ -24,7 +24,12 @@ const OrderHistoryScreen: React.FC = () => {
     { id: "cancelled", label: "Cancelled" },
   ];
 
-  const filteredOrders = state.customer.orders.filter((order) => {
+  // Safely access orders array
+  const orders = state.customer?.orders || [];
+
+  const filteredOrders = orders.filter((order) => {
+    if (!order || !order.status) return false;
+
     if (selectedFilter === "all") return true;
     if (selectedFilter === "pending") {
       return [
@@ -54,57 +59,84 @@ const OrderHistoryScreen: React.FC = () => {
     </View>
   );
 
-  const renderOrderItem = ({ item }: { item: any }) => (
-    <SwipeableCard
-      rightAction={renderRightAction()}
-      onSwipeRight={() => handleReorder(item)}
-    >
-      <TouchableOpacity
-        style={styles.orderItem}
-        onPress={() => handleViewDetails(item)}
-        activeOpacity={0.8}
+  const renderOrderItem = ({ item }: { item: any }) => {
+    // Format date safely
+    const formatDate = (date: any) => {
+      if (!date) return "Unknown date";
+      try {
+        const d = new Date(date);
+        return d.toLocaleDateString();
+      } catch {
+        return "Invalid date";
+      }
+    };
+
+    const formatTime = (date: any) => {
+      if (!date) return "";
+      try {
+        const d = new Date(date);
+        return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      } catch {
+        return "";
+      }
+    };
+
+    return (
+      <SwipeableCard
+        rightAction={renderRightAction()}
+        onSwipeRight={() => handleReorder(item)}
       >
-        <View style={styles.orderHeader}>
-          <Text style={styles.restaurantName}>{item.restaurantName}</Text>
-          <OrderStatusBadge status={item.status} />
-        </View>
-
-        <View style={styles.orderDetails}>
-          <Text style={styles.orderId}>Order #{item.id.substring(0, 8)}</Text>
-          <Text style={styles.orderDate}>
-            {item.createdAt.toLocaleDateString()} •{" "}
-            {item.createdAt.toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
-          </Text>
-        </View>
-
-        <View style={styles.orderItems}>
-          {item.items.slice(0, 2).map((orderItem: any, index: number) => (
-            <Text key={index} style={styles.itemText}>
-              {orderItem.quantity}x {orderItem.name}
+        <TouchableOpacity
+          style={styles.orderItem}
+          onPress={() => handleViewDetails(item)}
+          activeOpacity={0.8}
+        >
+          <View style={styles.orderHeader}>
+            <Text style={styles.restaurantName}>
+              {item.restaurantName || "Restaurant"}
             </Text>
-          ))}
-          {item.items.length > 2 && (
-            <Text style={styles.moreItems}>
-              +{item.items.length - 2} more items
-            </Text>
-          )}
-        </View>
+            <OrderStatusBadge status={item.status || "pending"} />
+          </View>
 
-        <View style={styles.orderFooter}>
-          <Text style={styles.totalAmount}>${item.total.toFixed(2)}</Text>
-          <TouchableOpacity
-            style={styles.detailsButton}
-            onPress={() => handleViewDetails(item)}
-          >
-            <Text style={styles.detailsButtonText}>View Details</Text>
-          </TouchableOpacity>
-        </View>
-      </TouchableOpacity>
-    </SwipeableCard>
-  );
+          <View style={styles.orderDetails}>
+            <Text style={styles.orderId}>
+              Order #{item.id ? item.id.substring(0, 8) : "N/A"}
+            </Text>
+            <Text style={styles.orderDate}>
+              {formatDate(item.createdAt)} • {formatTime(item.createdAt)}
+            </Text>
+          </View>
+
+          <View style={styles.orderItems}>
+            {(item.items || [])
+              .slice(0, 2)
+              .map((orderItem: any, index: number) => (
+                <Text key={index} style={styles.itemText}>
+                  {orderItem?.quantity || 0}x {orderItem?.name || "Item"}
+                </Text>
+              ))}
+            {(item.items || []).length > 2 && (
+              <Text style={styles.moreItems}>
+                +{(item.items || []).length - 2} more items
+              </Text>
+            )}
+          </View>
+
+          <View style={styles.orderFooter}>
+            <Text style={styles.totalAmount}>
+              ${item.total?.toFixed(2) || "0.00"}
+            </Text>
+            <TouchableOpacity
+              style={styles.detailsButton}
+              onPress={() => handleViewDetails(item)}
+            >
+              <Text style={styles.detailsButtonText}>View Details</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </SwipeableCard>
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -164,7 +196,7 @@ const OrderHistoryScreen: React.FC = () => {
           <FlatList
             data={filteredOrders}
             renderItem={renderOrderItem}
-            keyExtractor={(item) => item.id}
+            keyExtractor={(item) => item.id || Math.random().toString()}
             scrollEnabled={false}
             contentContainerStyle={styles.ordersList}
           />

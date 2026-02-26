@@ -199,14 +199,17 @@ const PhoneVerificationScreen: React.FC = () => {
 
     try {
       console.log("Resending OTP for phone:", phone, "role:", role);
-      const res = await fetch("https://pedal-delivery-back.onrender.com/api/v1/auth/send-otp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          phone,
-          role,
-        }),
-      });
+      const res = await fetch(
+        "https://pedal-delivery-back.onrender.com/api/v1/auth/send-otp",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            phone,
+            role,
+          }),
+        },
+      );
 
       const data = await res.json();
       if (res.ok) {
