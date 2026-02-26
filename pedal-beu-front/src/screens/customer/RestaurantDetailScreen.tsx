@@ -41,12 +41,11 @@ const RestaurantDetailScreen: React.FC = () => {
   const loadRestaurantDetails = async () => {
     setLoading(true);
     try {
-      // Load restaurant details
       const restaurantResponse = await restaurantAPI.getById(restaurantId);
       if (!restaurantResponse.success || !restaurantResponse.data) {
         Alert.alert(
           "Error",
-          restaurantResponse.error || "Restaurant not found"
+          restaurantResponse.error || "Restaurant not found",
         );
         router.back();
         return;
@@ -55,14 +54,13 @@ const RestaurantDetailScreen: React.FC = () => {
       const restaurantData = restaurantResponse.data;
       setRestaurant(restaurantData);
 
-      // Load menu items
       const menuResponse = await restaurantAPI.getMenu(restaurantId);
-      if (menuResponse.success) {
-        setMenuItems(menuResponse.data);
+      if (menuResponse.success && Array.isArray(menuResponse.data)) {
+        const menuData = menuResponse.data;
+        setMenuItems(menuData);
 
-        // Extract categories from menu items
         const uniqueCategories = ["All"];
-        menuResponse.data.forEach((item) => {
+        menuData.forEach((item) => {
           if (item.category && !uniqueCategories.includes(item.category)) {
             uniqueCategories.push(item.category);
           }
@@ -81,17 +79,15 @@ const RestaurantDetailScreen: React.FC = () => {
   };
 
   const filteredItems = menuItems.filter(
-    (item) => selectedCategory === "All" || item.category === selectedCategory
+    (item) => selectedCategory === "All" || item.category === selectedCategory,
   );
 
   const handleAddToCart = (menuItem: MenuItem) => {
-    // Check if item already exists in cart
     const existingItem = state.customer.cart.find(
-      (item) => item.menu_item.id === menuItem.id
+      (item) => item.menu_item.id === menuItem.id,
     );
 
     if (existingItem) {
-      // If exists, increase quantity
       dispatch({
         type: "UPDATE_CART_QUANTITY",
         payload: {
@@ -100,7 +96,6 @@ const RestaurantDetailScreen: React.FC = () => {
         },
       });
     } else {
-      // If new, add to cart
       const cartItem: CartItem = {
         id: `${menuItem.id}-${Date.now()}`,
         menu_item: menuItem,
@@ -115,7 +110,7 @@ const RestaurantDetailScreen: React.FC = () => {
 
   const updateCartItemQuantity = (itemId: string, newQuantity: number) => {
     const cartItem = state.customer.cart.find(
-      (item) => item.menu_item.id === itemId
+      (item) => item.menu_item.id === itemId,
     );
 
     if (!cartItem) return;
@@ -139,7 +134,7 @@ const RestaurantDetailScreen: React.FC = () => {
   const getCartCount = () => {
     return state.customer.cart.reduce(
       (total, item) => total + item.quantity,
-      0
+      0,
     );
   };
 
@@ -156,7 +151,6 @@ const RestaurantDetailScreen: React.FC = () => {
   const handleCheckout = () => {
     if (!restaurant) return;
 
-    // Check if user is logged in
     if (!state.auth.user) {
       Alert.alert("Login Required", "Please log in to place an order", [
         { text: "Cancel", style: "cancel" },
@@ -168,13 +162,11 @@ const RestaurantDetailScreen: React.FC = () => {
       return;
     }
 
-    // Check if cart has items
     if (state.customer.cart.length === 0) {
       Alert.alert("Empty Cart", "Please add items to your cart first");
       return;
     }
 
-    // Check minimum order
     const cartTotal = getCartTotal();
     if (restaurant.min_order && cartTotal < restaurant.min_order) {
       Alert.alert(
@@ -182,8 +174,8 @@ const RestaurantDetailScreen: React.FC = () => {
         `Minimum order for this restaurant is ${
           restaurant.min_order
         }Birr. Please add ${(restaurant.min_order - cartTotal).toFixed(
-          2
-        )}Birr more.`
+          2,
+        )}Birr more.`,
       );
       return;
     }
@@ -196,13 +188,19 @@ const RestaurantDetailScreen: React.FC = () => {
 
     setShowCheckout(false);
 
-    // Prepare order data
     const cartTotal = getCartTotal();
     const deliveryFee = restaurant.delivery_fee || 0;
     const serviceCharge = cartTotal * 0.1;
     const grandTotal = cartTotal + deliveryFee + serviceCharge;
 
-    // Create order object
+    // Ensure coordinates are a tuple [number, number]
+    const getCoordinates = (coords: number[] | undefined): [number, number] => {
+      if (Array.isArray(coords) && coords.length >= 2) {
+        return [coords[0], coords[1]];
+      }
+      return [0, 0];
+    };
+
     const order = {
       id: `order-${Date.now()}`,
       order_number: `ORD-${Date.now()}`,
@@ -236,8 +234,10 @@ const RestaurantDetailScreen: React.FC = () => {
           label: selectedAddress?.label || "Delivery Address",
           address: selectedAddress?.address || restaurant.address,
           location: {
-            type: "Point" as const, // Use const assertion for literal type
-            coordinates: restaurant.location.coordinates,
+            type: "Point" as const,
+            coordinates: selectedAddress?.location?.coordinates
+              ? getCoordinates(selectedAddress.location.coordinates)
+              : getCoordinates(restaurant.location?.coordinates),
           },
           is_default: false,
           created_at: new Date().toISOString(),
@@ -260,19 +260,14 @@ const RestaurantDetailScreen: React.FC = () => {
       payment_status: (paymentMethod === "cash" ? "pending" : "paid") as
         | "pending"
         | "paid",
-
       is_scheduled: false,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
 
-    // Add order to state
     dispatch({ type: "ADD_ORDER", payload: order });
-
-    // Clear cart
     dispatch({ type: "CLEAR_CART" });
 
-    // Navigate to order tracking
     router.push({
       pathname: "/(customer)/order-tracking" as any,
       params: {
@@ -284,13 +279,12 @@ const RestaurantDetailScreen: React.FC = () => {
 
   const handleAddressChange = () => {
     setShowCheckout(false);
-    // Navigate to address selection screen
     router.push("/address-selection" as any);
   };
 
   const getItemQuantity = (itemId: string) => {
     const cartItem = state.customer.cart.find(
-      (item) => item.menu_item.id === itemId
+      (item) => item.menu_item.id === itemId,
     );
     return cartItem ? cartItem.quantity : 0;
   };
@@ -330,7 +324,6 @@ const RestaurantDetailScreen: React.FC = () => {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle='light-content' backgroundColor={colors.primary} />
 
-      {/* Header with back button */}
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButtonHeader}
@@ -343,7 +336,6 @@ const RestaurantDetailScreen: React.FC = () => {
       </View>
 
       <ScrollView style={styles.scrollView}>
-        {/* Restaurant Header Image */}
         <Image
           source={{
             uri:
@@ -354,7 +346,6 @@ const RestaurantDetailScreen: React.FC = () => {
           style={styles.restaurantImage}
         />
 
-        {/* Restaurant Info Card */}
         <View style={styles.infoCard}>
           <View style={styles.restaurantHeader}>
             <View>
@@ -396,12 +387,11 @@ const RestaurantDetailScreen: React.FC = () => {
           <View style={styles.hoursContainer}>
             <Ionicons name='time-outline' size={20} color={colors.gray600} />
             <Text style={styles.hoursText}>
-              {restaurant.cuisine_type?.join(", ")}
+              {restaurant.cuisine_type?.join(", ") || "Various cuisines"}
             </Text>
           </View>
         </View>
 
-        {/* Categories Filter */}
         {categories.length > 1 && (
           <View style={styles.categoriesContainer}>
             <CategoryFilter
@@ -412,7 +402,6 @@ const RestaurantDetailScreen: React.FC = () => {
           </View>
         )}
 
-        {/* Menu Items */}
         <View style={styles.menuContainer}>
           <Text style={styles.menuTitle}>Menu</Text>
           {filteredItems.length > 0 ? (
@@ -488,11 +477,9 @@ const RestaurantDetailScreen: React.FC = () => {
           )}
         </View>
 
-        {/* Spacer for bottom checkout bar */}
         <View style={styles.spacer} />
       </ScrollView>
 
-      {/* Bottom Checkout Bar */}
       {cartCount > 0 && (
         <View style={styles.checkoutBar}>
           <View style={styles.cartInfo}>
@@ -511,7 +498,6 @@ const RestaurantDetailScreen: React.FC = () => {
         </View>
       )}
 
-      {/* Checkout Bottom Sheet */}
       <CheckoutBottomSheet
         visible={showCheckout}
         onClose={() => setShowCheckout(false)}

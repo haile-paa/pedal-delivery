@@ -6,17 +6,15 @@ import {
   ScrollView,
   StatusBar,
   TouchableOpacity,
-  Image,
   Alert,
 } from "react-native";
-import * as ImagePicker from "expo-image-picker";
 import { useAppState } from "../../context/AppStateContext";
 import { useRouter } from "expo-router";
 import { colors } from "../../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
 import AnimatedButton from "../../components/ui/AnimatedButton";
 
-const API = "http://192.168.1.6:8080/api/v1";
+const API = "https://pedal-delivery-back.onrender.com/api/v1";
 
 const CustomerProfileScreen = () => {
   const router = useRouter();
@@ -37,7 +35,13 @@ const CustomerProfileScreen = () => {
       const data = await res.json();
 
       if (res.ok) {
-        dispatch({ type: "SET_USER", payload: data.user });
+        dispatch({
+          type: "UPDATE_USER",
+          payload: {
+            ...data,
+            name: data.profile?.first_name || data.username || "User",
+          },
+        });
       }
     } catch (error) {
       console.log("Profile fetch error:", error);
@@ -73,7 +77,7 @@ const CustomerProfileScreen = () => {
 
       const data = await res.json();
       if (res.ok) {
-        dispatch({ type: "SET_ORDERS", payload: data.orders });
+        dispatch({ type: "SET_CUSTOMER_ORDERS", payload: data.orders });
       }
     } catch (e) {
       console.log("Orders fetch error:", e);
@@ -81,66 +85,29 @@ const CustomerProfileScreen = () => {
   };
 
   useEffect(() => {
-    fetchProfile();
-    fetchAddresses();
-    fetchOrders();
-  }, []);
+    if (token) {
+      fetchProfile();
+      fetchAddresses();
+      fetchOrders();
+    }
+  }, [token]);
 
+  // Safely access customer data with fallbacks
   const user = state.auth.user;
-  const addresses = state.customer.addresses;
-  const favoriteRestaurants = state.customer.favoriteRestaurants.length;
+  const customer = state.customer || {};
+  const addresses = customer.addresses || [];
+  const orders = customer.orders || [];
+  const favoriteRestaurants = customer.favoriteRestaurants || [];
+
+  const ordersCount = orders.length;
+  const favoriteCount = favoriteRestaurants.length;
+  const addressesCount = addresses.length;
 
   // ============================
   // 🔥 UPDATE PROFILE
   // ============================
   const updateProfile = async () => {
     Alert.alert("Update", "Edit profile feature coming soon!");
-  };
-
-  // ============================
-  // 🔥 UPLOAD PROFILE PICTURE
-  // ============================
-  const handleAvatarChange = async () => {
-    try {
-      let image = await ImagePicker.launchImageLibraryAsync({
-        allowsEditing: true,
-        quality: 0.7,
-      });
-
-      if (image.canceled) return;
-
-      setLoading(true);
-
-      let form = new FormData();
-      form.append("avatar", {
-        uri: image.assets[0].uri,
-        name: "avatar.jpg",
-        type: "image/jpeg",
-      });
-
-      const res = await fetch(`${API}/users/profile/avatar`, {
-        method: "PUT",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "multipart/form-data",
-        },
-        body: form,
-      });
-
-      const data = await res.json();
-
-      if (res.ok) {
-        dispatch({ type: "SET_USER", payload: data.user });
-        Alert.alert("Success", "Profile picture updated!");
-      } else {
-        Alert.alert("Error", data.message || "Upload failed");
-      }
-    } catch (err) {
-      console.log(err);
-      Alert.alert("Error", "Image upload failed");
-    } finally {
-      setLoading(false);
-    }
   };
 
   // ============================
@@ -165,22 +132,22 @@ const CustomerProfileScreen = () => {
     {
       id: "orders",
       title: "My Orders",
-      icon: "receipt-outline",
+      icon: "receipt-outline" as const,
       onPress: () => router.push("/(customer)/order-history"),
     },
     {
       id: "addresses",
       title: "Saved Addresses",
-      icon: "location-outline",
-      onPress: () => router.push("/(customer)/addresses"),
-      badge: addresses.length,
+      icon: "location-outline" as const,
+      onPress: () => Alert.alert("Coming Soon"),
+      badge: addressesCount,
     },
     {
       id: "favorites",
       title: "Favorite Restaurants",
-      icon: "heart-outline",
+      icon: "heart-outline" as const,
       onPress: () => Alert.alert("Coming Soon"),
-      badge: favoriteRestaurants,
+      badge: favoriteCount,
     },
   ];
 
@@ -192,22 +159,11 @@ const CustomerProfileScreen = () => {
         {/* --- Profile Header --- */}
         <View style={styles.profileHeader}>
           <View style={styles.avatarContainer}>
-            {user?.avatar ? (
-              <Image source={{ uri: user.avatar }} style={styles.avatar} />
-            ) : (
-              <View style={styles.avatarPlaceholder}>
-                <Text style={styles.avatarText}>
-                  {user?.name?.charAt(0) || "U"}
-                </Text>
-              </View>
-            )}
-
-            <TouchableOpacity
-              style={styles.editButton}
-              onPress={handleAvatarChange}
-            >
-              <Ionicons name='camera' size={16} color={colors.white} />
-            </TouchableOpacity>
+            <View style={styles.avatarPlaceholder}>
+              <Text style={styles.avatarText}>
+                {user?.name?.charAt(0) || "U"}
+              </Text>
+            </View>
           </View>
 
           <Text style={styles.userName}>{user?.name}</Text>
@@ -225,21 +181,21 @@ const CustomerProfileScreen = () => {
         {/* --- Stats --- */}
         <View style={styles.statsContainer}>
           <View style={styles.statItem}>
-            <Text style={styles.statValue}>{state.customer.orders.length}</Text>
+            <Text style={styles.statValue}>{ordersCount}</Text>
             <Text style={styles.statLabel}>Orders</Text>
           </View>
 
           <View style={styles.statDivider} />
 
           <View style={styles.statItem}>
-            <Text style={styles.statValue}>{favoriteRestaurants}</Text>
+            <Text style={styles.statValue}>{favoriteCount}</Text>
             <Text style={styles.statLabel}>Favorites</Text>
           </View>
 
           <View style={styles.statDivider} />
 
           <View style={styles.statItem}>
-            <Text style={styles.statValue}>{addresses.length}</Text>
+            <Text style={styles.statValue}>{addressesCount}</Text>
             <Text style={styles.statLabel}>Addresses</Text>
           </View>
         </View>
@@ -306,11 +262,6 @@ const styles = StyleSheet.create({
     position: "relative",
     marginBottom: 16,
   },
-  avatar: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-  },
   avatarPlaceholder: {
     width: 100,
     height: 100,
@@ -323,19 +274,6 @@ const styles = StyleSheet.create({
     fontSize: 40,
     fontWeight: "bold",
     color: colors.white,
-  },
-  editButton: {
-    position: "absolute",
-    bottom: 0,
-    right: 0,
-    backgroundColor: colors.primary,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 3,
-    borderColor: colors.white,
   },
   userName: {
     fontSize: 24,

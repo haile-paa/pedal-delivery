@@ -117,7 +117,7 @@ const RegisterScreen: React.FC = () => {
       console.error("Registration error:", error);
       Alert.alert(
         "Error",
-        error.message || "Registration failed. Please try again."
+        error.message || "Registration failed. Please try again.",
       );
     } finally {
       setLoading(false);

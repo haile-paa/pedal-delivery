@@ -4,11 +4,10 @@ export interface User {
   phone: string;
   email?: string;
   role: "customer" | "driver" | "admin";
-  firstName?: string; // Add this for backend response
-  username?: string; // Add this for backend response
+  name?: string; // Mapped from profile.first_name or username
   profile: {
     first_name: string;
-    last_name?: string; // Optional now
+    last_name?: string;
     avatar?: string;
     addresses?: Address[];
   };
@@ -109,7 +108,7 @@ export interface VerifyOTPResponse {
   };
 }
 
-// Restaurant Types
+// Restaurant Types (unchanged, keep as before)
 export interface Restaurant {
   id: string;
   owner_id: string;
@@ -162,7 +161,7 @@ export interface Addon {
   is_active: boolean;
 }
 
-// Order Types
+// Order Types (unchanged, keep as before)
 export type OrderStatus =
   | "pending"
   | "accepted"
@@ -253,7 +252,7 @@ export interface CancellationInfo {
   refund_amount?: number;
 }
 
-// Utility Types
+// Utility Types (unchanged)
 export interface GeoLocation {
   type: "Point";
   coordinates: [number, number]; // [longitude, latitude]
