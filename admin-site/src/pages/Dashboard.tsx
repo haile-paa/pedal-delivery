@@ -8,7 +8,6 @@ import OrderStatusChart from "../components/Dashboard/OrderStatusChart";
 import { adminAPI } from "../services/api";
 import { useWebSocket } from "../hooks/useWebSocket";
 
-// Backend response shapes
 interface DashboardStats {
   totalOrders: number;
   totalRevenue: number;
@@ -32,8 +31,6 @@ interface BackendRestaurant {
   rating: number;
 }
 
-// Expected props for RecentOrders (from its component)
-// We'll map backend status to the allowed union
 type OrderStatus =
   | "delivered"
   | "preparing"
@@ -48,7 +45,6 @@ interface RecentOrderProps {
   status: OrderStatus;
 }
 
-// Expected props for TopRestaurants (from its component)
 interface TopRestaurantProps {
   id: number;
   name: string;
@@ -105,11 +101,24 @@ const Dashboard: React.FC = () => {
     try {
       const response = await adminAPI.getDashboardStats();
       const data = response.data;
-      setStats(data.stats);
-      setRecentOrders(data.recentOrders);
-      setTopRestaurants(data.topRestaurants);
-      setStatusCounts(data.statusCounts);
-      setRevenueOverTime(data.revenueOverTime);
+      setStats(
+        data.stats || {
+          totalOrders: 0,
+          totalRevenue: 0,
+          avgDeliveryTime: 0,
+          activeDrivers: 0,
+        },
+      );
+      setRecentOrders(
+        Array.isArray(data.recentOrders) ? data.recentOrders : [],
+      );
+      setTopRestaurants(
+        Array.isArray(data.topRestaurants) ? data.topRestaurants : [],
+      );
+      setStatusCounts(data.statusCounts || {});
+      setRevenueOverTime(
+        Array.isArray(data.revenueOverTime) ? data.revenueOverTime : [],
+      );
     } catch (error) {
       console.error("Failed to fetch dashboard data", error);
     } finally {
@@ -117,7 +126,6 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  // Map backend status to one of the allowed literals
   const mapStatus = (status: string): OrderStatus => {
     if (
       ["delivered", "preparing", "pending", "picked_up", "cancelled"].includes(
@@ -126,19 +134,19 @@ const Dashboard: React.FC = () => {
     ) {
       return status as OrderStatus;
     }
-    // Default to 'pending' for unknown statuses (like 'on_the_way', 'ready')
     return "pending";
   };
 
-  // Map data to component props
-  const mappedRecentOrders: RecentOrderProps[] = recentOrders.map((order) => ({
-    id: order.order_number,
-    customer: order.customer_name,
-    amount: order.total_amount,
-    status: mapStatus(order.status),
-  }));
+  const mappedRecentOrders: RecentOrderProps[] = (recentOrders || []).map(
+    (order) => ({
+      id: order.order_number,
+      customer: order.customer_name,
+      amount: order.total_amount,
+      status: mapStatus(order.status),
+    }),
+  );
 
-  const mappedTopRestaurants: TopRestaurantProps[] = topRestaurants.map(
+  const mappedTopRestaurants: TopRestaurantProps[] = (topRestaurants || []).map(
     (rest, index) => ({
       id: index + 1,
       name: rest.name,
@@ -164,45 +172,38 @@ const Dashboard: React.FC = () => {
         </p>
       </div>
 
-      {/* Stats Grid */}
       <div className='grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4'>
         <StatCard
           title="Today's Orders"
           value={stats.totalOrders}
-          change='+12% from yesterday'
           icon={<FiShoppingBag className='h-6 w-6 text-blue-600' />}
           color='blue'
         />
         <StatCard
           title="Today's Revenue"
           value={`ETB ${stats.totalRevenue.toLocaleString()}`}
-          change='+8.3% from yesterday'
           icon={<FiTrendingUp className='h-6 w-6 text-green-600' />}
           color='green'
         />
         <StatCard
           title='Avg. Delivery Time'
           value={`${stats.avgDeliveryTime} min`}
-          change='-2 min from last week'
           icon={<FiClock className='h-6 w-6 text-purple-600' />}
           color='purple'
         />
         <StatCard
           title='Active Drivers'
           value={stats.activeDrivers}
-          change='3 on break'
           icon={<FiUsers className='h-6 w-6 text-orange-600' />}
           color='orange'
         />
       </div>
 
-      {/* Charts Section */}
       <div className='mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2'>
         <RevenueChart data={revenueOverTime} />
         <OrderStatusChart data={statusCounts} />
       </div>
 
-      {/* Tables Section */}
       <div className='mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2'>
         <RecentOrders orders={mappedRecentOrders} />
         <TopRestaurants restaurants={mappedTopRestaurants} />

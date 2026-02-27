@@ -39,7 +39,7 @@ const Sidebar: React.FC = () => {
   return (
     <div className='fixed left-0 top-0 h-screen w-64 bg-gray-900 text-white'>
       <div className='p-6'>
-        <h1 className='text-2xl font-bold'>FoodAdmin</h1>
+        <h1 className='text-2xl font-bold'>PedalDelivery</h1>
       </div>
 
       <nav className='mt-8'>
