@@ -142,7 +142,7 @@ const Login: React.FC = () => {
         <div className='hidden w-1/2 bg-linear-to-br from-blue-600 to-blue-800 p-12 lg:block'>
           <div className='flex h-full flex-col justify-between'>
             <div>
-              <h1 className='text-4xl font-bold text-white'>FoodAdmin</h1>
+              <h1 className='text-4xl font-bold text-white'>PedalDelivery</h1>
               <p className='mt-4 text-lg text-blue-100'>
                 Manage your food delivery platform with ease
               </p>
@@ -156,7 +156,7 @@ const Login: React.FC = () => {
 
             <div className='grid grid-cols-3 gap-8'>
               <div>
-                <h3 className='text-3xl font-bold text-white'>150+</h3>
+                <h3 className='text-3xl font-bold text-white'>100+</h3>
                 <p className='text-blue-200'>Restaurants</p>
               </div>
               <div>
@@ -175,7 +175,9 @@ const Login: React.FC = () => {
         <div className='flex w-full flex-col justify-center p-8 lg:w-1/2'>
           <div className='mx-auto w-full max-w-md'>
             <div className='lg:hidden mb-8'>
-              <h1 className='text-3xl font-bold text-gray-800'>FoodAdmin</h1>
+              <h1 className='text-3xl font-bold text-gray-800'>
+                PedalDelivery
+              </h1>
             </div>
 
             <div className='rounded-2xl bg-white p-8 shadow-lg'>
@@ -249,15 +251,6 @@ const Login: React.FC = () => {
                   >
                     {loading ? "Sending OTP..." : "Send OTP"}
                   </button>
-
-                  <div className='rounded-lg bg-blue-50 p-4'>
-                    <p className='text-sm text-blue-800'>
-                      <strong>Demo phone:</strong> 0911111114
-                    </p>
-                    <p className='mt-1 text-xs text-blue-700'>
-                      For development, OTP will be logged in backend console
-                    </p>
-                  </div>
                 </form>
               ) : (
                 // OTP Verification Form

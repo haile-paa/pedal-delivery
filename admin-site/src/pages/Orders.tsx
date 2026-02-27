@@ -17,7 +17,7 @@ const Orders: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
+  const [totalPages, setTotalPages] = useState(0);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
 
@@ -54,10 +54,14 @@ const Orders: React.FC = () => {
     setLoading(true);
     try {
       const response = await adminAPI.getAllOrders(page, 20);
-      setOrders(response.data.orders);
-      setTotalPages(Math.ceil(response.data.pagination.total / 20));
+      const fetchedOrders = response.data.orders || [];
+      setOrders(fetchedOrders);
+      const total = response.data.pagination?.total || 0;
+      setTotalPages(Math.ceil(total / 20));
     } catch (error) {
       console.error("Failed to fetch orders", error);
+      setOrders([]);
+      setTotalPages(0);
     } finally {
       setLoading(false);
     }
@@ -130,75 +134,83 @@ const Orders: React.FC = () => {
         </div>
       ) : (
         <>
-          <div className='rounded-lg bg-white shadow'>
-            <div className='overflow-x-auto'>
-              <table className='w-full text-left'>
-                <thead className='border-b bg-gray-50 text-sm text-gray-600'>
-                  <tr>
-                    <th className='px-6 py-3'>Order #</th>
-                    <th className='px-6 py-3'>Customer</th>
-                    <th className='px-6 py-3'>Restaurant</th>
-                    <th className='px-6 py-3'>Amount</th>
-                    <th className='px-6 py-3'>Status</th>
-                    <th className='px-6 py-3'>Time</th>
-                    <th className='px-6 py-3'></th>
-                  </tr>
-                </thead>
-                <tbody className='divide-y'>
-                  {filteredOrders.map((order) => (
-                    <tr key={order.id} className='hover:bg-gray-50'>
-                      <td className='px-6 py-4 font-medium'>
-                        {order.order_number}
-                      </td>
-                      <td className='px-6 py-4'>{order.customer_name}</td>
-                      <td className='px-6 py-4'>{order.restaurant_name}</td>
-                      <td className='px-6 py-4'>
-                        ETB {order.total_amount.toFixed(2)}
-                      </td>
-                      <td className='px-6 py-4'>
-                        <span
-                          className={`rounded-full px-3 py-1 text-xs font-medium ${getStatusColor(
-                            order.status,
-                          )}`}
-                        >
-                          {order.status.replace(/_/g, " ")}
-                        </span>
-                      </td>
-                      <td className='px-6 py-4 text-gray-500'>
-                        {new Date(order.created_at).toLocaleTimeString()}
-                      </td>
-                      <td className='px-6 py-4'>
-                        <button className='text-gray-400 hover:text-gray-600'>
-                          <FiMoreVertical />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          {filteredOrders.length === 0 ? (
+            <div className='text-center py-12 bg-white rounded-lg shadow'>
+              <p className='text-gray-500'>No orders found</p>
             </div>
-          </div>
+          ) : (
+            <div className='rounded-lg bg-white shadow'>
+              <div className='overflow-x-auto'>
+                <table className='w-full text-left'>
+                  <thead className='border-b bg-gray-50 text-sm text-gray-600'>
+                    <tr>
+                      <th className='px-6 py-3'>Order #</th>
+                      <th className='px-6 py-3'>Customer</th>
+                      <th className='px-6 py-3'>Restaurant</th>
+                      <th className='px-6 py-3'>Amount</th>
+                      <th className='px-6 py-3'>Status</th>
+                      <th className='px-6 py-3'>Time</th>
+                      <th className='px-6 py-3'></th>
+                    </tr>
+                  </thead>
+                  <tbody className='divide-y'>
+                    {filteredOrders.map((order) => (
+                      <tr key={order.id} className='hover:bg-gray-50'>
+                        <td className='px-6 py-4 font-medium'>
+                          {order.order_number}
+                        </td>
+                        <td className='px-6 py-4'>{order.customer_name}</td>
+                        <td className='px-6 py-4'>{order.restaurant_name}</td>
+                        <td className='px-6 py-4'>
+                          ETB {order.total_amount.toFixed(2)}
+                        </td>
+                        <td className='px-6 py-4'>
+                          <span
+                            className={`rounded-full px-3 py-1 text-xs font-medium ${getStatusColor(
+                              order.status,
+                            )}`}
+                          >
+                            {order.status.replace(/_/g, " ")}
+                          </span>
+                        </td>
+                        <td className='px-6 py-4 text-gray-500'>
+                          {new Date(order.created_at).toLocaleTimeString()}
+                        </td>
+                        <td className='px-6 py-4'>
+                          <button className='text-gray-400 hover:text-gray-600'>
+                            <FiMoreVertical />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           {/* Pagination */}
-          <div className='mt-4 flex justify-center gap-2'>
-            <button
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page === 1}
-              className='rounded bg-gray-200 px-3 py-1 disabled:opacity-50'
-            >
-              Previous
-            </button>
-            <span className='px-3 py-1'>
-              Page {page} of {totalPages}
-            </span>
-            <button
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page === totalPages}
-              className='rounded bg-gray-200 px-3 py-1 disabled:opacity-50'
-            >
-              Next
-            </button>
-          </div>
+          {totalPages > 0 && (
+            <div className='mt-4 flex justify-center gap-2'>
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className='rounded bg-gray-200 px-3 py-1 disabled:opacity-50'
+              >
+                Previous
+              </button>
+              <span className='px-3 py-1'>
+                Page {page} of {totalPages}
+              </span>
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+                className='rounded bg-gray-200 px-3 py-1 disabled:opacity-50'
+              >
+                Next
+              </button>
+            </div>
+          )}
         </>
       )}
     </div>

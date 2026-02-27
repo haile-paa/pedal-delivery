@@ -3,7 +3,7 @@ import React from "react";
 interface StatCardProps {
   title: string;
   value: string | number;
-  change: string;
+  change?: string; // optional – only shown if provided
   icon: React.ReactNode;
   color: "blue" | "green" | "purple" | "orange";
 }
@@ -28,13 +28,15 @@ const StatCard: React.FC<StatCardProps> = ({
         <div>
           <p className='text-sm text-gray-600'>{title}</p>
           <p className='mt-2 text-3xl font-bold text-gray-800'>{value}</p>
-          <p
-            className={`mt-1 text-sm ${
-              change.startsWith("+") ? "text-green-600" : "text-red-600"
-            }`}
-          >
-            {change}
-          </p>
+          {change && (
+            <p
+              className={`mt-1 text-sm ${
+                change.startsWith("+") ? "text-green-600" : "text-red-600"
+              }`}
+            >
+              {change}
+            </p>
+          )}
         </div>
         <div className={`rounded-full p-3 ${colorClasses[color]}`}>{icon}</div>
       </div>
