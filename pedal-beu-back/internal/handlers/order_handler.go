@@ -21,6 +21,41 @@ func NewOrderHandler(orderService services.OrderService) *OrderHandler {
 	}
 }
 
+// GetAllOrders returns all orders with pagination (admin only)
+// @Summary Get all orders
+// @Tags admin
+// @Produce json
+// @Security BearerAuth
+// @Param page query int false "Page number" default(1)
+// @Param limit query int false "Items per page" default(20)
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/admin/orders [get]
+func (h *OrderHandler) GetAllOrders(c *gin.Context) {
+	userRole := c.MustGet("userRole").(string)
+	if userRole != "admin" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+		return
+	}
+
+	page, _ := strconv.ParseInt(c.DefaultQuery("page", "1"), 10, 64)
+	limit, _ := strconv.ParseInt(c.DefaultQuery("limit", "20"), 10, 64)
+
+	orders, total, err := h.orderService.GetAllOrders(c.Request.Context(), page, limit)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"orders": orders,
+		"pagination": gin.H{
+			"page":  page,
+			"limit": limit,
+			"total": total,
+		},
+	})
+}
+
 // @Summary Create a new order
 // @Description Create a new food delivery order
 // @Tags orders

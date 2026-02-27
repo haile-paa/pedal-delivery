@@ -26,6 +26,7 @@ type OrderService interface {
 	RateOrder(ctx context.Context, orderID primitive.ObjectID, rating *models.OrderRating) error
 	CalculateDeliveryFee(ctx context.Context, restaurantLocation, deliveryLocation models.GeoLocation) (float64, error)
 	GetOrderStatistics(ctx context.Context, restaurantID primitive.ObjectID) (map[string]interface{}, error)
+	GetAllOrders(ctx context.Context, page, limit int64) ([]models.Order, int64, error)
 }
 
 type orderService struct {
@@ -428,4 +429,13 @@ func (s *orderService) GetOrderStatistics(ctx context.Context, restaurantID prim
 	stats["status_counts"] = statusCounts
 
 	return stats, nil
+}
+func (s *orderService) GetAllOrders(ctx context.Context, page, limit int64) ([]models.Order, int64, error) {
+	pagination := repositories.Pagination{
+		Page:    page,
+		Limit:   limit,
+		SortBy:  "created_at",
+		SortDir: -1,
+	}
+	return s.orderRepo.GetAllOrders(ctx, pagination)
 }

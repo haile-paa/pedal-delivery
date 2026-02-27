@@ -37,6 +37,7 @@ type RestaurantRepository interface {
 	DeleteMenuItem(ctx context.Context, restaurantID, itemID primitive.ObjectID) error
 	GetMenuItems(ctx context.Context, restaurantID primitive.ObjectID) ([]models.MenuItem, error)
 	Search(ctx context.Context, query string, location models.GeoLocation, radius float64) ([]models.Restaurant, error)
+	FindTopByOrders(ctx context.Context, limit int, duration time.Duration) ([]map[string]interface{}, error)
 }
 
 type restaurantRepository struct {
@@ -400,4 +401,43 @@ func (r *restaurantRepository) Search(ctx context.Context, query string, locatio
 	}
 
 	return restaurants, nil
+}
+func (r *restaurantRepository) FindTopByOrders(ctx context.Context, limit int, duration time.Duration) ([]map[string]interface{}, error) {
+	startDate := time.Now().Add(-duration)
+	pipeline := []bson.M{
+		{"$lookup": bson.M{
+			"from":         "orders",
+			"localField":   "_id",
+			"foreignField": "restaurant_id",
+			"as":           "orders",
+		}},
+		{"$project": bson.M{
+			"name":   1,
+			"rating": 1,
+			"order_count": bson.M{
+				"$size": bson.M{
+					"$filter": bson.M{
+						"input": "$orders",
+						"as":    "order",
+						"cond": bson.M{
+							"$gte": []interface{}{"$$order.created_at", startDate},
+						},
+					},
+				},
+			},
+		}},
+		{"$sort": bson.M{"order_count": -1}},
+		{"$limit": limit},
+	}
+	cursor, err := r.collection.Aggregate(ctx, pipeline)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var results []map[string]interface{}
+	if err = cursor.All(ctx, &results); err != nil {
+		return nil, err
+	}
+	return results, nil
 }
