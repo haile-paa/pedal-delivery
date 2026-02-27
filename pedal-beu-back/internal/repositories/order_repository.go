@@ -30,6 +30,15 @@ type OrderRepository interface {
 	UpdatePaymentStatus(ctx context.Context, orderID primitive.ObjectID, status string) error
 	CancelOrder(ctx context.Context, orderID primitive.ObjectID, cancellation models.CancellationInfo) error
 	FindActiveOrders(ctx context.Context) ([]models.Order, error)
+
+	// New methods for admin dashboard
+	CountOrders(ctx context.Context, filter interface{}) (int64, error)
+	SumRevenue(ctx context.Context, filter interface{}) (float64, error)
+	AverageDeliveryTime(ctx context.Context, filter interface{}) (float64, error)
+	FindRecent(ctx context.Context, limit int) ([]models.Order, error)
+	CountByStatus(ctx context.Context, filter interface{}) (map[string]int, error)
+	RevenueByDay(ctx context.Context, days int) ([]map[string]interface{}, error)
+	GetAllOrders(ctx context.Context, pagination Pagination) ([]models.Order, int64, error)
 }
 
 type Pagination struct {
@@ -50,11 +59,12 @@ func NewOrderRepository() OrderRepository {
 	}
 }
 
+// ==================== Existing Methods ====================
+
 func (r *orderRepository) Create(ctx context.Context, order *models.Order) error {
 	order.CreatedAt = time.Now()
 	order.UpdatedAt = time.Now()
 
-	// Add initial timeline event
 	order.Timeline = []models.OrderEvent{{
 		Status:    order.Status,
 		Timestamp: time.Now(),
@@ -63,14 +73,12 @@ func (r *orderRepository) Create(ctx context.Context, order *models.Order) error
 		Notes:     "Order placed",
 	}}
 
-	// Generate order number
 	order.OrderNumber = generateOrderNumber()
 
 	result, err := r.collection.InsertOne(ctx, order)
 	if err != nil {
 		return err
 	}
-
 	order.ID = result.InsertedID.(primitive.ObjectID)
 	return nil
 }
@@ -107,84 +115,67 @@ func (r *orderRepository) FindByOrderNumber(ctx context.Context, orderNumber str
 
 func (r *orderRepository) FindByCustomerID(ctx context.Context, customerID primitive.ObjectID, pagination Pagination) ([]models.Order, int64, error) {
 	filter := bson.M{"customer_id": customerID}
-
-	// Count total documents
 	total, err := r.collection.CountDocuments(ctx, filter)
 	if err != nil {
 		return nil, 0, err
 	}
-
-	// Find orders with pagination
 	opts := options.Find().
 		SetSkip((pagination.Page - 1) * pagination.Limit).
 		SetLimit(pagination.Limit).
 		SetSort(bson.D{{Key: pagination.SortBy, Value: pagination.SortDir}})
-
 	cursor, err := r.collection.Find(ctx, filter, opts)
 	if err != nil {
 		return nil, 0, err
 	}
 	defer cursor.Close(ctx)
-
 	var orders []models.Order
 	if err = cursor.All(ctx, &orders); err != nil {
 		return nil, 0, err
 	}
-
 	return orders, total, nil
 }
 
 func (r *orderRepository) FindByDriverID(ctx context.Context, driverID primitive.ObjectID, pagination Pagination) ([]models.Order, int64, error) {
 	filter := bson.M{"driver_id": driverID}
-
 	total, err := r.collection.CountDocuments(ctx, filter)
 	if err != nil {
 		return nil, 0, err
 	}
-
 	opts := options.Find().
 		SetSkip((pagination.Page - 1) * pagination.Limit).
 		SetLimit(pagination.Limit).
 		SetSort(bson.D{{Key: pagination.SortBy, Value: pagination.SortDir}})
-
 	cursor, err := r.collection.Find(ctx, filter, opts)
 	if err != nil {
 		return nil, 0, err
 	}
 	defer cursor.Close(ctx)
-
 	var orders []models.Order
 	if err = cursor.All(ctx, &orders); err != nil {
 		return nil, 0, err
 	}
-
 	return orders, total, nil
 }
 
 func (r *orderRepository) FindByRestaurantID(ctx context.Context, restaurantID primitive.ObjectID, pagination Pagination) ([]models.Order, int64, error) {
 	filter := bson.M{"restaurant_id": restaurantID}
-
 	total, err := r.collection.CountDocuments(ctx, filter)
 	if err != nil {
 		return nil, 0, err
 	}
-
 	opts := options.Find().
 		SetSkip((pagination.Page - 1) * pagination.Limit).
 		SetLimit(pagination.Limit).
 		SetSort(bson.D{{Key: pagination.SortBy, Value: pagination.SortDir}})
-
 	cursor, err := r.collection.Find(ctx, filter, opts)
 	if err != nil {
 		return nil, 0, err
 	}
 	defer cursor.Close(ctx)
-
 	var orders []models.Order
 	if err = cursor.All(ctx, &orders); err != nil {
 		return nil, 0, err
 	}
-
 	return orders, total, nil
 }
 
@@ -199,20 +190,16 @@ func (r *orderRepository) FindAvailableOrders(ctx context.Context, location mode
 			},
 		},
 	}
-
 	opts := options.Find().SetLimit(50).SetSort(bson.D{{Key: "created_at", Value: 1}})
-
 	cursor, err := r.collection.Find(ctx, filter, opts)
 	if err != nil {
 		return nil, err
 	}
 	defer cursor.Close(ctx)
-
 	var orders []models.Order
 	if err = cursor.All(ctx, &orders); err != nil {
 		return nil, err
 	}
-
 	return orders, nil
 }
 
@@ -223,26 +210,17 @@ func (r *orderRepository) UpdateStatus(ctx context.Context, orderID primitive.Ob
 		ActorID:   actorID,
 		ActorType: actorType,
 	}
-
 	update := bson.M{
-		"$set": bson.M{
-			"status":     status,
-			"updated_at": time.Now(),
-		},
-		"$push": bson.M{
-			"timeline": event,
-		},
+		"$set":  bson.M{"status": status, "updated_at": time.Now()},
+		"$push": bson.M{"timeline": event},
 	}
-
 	result, err := r.collection.UpdateOne(ctx, bson.M{"_id": orderID}, update)
 	if err != nil {
 		return err
 	}
-
 	if result.MatchedCount == 0 {
 		return errors.New("order not found")
 	}
-
 	return nil
 }
 
@@ -254,109 +232,76 @@ func (r *orderRepository) AssignDriver(ctx context.Context, orderID, driverID pr
 		ActorType: "driver",
 		Notes:     "Driver assigned",
 	}
-
 	update := bson.M{
-		"$set": bson.M{
-			"driver_id":  driverID,
-			"status":     models.OrderAccepted,
-			"updated_at": time.Now(),
-		},
-		"$push": bson.M{
-			"timeline": event,
-		},
+		"$set":  bson.M{"driver_id": driverID, "status": models.OrderAccepted, "updated_at": time.Now()},
+		"$push": bson.M{"timeline": event},
 	}
-
 	filter := bson.M{
 		"_id":       orderID,
 		"driver_id": nil,
 		"status":    models.OrderPending,
 	}
-
 	result, err := r.collection.UpdateOne(ctx, filter, update)
 	if err != nil {
 		return err
 	}
-
 	if result.MatchedCount == 0 {
 		return errors.New("order not available or already assigned")
 	}
-
 	return nil
 }
 
 func (r *orderRepository) UpdateTimeline(ctx context.Context, orderID primitive.ObjectID, event models.OrderEvent) error {
 	update := bson.M{
-		"$push": bson.M{
-			"timeline": event,
-		},
-		"$set": bson.M{
-			"updated_at": time.Now(),
-		},
+		"$push": bson.M{"timeline": event},
+		"$set":  bson.M{"updated_at": time.Now()},
 	}
-
 	result, err := r.collection.UpdateOne(ctx, bson.M{"_id": orderID}, update)
 	if err != nil {
 		return err
 	}
-
 	if result.MatchedCount == 0 {
 		return errors.New("order not found")
 	}
-
 	return nil
 }
 
 func (r *orderRepository) AddRating(ctx context.Context, orderID primitive.ObjectID, rating models.OrderRating) error {
 	rating.RatedAt = time.Now()
-
 	update := bson.M{
-		"$set": bson.M{
-			"rating":     rating,
-			"updated_at": time.Now(),
-		},
+		"$set": bson.M{"rating": rating, "updated_at": time.Now()},
 	}
-
 	filter := bson.M{
 		"_id":    orderID,
 		"status": models.OrderDelivered,
 		"rating": nil,
 	}
-
 	result, err := r.collection.UpdateOne(ctx, filter, update)
 	if err != nil {
 		return err
 	}
-
 	if result.MatchedCount == 0 {
 		return errors.New("order not found or already rated")
 	}
-
 	return nil
 }
 
 func (r *orderRepository) UpdatePaymentStatus(ctx context.Context, orderID primitive.ObjectID, status string) error {
 	update := bson.M{
-		"$set": bson.M{
-			"payment_status": status,
-			"updated_at":     time.Now(),
-		},
+		"$set": bson.M{"payment_status": status, "updated_at": time.Now()},
 	}
-
 	result, err := r.collection.UpdateOne(ctx, bson.M{"_id": orderID}, update)
 	if err != nil {
 		return err
 	}
-
 	if result.MatchedCount == 0 {
 		return errors.New("order not found")
 	}
-
 	return nil
 }
 
 func (r *orderRepository) CancelOrder(ctx context.Context, orderID primitive.ObjectID, cancellation models.CancellationInfo) error {
 	cancellation.Timestamp = time.Now()
-
 	update := bson.M{
 		"$set": bson.M{
 			"status":       models.OrderCancelled,
@@ -373,23 +318,19 @@ func (r *orderRepository) CancelOrder(ctx context.Context, orderID primitive.Obj
 			},
 		},
 	}
-
 	filter := bson.M{
 		"_id": orderID,
 		"status": bson.M{
 			"$in": []models.OrderStatus{models.OrderPending, models.OrderAccepted, models.OrderPreparing},
 		},
 	}
-
 	result, err := r.collection.UpdateOne(ctx, filter, update)
 	if err != nil {
 		return err
 	}
-
 	if result.MatchedCount == 0 {
 		return errors.New("order cannot be cancelled at this stage")
 	}
-
 	return nil
 }
 
@@ -405,17 +346,166 @@ func (r *orderRepository) FindActiveOrders(ctx context.Context) ([]models.Order,
 			},
 		},
 	}
-
 	cursor, err := r.collection.Find(ctx, filter)
 	if err != nil {
 		return nil, err
 	}
 	defer cursor.Close(ctx)
-
 	var orders []models.Order
 	if err = cursor.All(ctx, &orders); err != nil {
 		return nil, err
 	}
-
 	return orders, nil
+}
+
+// ==================== New Admin Methods ====================
+
+func (r *orderRepository) CountOrders(ctx context.Context, filter interface{}) (int64, error) {
+	return r.collection.CountDocuments(ctx, filter)
+}
+
+func (r *orderRepository) SumRevenue(ctx context.Context, filter interface{}) (float64, error) {
+	pipeline := []bson.M{
+		{"$match": filter},
+		{"$group": bson.M{"_id": nil, "total": bson.M{"$sum": "$total_amount.total"}}},
+	}
+	cursor, err := r.collection.Aggregate(ctx, pipeline)
+	if err != nil {
+		return 0, err
+	}
+	defer cursor.Close(ctx)
+	var result struct {
+		Total float64 `bson:"total"`
+	}
+	if cursor.Next(ctx) {
+		if err := cursor.Decode(&result); err != nil {
+			return 0, err
+		}
+		return result.Total, nil
+	}
+	return 0, nil
+}
+
+func (r *orderRepository) AverageDeliveryTime(ctx context.Context, filter interface{}) (float64, error) {
+	pipeline := []bson.M{
+		{"$match": filter},
+		{"$project": bson.M{
+			"delivery_time": bson.M{
+				"$divide": []interface{}{
+					bson.M{"$subtract": []interface{}{"$delivery_info.actual_delivery", "$created_at"}},
+					60000, // milliseconds to minutes
+				},
+			},
+		}},
+		{"$group": bson.M{"_id": nil, "avg": bson.M{"$avg": "$delivery_time"}}},
+	}
+	cursor, err := r.collection.Aggregate(ctx, pipeline)
+	if err != nil {
+		return 0, err
+	}
+	defer cursor.Close(ctx)
+	var result struct {
+		Avg float64 `bson:"avg"`
+	}
+	if cursor.Next(ctx) {
+		if err := cursor.Decode(&result); err != nil {
+			return 0, err
+		}
+		return result.Avg, nil
+	}
+	return 0, nil
+}
+
+func (r *orderRepository) FindRecent(ctx context.Context, limit int) ([]models.Order, error) {
+	opts := options.Find().SetSort(bson.D{{Key: "created_at", Value: -1}}).SetLimit(int64(limit))
+	cursor, err := r.collection.Find(ctx, bson.M{}, opts)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+	var orders []models.Order
+	if err = cursor.All(ctx, &orders); err != nil {
+		return nil, err
+	}
+	return orders, nil
+}
+
+func (r *orderRepository) CountByStatus(ctx context.Context, filter interface{}) (map[string]int, error) {
+	pipeline := []bson.M{
+		{"$match": filter},
+		{"$group": bson.M{"_id": "$status", "count": bson.M{"$sum": 1}}},
+	}
+	cursor, err := r.collection.Aggregate(ctx, pipeline)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+	result := make(map[string]int)
+	for cursor.Next(ctx) {
+		var item struct {
+			Status string `bson:"_id"`
+			Count  int    `bson:"count"`
+		}
+		if err := cursor.Decode(&item); err != nil {
+			return nil, err
+		}
+		result[item.Status] = item.Count
+	}
+	return result, nil
+}
+
+func (r *orderRepository) RevenueByDay(ctx context.Context, days int) ([]map[string]interface{}, error) {
+	startDate := time.Now().AddDate(0, 0, -days)
+	pipeline := []bson.M{
+		{"$match": bson.M{
+			"created_at": bson.M{"$gte": startDate},
+			"status":     models.OrderDelivered,
+		}},
+		{"$group": bson.M{
+			"_id": bson.M{
+				"year":  bson.M{"$year": "$created_at"},
+				"month": bson.M{"$month": "$created_at"},
+				"day":   bson.M{"$dayOfMonth": "$created_at"},
+			},
+			"revenue": bson.M{"$sum": "$total_amount.total"},
+			"date":    bson.M{"$first": "$created_at"},
+		}},
+		{"$sort": bson.M{"_id.year": 1, "_id.month": 1, "_id.day": 1}},
+	}
+	cursor, err := r.collection.Aggregate(ctx, pipeline)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+	var results []map[string]interface{}
+	for cursor.Next(ctx) {
+		var item map[string]interface{}
+		if err := cursor.Decode(&item); err != nil {
+			return nil, err
+		}
+		results = append(results, item)
+	}
+	return results, nil
+}
+
+func (r *orderRepository) GetAllOrders(ctx context.Context, pagination Pagination) ([]models.Order, int64, error) {
+	filter := bson.M{}
+	total, err := r.collection.CountDocuments(ctx, filter)
+	if err != nil {
+		return nil, 0, err
+	}
+	opts := options.Find().
+		SetSkip((pagination.Page - 1) * pagination.Limit).
+		SetLimit(pagination.Limit).
+		SetSort(bson.D{{Key: pagination.SortBy, Value: pagination.SortDir}})
+	cursor, err := r.collection.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer cursor.Close(ctx)
+	var orders []models.Order
+	if err = cursor.All(ctx, &orders); err != nil {
+		return nil, 0, err
+	}
+	return orders, total, nil
 }

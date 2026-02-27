@@ -1,5 +1,6 @@
 import axios from "axios";
 
+// Hardcoded production backend URL
 const API_URL = "https://pedal-delivery-back.onrender.com/api/v1";
 
 const api = axios.create({
@@ -32,25 +33,27 @@ api.interceptors.response.use(
   },
 );
 
+// ==================== Auth API ====================
 export const authAPI = {
-  // OTP endpoints
   sendOTP: (phone: string, role: string = "admin") =>
     api.post("/auth/send-otp", { phone, role }),
-
   verifyOTP: (phone: string, code: string, role: string = "admin") =>
     api.post("/auth/verify-otp", { phone, code, role }),
-
-  // Check if phone exists
   checkPhone: (phone: string) =>
     api.get(`/auth/check-phone?phone=${encodeURIComponent(phone)}`),
-
-  // Refresh token
   refreshToken: (refreshToken: string) =>
     api.post("/auth/refresh", { refresh_token: refreshToken }),
-
   logout: () => api.post("/auth/logout"),
 };
 
+// ==================== Admin API (protected, admin only) ====================
+export const adminAPI = {
+  getDashboardStats: () => api.get("/admin/dashboard/stats"),
+  getAllOrders: (page = 1, limit = 20) =>
+    api.get("/admin/orders", { params: { page, limit } }),
+};
+
+// ==================== Restaurant API ====================
 export const restaurantAPI = {
   getAll: (params?: any) => api.get("/restaurants", { params }),
   getById: (id: string) => api.get(`/restaurants/${id}`),
@@ -60,6 +63,8 @@ export const restaurantAPI = {
   getMenu: (id: string) => api.get(`/restaurants/${id}/menu`),
   edit: (id: string, data: any) => api.put(`/restaurants/${id}`, data),
 };
+
+// ==================== Menu API ====================
 export const menuAPI = {
   create: (restaurantId: string, data: any) =>
     api.post(`/restaurants/${restaurantId}/menu`, data),
@@ -76,26 +81,22 @@ export const menuAPI = {
       is_available: available,
     }),
 };
+
+// ==================== Upload API ====================
 export const uploadAPI = {
-  // Upload single image
   uploadImage: (formData: FormData) => {
     return api.post("/upload", formData, {
-      headers: {
-        "Content-Type": "multipart/form-data",
-      },
+      headers: { "Content-Type": "multipart/form-data" },
     });
   },
-
-  // Upload multiple images
   uploadMultipleImages: (formData: FormData) => {
     return api.post("/upload/multiple", formData, {
-      headers: {
-        "Content-Type": "multipart/form-data",
-      },
+      headers: { "Content-Type": "multipart/form-data" },
     });
   },
 };
 
+// ==================== Order API (for customers) ====================
 export const orderAPI = {
   getAll: (params?: any) => api.get("/orders", { params }),
   getById: (id: string) => api.get(`/orders/${id}`),
@@ -103,6 +104,7 @@ export const orderAPI = {
     api.put(`/orders/${id}/status`, { status }),
 };
 
+// ==================== Driver API ====================
 export const driverAPI = {
   getAll: () => api.get("/drivers"),
   getById: (id: string) => api.get(`/drivers/${id}`),

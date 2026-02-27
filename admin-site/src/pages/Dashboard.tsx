@@ -1,68 +1,159 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { FiTrendingUp, FiClock, FiUsers, FiShoppingBag } from "react-icons/fi";
 import StatCard from "../components/Dashboard/StatCard";
 import RecentOrders from "../components/Dashboard/RecentOrders";
 import TopRestaurants from "../components/Dashboard/TopRestaurants";
 import RevenueChart from "../components/Dashboard/RevenueChart";
 import OrderStatusChart from "../components/Dashboard/OrderStatusChart";
+import { adminAPI } from "../services/api";
+import { useWebSocket } from "../hooks/useWebSocket";
 
-// Import the Order type from RecentOrders if it's exported, or define it locally
-interface Order {
+// Backend response shapes
+interface DashboardStats {
+  totalOrders: number;
+  totalRevenue: number;
+  avgDeliveryTime: number;
+  activeDrivers: number;
+}
+
+interface BackendOrder {
+  id: string;
+  order_number: string;
+  customer_name: string;
+  total_amount: number;
+  status: string;
+  created_at: string;
+}
+
+interface BackendRestaurant {
+  id: string;
+  name: string;
+  order_count: number;
+  rating: number;
+}
+
+// Expected props for RecentOrders (from its component)
+// We'll map backend status to the allowed union
+type OrderStatus =
+  | "delivered"
+  | "preparing"
+  | "pending"
+  | "picked_up"
+  | "cancelled";
+
+interface RecentOrderProps {
   id: string;
   customer: string;
   amount: number;
-  status: "delivered" | "preparing" | "pending" | "picked_up" | "cancelled";
+  status: OrderStatus;
+}
+
+// Expected props for TopRestaurants (from its component)
+interface TopRestaurantProps {
+  id: number;
+  name: string;
+  orders: number;
+  rating: number;
 }
 
 const Dashboard: React.FC = () => {
-  const stats = {
+  const [stats, setStats] = useState<DashboardStats>({
     totalOrders: 0,
     totalRevenue: 0,
     avgDeliveryTime: 0,
     activeDrivers: 0,
+  });
+  const [recentOrders, setRecentOrders] = useState<BackendOrder[]>([]);
+  const [topRestaurants, setTopRestaurants] = useState<BackendRestaurant[]>([]);
+  const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
+  const [revenueOverTime, setRevenueOverTime] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const { lastMessage } = useWebSocket("/ws/orders");
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
+
+  useEffect(() => {
+    if (lastMessage) {
+      try {
+        const event = JSON.parse(lastMessage.data);
+        if (event.type === "order_update") {
+          const updatedOrder = event.data as BackendOrder;
+          setRecentOrders((prev) => {
+            const index = prev.findIndex((o) => o.id === updatedOrder.id);
+            if (index !== -1) {
+              const newOrders = [...prev];
+              newOrders[index] = updatedOrder;
+              return newOrders;
+            } else {
+              return [updatedOrder, ...prev.slice(0, 9)];
+            }
+          });
+          // Optionally refresh stats
+          fetchDashboardData();
+        }
+      } catch (error) {
+        console.error("Failed to parse WebSocket message", error);
+      }
+    }
+  }, [lastMessage]);
+
+  const fetchDashboardData = async () => {
+    setLoading(true);
+    try {
+      const response = await adminAPI.getDashboardStats();
+      const data = response.data;
+      setStats(data.stats);
+      setRecentOrders(data.recentOrders);
+      setTopRestaurants(data.topRestaurants);
+      setStatusCounts(data.statusCounts);
+      setRevenueOverTime(data.revenueOverTime);
+    } catch (error) {
+      console.error("Failed to fetch dashboard data", error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Explicitly type the orders array with the Order interface
-  const recentOrders: Order[] = [
-    {
-      id: "ORD-8542",
-      customer: "Alex Johnson",
-      amount: 632.75,
-      status: "delivered",
-    },
-    {
-      id: "ORD-8543",
-      customer: "Maria Santos",
-      amount: 888.0,
-      status: "preparing",
-    },
-    {
-      id: "ORD-8544",
-      customer: "John Doe",
-      amount: 572.0,
-      status: "pending",
-    },
-    {
-      id: "ORD-8545",
-      customer: "Emily Brown",
-      amount: 759.0,
-      status: "picked_up",
-    },
-    {
-      id: "ORD-8546",
-      customer: "Michael Chen",
-      amount: 418.0,
-      status: "cancelled",
-    },
-  ];
+  // Map backend status to one of the allowed literals
+  const mapStatus = (status: string): OrderStatus => {
+    if (
+      ["delivered", "preparing", "pending", "picked_up", "cancelled"].includes(
+        status,
+      )
+    ) {
+      return status as OrderStatus;
+    }
+    // Default to 'pending' for unknown statuses (like 'on_the_way', 'ready')
+    return "pending";
+  };
 
-  const topRestaurants = [
-    { id: 1, name: "Burger Kingdom", orders: 1250, rating: 4.5 },
-    { id: 2, name: "Mama Italia", orders: 980, rating: 4.8 },
-    { id: 3, name: "Spice Garden", orders: 850, rating: 4.3 },
-    { id: 4, name: "Sushi Master", orders: 720, rating: 4.6 },
-    { id: 5, name: "Taco Fiesta", orders: 650, rating: 4.2 },
-  ];
+  // Map data to component props
+  const mappedRecentOrders: RecentOrderProps[] = recentOrders.map((order) => ({
+    id: order.order_number,
+    customer: order.customer_name,
+    amount: order.total_amount,
+    status: mapStatus(order.status),
+  }));
+
+  const mappedTopRestaurants: TopRestaurantProps[] = topRestaurants.map(
+    (rest, index) => ({
+      id: index + 1,
+      name: rest.name,
+      orders: rest.order_count,
+      rating: rest.rating,
+    }),
+  );
+
+  if (loading) {
+    return (
+      <div className='flex items-center justify-center h-64'>
+        <div className='animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600'></div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -107,14 +198,14 @@ const Dashboard: React.FC = () => {
 
       {/* Charts Section */}
       <div className='mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2'>
-        <RevenueChart />
-        <OrderStatusChart />
+        <RevenueChart data={revenueOverTime} />
+        <OrderStatusChart data={statusCounts} />
       </div>
 
       {/* Tables Section */}
       <div className='mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2'>
-        <RecentOrders orders={recentOrders} />
-        <TopRestaurants restaurants={topRestaurants} />
+        <RecentOrders orders={mappedRecentOrders} />
+        <TopRestaurants restaurants={mappedTopRestaurants} />
       </div>
     </div>
   );
