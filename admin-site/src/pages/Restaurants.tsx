@@ -103,7 +103,7 @@ const Restaurants: React.FC = () => {
       setError(
         err.response?.data?.error ||
           err.response?.data?.message ||
-          "Failed to load restaurants"
+          "Failed to load restaurants",
       );
       setRestaurants([]);
     } finally {
@@ -133,7 +133,7 @@ const Restaurants: React.FC = () => {
       await restaurantAPI.delete(id);
       // Remove from local state
       setRestaurants((prev) =>
-        prev.filter((restaurant) => restaurant._id !== id)
+        prev.filter((restaurant) => restaurant._id !== id),
       );
       alert("Restaurant deleted successfully");
     } catch (err: any) {
@@ -152,8 +152,8 @@ const Restaurants: React.FC = () => {
         prev.map((restaurant) =>
           restaurant._id === id
             ? { ...restaurant, is_active: !currentStatus }
-            : restaurant
-        )
+            : restaurant,
+        ),
       );
     } catch (err: any) {
       alert(err.response?.data?.error || "Failed to update restaurant status");
@@ -168,7 +168,7 @@ const Restaurants: React.FC = () => {
         ?.toLowerCase()
         .includes(searchTerm.toLowerCase()) ||
       restaurant.cuisine_type?.some((c) =>
-        c.toLowerCase().includes(searchTerm.toLowerCase())
+        c.toLowerCase().includes(searchTerm.toLowerCase()),
       ) ||
       restaurant.address?.toLowerCase().includes(searchTerm.toLowerCase());
 
@@ -372,7 +372,7 @@ const Restaurants: React.FC = () => {
             if (!restaurantId) {
               console.warn(
                 `Restaurant at index ${index} has no ID:`,
-                restaurant
+                restaurant,
               );
             }
 
@@ -393,7 +393,7 @@ const Restaurants: React.FC = () => {
                               onClick={() =>
                                 console.log(
                                   "Navigating to restaurant ID:",
-                                  restaurantId
+                                  restaurantId,
                                 )
                               }
                             >
