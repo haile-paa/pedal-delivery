@@ -164,15 +164,17 @@ const Dashboard: React.FC = () => {
   }
 
   return (
-    <div>
+    <div className='px-4 sm:px-6 lg:px-8 py-4 sm:py-6'>
       <div className='mb-6'>
-        <h1 className='text-2xl font-bold text-gray-800'>Dashboard</h1>
-        <p className='text-gray-600'>
+        <h1 className='text-xl sm:text-2xl font-bold text-gray-800'>
+          Dashboard
+        </h1>
+        <p className='text-sm sm:text-base text-gray-600'>
           Welcome back! Here's what's happening today.
         </p>
       </div>
 
-      <div className='grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4'>
+      <div className='grid grid-cols-1 gap-4 sm:gap-6 md:grid-cols-2 lg:grid-cols-4'>
         <StatCard
           title="Today's Orders"
           value={stats.totalOrders}
@@ -199,12 +201,12 @@ const Dashboard: React.FC = () => {
         />
       </div>
 
-      <div className='mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2'>
+      <div className='mt-6 sm:mt-8 grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2'>
         <RevenueChart data={revenueOverTime} />
         <OrderStatusChart data={statusCounts} />
       </div>
 
-      <div className='mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2'>
+      <div className='mt-6 sm:mt-8 grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2'>
         <RecentOrders orders={mappedRecentOrders} />
         <TopRestaurants restaurants={mappedTopRestaurants} />
       </div>

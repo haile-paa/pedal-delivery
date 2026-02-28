@@ -57,11 +57,24 @@ const RestaurantDetail: React.FC = () => {
       setLoading(true);
       setError(null);
       const response = await restaurantAPI.getById(id!);
-      setRestaurant(response.data);
+      const data = response.data;
+
+      // Normalize restaurant ID: ensure _id exists (fallback to id)
+      data._id = data._id || data.id;
+
+      // Normalize menu items: ensure each has _id (fallback to id)
+      if (data.menu && Array.isArray(data.menu)) {
+        data.menu = data.menu.map((item: any) => ({
+          ...item,
+          _id: item._id || item.id,
+        }));
+      }
+
+      setRestaurant(data);
     } catch (err: any) {
       console.error("Error fetching restaurant details:", err);
       setError(
-        err.response?.data?.error || "Failed to load restaurant details"
+        err.response?.data?.error || "Failed to load restaurant details",
       );
     } finally {
       setLoading(false);
@@ -70,15 +83,15 @@ const RestaurantDetail: React.FC = () => {
 
   const toggleMenuItemAvailability = async (
     itemId: string,
-    currentStatus: boolean
+    currentStatus: boolean,
   ) => {
     try {
-      // Update menu item availability
-      // You'll need to create an API endpoint for this
-      // For now, let's update locally
+      // Update locally (you might want to call an API here)
       if (restaurant) {
         const updatedMenu = restaurant.menu.map((item) =>
-          item._id === itemId ? { ...item, is_available: !currentStatus } : item
+          item._id === itemId
+            ? { ...item, is_available: !currentStatus }
+            : item,
         );
         setRestaurant({ ...restaurant, menu: updatedMenu });
       }
@@ -98,14 +111,12 @@ const RestaurantDetail: React.FC = () => {
 
     let filtered = restaurant.menu;
 
-    // Filter by availability
     if (menuFilter === "available") {
       filtered = filtered.filter((item) => item.is_available);
     } else if (menuFilter === "unavailable") {
       filtered = filtered.filter((item) => !item.is_available);
     }
 
-    // Filter by category
     if (selectedCategory) {
       filtered = filtered.filter((item) => item.category === selectedCategory);
     }
@@ -290,7 +301,6 @@ const RestaurantDetail: React.FC = () => {
           </div>
 
           <div className='flex space-x-4'>
-            {/* Category Filter */}
             {categories.length > 0 && (
               <select
                 value={selectedCategory}
@@ -306,7 +316,6 @@ const RestaurantDetail: React.FC = () => {
               </select>
             )}
 
-            {/* Availability Filter */}
             <select
               value={menuFilter}
               onChange={(e) => setMenuFilter(e.target.value)}
@@ -431,7 +440,7 @@ const RestaurantDetail: React.FC = () => {
                           onClick={() =>
                             toggleMenuItemAvailability(
                               item._id,
-                              item.is_available
+                              item.is_available,
                             )
                           }
                           className={`${
@@ -455,7 +464,7 @@ const RestaurantDetail: React.FC = () => {
                         <button
                           onClick={() =>
                             navigate(
-                              `/restaurants/${restaurant._id}/menu/${item._id}/edit`
+                              `/restaurants/${restaurant._id}/menu/${item._id}/edit`,
                             )
                           }
                           className='text-blue-600 hover:text-blue-900'

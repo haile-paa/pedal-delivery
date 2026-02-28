@@ -61,6 +61,7 @@ const App: React.FC = () => {
               <Route path=':id'>
                 <Route index element={<RestaurantDetail />} />
                 <Route path='menu/add' element={<AddMenuItem />} />
+                <Route path='menu/:itemId/edit' element={<AddMenuItem />} />
                 <Route path='edit' element={<AddRestaurant />} />
               </Route>
             </Route>
