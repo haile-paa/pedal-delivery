@@ -378,7 +378,7 @@ type CreateRestaurantRequest struct {
 	Address      string                  `json:"address" binding:"required"`
 	Latitude     float64                 `json:"latitude" binding:"required"`
 	Longitude    float64                 `json:"longitude" binding:"required"`
-	Phone        string                  `json:"phone" binding:"required"`
+	Phone        string                  `json:"phone"`
 	Email        string                  `json:"email" binding:"omitempty,email"`
 	DeliveryFee  float64                 `json:"delivery_fee"`
 	MinOrder     float64                 `json:"min_order"`

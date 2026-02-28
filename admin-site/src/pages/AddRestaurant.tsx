@@ -115,15 +115,15 @@ const AddRestaurant: React.FC = () => {
           prev.map((img) =>
             img.id === tempId
               ? { ...img, url: response.data.url, uploading: false }
-              : img
-          )
+              : img,
+          ),
         );
       } catch (err) {
         console.error("Failed to upload image:", err);
         setRestaurantImages((prev) =>
           prev.map((img) =>
-            img.id === tempId ? { ...img, uploading: false } : img
-          )
+            img.id === tempId ? { ...img, uploading: false } : img,
+          ),
         );
       }
     }
@@ -133,7 +133,7 @@ const AddRestaurant: React.FC = () => {
 
   const handleMenuItemImageUpload = async (
     file: File,
-    menuItemIndex: number
+    menuItemIndex: number,
   ) => {
     try {
       // Create preview URL
@@ -193,7 +193,7 @@ const AddRestaurant: React.FC = () => {
     setSelectedCuisines((prev) =>
       prev.includes(cuisine)
         ? prev.filter((c) => c !== cuisine)
-        : [...prev, cuisine]
+        : [...prev, cuisine],
     );
   };
 
@@ -217,7 +217,7 @@ const AddRestaurant: React.FC = () => {
   const updateMenuItem = (
     index: number,
     field: keyof MenuItemFormData,
-    value: any
+    value: any,
   ) => {
     const updatedItems = [...menuItems];
     updatedItems[index] = { ...updatedItems[index], [field]: value };
@@ -313,7 +313,7 @@ const AddRestaurant: React.FC = () => {
       setError(
         err.response?.data?.error ||
           err.response?.data?.message ||
-          "Failed to create restaurant. Please try again."
+          "Failed to create restaurant. Please try again.",
       );
     } finally {
       setLoading(false);
@@ -380,7 +380,6 @@ const AddRestaurant: React.FC = () => {
                 Basic Info
               </h2>
               <div className='space-y-4'>
-                {/* Name, Description, Cuisine, Phone, Email fields - same as before */}
                 <div>
                   <label className='mb-1 block text-sm font-medium text-gray-700'>
                     Restaurant Name *
@@ -458,11 +457,10 @@ const AddRestaurant: React.FC = () => {
                 <div className='grid grid-cols-2 gap-4'>
                   <div>
                     <label className='mb-1 block text-sm font-medium text-gray-700'>
-                      Phone Number *
+                      Phone Number
                     </label>
                     <input
                       {...register("phone", {
-                        required: "Phone number is required",
                         pattern: {
                           value: /^\+?[0-9\s\-\(\)]+$/,
                           message: "Please enter a valid phone number",
@@ -832,7 +830,7 @@ const AddRestaurant: React.FC = () => {
                             if (e.target.files?.[0]) {
                               handleMenuItemImageUpload(
                                 e.target.files[0],
-                                index
+                                index,
                               );
                             }
                             e.target.value = "";
@@ -879,7 +877,7 @@ const AddRestaurant: React.FC = () => {
                                 updateMenuItem(
                                   index,
                                   "description",
-                                  e.target.value
+                                  e.target.value,
                                 )
                               }
                               rows={2}
@@ -900,7 +898,7 @@ const AddRestaurant: React.FC = () => {
                                   updateMenuItem(
                                     index,
                                     "price",
-                                    parseFloat(e.target.value) || 0
+                                    parseFloat(e.target.value) || 0,
                                   )
                                 }
                                 step='0.01'
@@ -921,7 +919,7 @@ const AddRestaurant: React.FC = () => {
                                   updateMenuItem(
                                     index,
                                     "category",
-                                    e.target.value
+                                    e.target.value,
                                   )
                                 }
                                 className='w-full rounded-lg border border-gray-300 px-3 py-2'
@@ -943,7 +941,7 @@ const AddRestaurant: React.FC = () => {
                                   updateMenuItem(
                                     index,
                                     "preparation_time",
-                                    parseInt(e.target.value) || 0
+                                    parseInt(e.target.value) || 0,
                                   )
                                 }
                                 className='w-full rounded-lg border border-gray-300 px-3 py-2'
@@ -1021,7 +1019,7 @@ const AddRestaurant: React.FC = () => {
                                         <FiX className='h-3 w-3' />
                                       </button>
                                     </span>
-                                  )
+                                  ),
                                 )}
                               </div>
                             ) : (
@@ -1040,7 +1038,7 @@ const AddRestaurant: React.FC = () => {
                                 updateMenuItem(
                                   index,
                                   "is_available",
-                                  e.target.checked
+                                  e.target.checked,
                                 )
                               }
                               className='h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500'
