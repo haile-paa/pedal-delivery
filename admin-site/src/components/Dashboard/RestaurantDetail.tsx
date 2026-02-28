@@ -1,6 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { FiArrowLeft, FiEdit2, FiEye, FiEyeOff } from "react-icons/fi";
+import {
+  FiArrowLeft,
+  FiEdit2,
+  FiEye,
+  FiEyeOff,
+  FiFilter,
+} from "react-icons/fi";
 import { restaurantAPI } from "../../services/api";
 
 interface MenuItem {
@@ -47,6 +53,7 @@ const RestaurantDetail: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [menuFilter, setMenuFilter] = useState<string>("all");
   const [selectedCategory, setSelectedCategory] = useState<string>("");
+  const [showFilters, setShowFilters] = useState(false); // for mobile filter toggle
 
   useEffect(() => {
     fetchRestaurantDetails();
@@ -86,7 +93,6 @@ const RestaurantDetail: React.FC = () => {
     currentStatus: boolean,
   ) => {
     try {
-      // Update locally (you might want to call an API here)
       if (restaurant) {
         const updatedMenu = restaurant.menu.map((item) =>
           item._id === itemId
@@ -134,12 +140,12 @@ const RestaurantDetail: React.FC = () => {
 
   if (error) {
     return (
-      <div className='rounded-lg bg-red-50 p-6'>
-        <h3 className='text-lg font-medium text-red-800'>Error</h3>
-        <p className='mt-2 text-red-700'>{error}</p>
+      <div className='rounded-lg bg-red-50 p-4 sm:p-6'>
+        <h3 className='text-base sm:text-lg font-medium text-red-800'>Error</h3>
+        <p className='mt-2 text-sm sm:text-base text-red-700'>{error}</p>
         <button
           onClick={() => navigate("/restaurants")}
-          className='mt-4 rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700'
+          className='mt-4 rounded-lg bg-blue-600 px-4 py-2 text-sm sm:text-base text-white hover:bg-blue-700'
         >
           Back to Restaurants
         </button>
@@ -149,13 +155,13 @@ const RestaurantDetail: React.FC = () => {
 
   if (!restaurant) {
     return (
-      <div className='text-center py-12'>
+      <div className='text-center py-12 px-4'>
         <h3 className='text-lg font-medium text-gray-900'>
           Restaurant not found
         </h3>
         <button
           onClick={() => navigate("/restaurants")}
-          className='mt-4 rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700'
+          className='mt-4 rounded-lg bg-blue-600 px-4 py-2 text-sm sm:text-base text-white hover:bg-blue-700'
         >
           Back to Restaurants
         </button>
@@ -167,30 +173,30 @@ const RestaurantDetail: React.FC = () => {
   const filteredMenu = getFilteredMenu();
 
   return (
-    <div>
+    <div className='px-4 sm:px-6 lg:px-8 py-4 sm:py-6'>
       {/* Header */}
-      <div className='mb-6 flex items-center'>
+      <div className='mb-4 sm:mb-6 flex flex-col sm:flex-row sm:items-center gap-4'>
         <button
           onClick={() => navigate("/restaurants")}
-          className='mr-4 rounded-lg p-2 hover:bg-gray-100'
+          className='self-start rounded-lg p-2 hover:bg-gray-100'
         >
           <FiArrowLeft className='h-5 w-5' />
         </button>
         <div className='flex-1'>
-          <h1 className='text-2xl font-bold text-gray-800'>
+          <h1 className='text-xl sm:text-2xl font-bold text-gray-800 break-words'>
             {restaurant.name}
           </h1>
-          <div className='mt-1 flex items-center space-x-2'>
+          <div className='mt-1 flex flex-wrap items-center gap-2'>
             {restaurant.cuisine_type?.map((cuisine) => (
               <span
                 key={cuisine}
-                className='rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-800'
+                className='rounded-full bg-blue-100 px-2 py-1 text-xs font-medium text-blue-800'
               >
                 {cuisine}
               </span>
             ))}
             <span
-              className={`rounded-full px-3 py-1 text-xs font-medium ${
+              className={`rounded-full px-2 py-1 text-xs font-medium ${
                 restaurant.is_active
                   ? "bg-green-100 text-green-800"
                   : "bg-red-100 text-red-800"
@@ -200,65 +206,79 @@ const RestaurantDetail: React.FC = () => {
             </span>
           </div>
         </div>
-        <div className='flex space-x-2'>
+        <div className='flex justify-end'>
           <button
             onClick={() => navigate(`/restaurants/${restaurant._id}/edit`)}
-            className='flex items-center rounded-lg border border-gray-300 px-4 py-2 hover:bg-gray-50'
+            className='flex items-center rounded-lg border border-gray-300 px-3 py-2 sm:px-4 sm:py-2 text-sm sm:text-base hover:bg-gray-50'
           >
-            <FiEdit2 className='mr-2' />
+            <FiEdit2 className='mr-2 h-4 w-4' />
             Edit
           </button>
         </div>
       </div>
 
       {/* Restaurant Info */}
-      <div className='mb-6 grid grid-cols-1 gap-6 lg:grid-cols-3'>
-        <div className='rounded-lg bg-white p-6 shadow lg:col-span-2'>
-          <h2 className='mb-4 text-lg font-semibold text-gray-800'>
+      <div className='mb-6 grid grid-cols-1 gap-4 lg:grid-cols-3'>
+        <div className='rounded-lg bg-white p-4 sm:p-6 shadow lg:col-span-2'>
+          <h2 className='mb-3 sm:mb-4 text-base sm:text-lg font-semibold text-gray-800'>
             Restaurant Information
           </h2>
-          <div className='space-y-4'>
+          <div className='space-y-3 sm:space-y-4'>
             <div>
-              <h3 className='text-sm font-medium text-gray-500'>Description</h3>
-              <p className='mt-1 text-gray-900'>
+              <h3 className='text-xs sm:text-sm font-medium text-gray-500'>
+                Description
+              </h3>
+              <p className='mt-1 text-sm sm:text-base text-gray-900'>
                 {restaurant.description || "No description provided"}
               </p>
             </div>
 
-            <div className='grid grid-cols-2 gap-4'>
+            <div className='grid grid-cols-1 sm:grid-cols-2 gap-4'>
               <div>
-                <h3 className='text-sm font-medium text-gray-500'>Address</h3>
-                <p className='mt-1 text-gray-900'>{restaurant.address}</p>
+                <h3 className='text-xs sm:text-sm font-medium text-gray-500'>
+                  Address
+                </h3>
+                <p className='mt-1 text-sm sm:text-base text-gray-900 break-words'>
+                  {restaurant.address}
+                </p>
               </div>
               <div>
-                <h3 className='text-sm font-medium text-gray-500'>Contact</h3>
-                <p className='mt-1 text-gray-900'>{restaurant.phone}</p>
+                <h3 className='text-xs sm:text-sm font-medium text-gray-500'>
+                  Contact
+                </h3>
+                <p className='mt-1 text-sm sm:text-base text-gray-900'>
+                  {restaurant.phone}
+                </p>
                 {restaurant.email && (
-                  <p className='mt-1 text-gray-900'>{restaurant.email}</p>
+                  <p className='mt-1 text-sm sm:text-base text-gray-900 break-words'>
+                    {restaurant.email}
+                  </p>
                 )}
               </div>
             </div>
 
-            <div className='grid grid-cols-3 gap-4'>
+            <div className='grid grid-cols-3 gap-2 sm:gap-4'>
               <div>
-                <h3 className='text-sm font-medium text-gray-500'>
+                <h3 className='text-xs sm:text-sm font-medium text-gray-500'>
                   Delivery Fee
                 </h3>
-                <p className='mt-1 text-lg font-semibold text-gray-900'>
+                <p className='mt-1 text-sm sm:text-base font-semibold text-gray-900'>
                   ETB {restaurant.delivery_fee?.toFixed(2) || "0.00"}
                 </p>
               </div>
               <div>
-                <h3 className='text-sm font-medium text-gray-500'>Min Order</h3>
-                <p className='mt-1 text-lg font-semibold text-gray-900'>
+                <h3 className='text-xs sm:text-sm font-medium text-gray-500'>
+                  Min Order
+                </h3>
+                <p className='mt-1 text-sm sm:text-base font-semibold text-gray-900'>
                   ETB {restaurant.min_order?.toFixed(2) || "0.00"}
                 </p>
               </div>
               <div>
-                <h3 className='text-sm font-medium text-gray-500'>
+                <h3 className='text-xs sm:text-sm font-medium text-gray-500'>
                   Delivery Time
                 </h3>
-                <p className='mt-1 text-lg font-semibold text-gray-900'>
+                <p className='mt-1 text-sm sm:text-base font-semibold text-gray-900'>
                   {restaurant.delivery_time} min
                 </p>
               </div>
@@ -267,10 +287,12 @@ const RestaurantDetail: React.FC = () => {
         </div>
 
         {/* Restaurant Images */}
-        <div className='rounded-lg bg-white p-6 shadow'>
-          <h2 className='mb-4 text-lg font-semibold text-gray-800'>Images</h2>
+        <div className='rounded-lg bg-white p-4 sm:p-6 shadow'>
+          <h2 className='mb-3 sm:mb-4 text-base sm:text-lg font-semibold text-gray-800'>
+            Images
+          </h2>
           {restaurant.images && restaurant.images.length > 0 ? (
-            <div className='grid grid-cols-2 gap-3'>
+            <div className='grid grid-cols-2 gap-2 sm:gap-3'>
               {restaurant.images.slice(0, 4).map((image, index) => (
                 <div
                   key={index}
@@ -285,27 +307,51 @@ const RestaurantDetail: React.FC = () => {
               ))}
             </div>
           ) : (
-            <p className='text-gray-500'>No images uploaded</p>
+            <p className='text-sm text-gray-500'>No images uploaded</p>
           )}
         </div>
       </div>
 
       {/* Menu Section */}
-      <div className='rounded-lg bg-white p-6 shadow'>
-        <div className='mb-6 flex items-center justify-between'>
+      <div className='rounded-lg bg-white p-4 sm:p-6 shadow'>
+        {/* Header with title and add button */}
+        <div className='mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3'>
           <div>
-            <h2 className='text-lg font-semibold text-gray-800'>Menu</h2>
-            <p className='text-sm text-gray-600'>
+            <h2 className='text-base sm:text-lg font-semibold text-gray-800'>
+              Menu
+            </h2>
+            <p className='text-xs sm:text-sm text-gray-600'>
               {restaurant.menu?.length || 0} items total
             </p>
           </div>
+          <div className='flex flex-wrap items-center gap-2'>
+            {/* Filter toggle for mobile */}
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className='sm:hidden flex items-center rounded-lg border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50'
+            >
+              <FiFilter className='mr-2' />
+              Filters
+            </button>
+            <button
+              onClick={() =>
+                navigate(`/restaurants/${restaurant._id}/menu/add`)
+              }
+              className='rounded-lg bg-blue-600 px-3 py-2 sm:px-4 sm:py-2 text-sm text-white hover:bg-blue-700 whitespace-nowrap'
+            >
+              Add Item
+            </button>
+          </div>
+        </div>
 
-          <div className='flex space-x-4'>
+        {/* Filters - visible on mobile when toggled, always visible on sm+ */}
+        <div className={`${showFilters ? "block" : "hidden"} sm:block mb-4`}>
+          <div className='flex flex-col sm:flex-row sm:items-center gap-3'>
             {categories.length > 0 && (
               <select
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
-                className='rounded-lg border border-gray-300 px-4 py-2'
+                className='w-full sm:w-auto rounded-lg border border-gray-300 px-3 py-2 text-sm'
               >
                 <option value=''>All Categories</option>
                 {categories.map((category) => (
@@ -319,113 +365,212 @@ const RestaurantDetail: React.FC = () => {
             <select
               value={menuFilter}
               onChange={(e) => setMenuFilter(e.target.value)}
-              className='rounded-lg border border-gray-300 px-4 py-2'
+              className='w-full sm:w-auto rounded-lg border border-gray-300 px-3 py-2 text-sm'
             >
               <option value='all'>All Items</option>
               <option value='available'>Available Only</option>
               <option value='unavailable'>Unavailable Only</option>
             </select>
-
-            <button
-              onClick={() =>
-                navigate(`/restaurants/${restaurant._id}/menu/add`)
-              }
-              className='rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700'
-            >
-              Add Menu Item
-            </button>
           </div>
         </div>
 
         {filteredMenu.length === 0 ? (
-          <div className='rounded-lg border-2 border-dashed border-gray-300 p-8 text-center'>
-            <p className='text-gray-600'>No menu items found</p>
-            <p className='mt-1 text-sm text-gray-500'>
+          <div className='rounded-lg border-2 border-dashed border-gray-300 p-6 sm:p-8 text-center'>
+            <p className='text-sm sm:text-base text-gray-600'>
+              No menu items found
+            </p>
+            <p className='mt-1 text-xs sm:text-sm text-gray-500'>
               Add menu items to start serving customers
             </p>
             <button
               onClick={() =>
                 navigate(`/restaurants/${restaurant._id}/menu/add`)
               }
-              className='mt-4 rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700'
+              className='mt-4 rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700'
             >
               Add First Item
             </button>
           </div>
         ) : (
-          <div className='overflow-hidden border border-gray-200 sm:rounded-lg'>
-            <table className='min-w-full divide-y divide-gray-200'>
-              <thead className='bg-gray-50'>
-                <tr>
-                  <th className='px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500'>
-                    Item
-                  </th>
-                  <th className='px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500'>
-                    Category
-                  </th>
-                  <th className='px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500'>
-                    Price
-                  </th>
-                  <th className='px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500'>
-                    Preparation Time
-                  </th>
-                  <th className='px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500'>
-                    Status
-                  </th>
-                  <th className='px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500'>
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className='divide-y divide-gray-200 bg-white'>
-                {filteredMenu.map((item) => (
-                  <tr key={item._id} className='hover:bg-gray-50'>
-                    <td className='px-6 py-4'>
-                      <div className='flex items-center'>
-                        {item.image && (
-                          <div className='h-10 w-10 shrink-0'>
-                            <img
-                              className='h-10 w-10 rounded-full object-cover'
-                              src={item.image}
-                              alt={item.name}
-                            />
-                          </div>
-                        )}
-                        <div className='ml-4'>
-                          <div className='text-sm font-medium text-gray-900'>
-                            {item.name}
-                          </div>
-                          <div className='text-sm text-gray-500'>
-                            {item.description && item.description.length > 50
-                              ? `${item.description.substring(0, 50)}...`
-                              : item.description}
-                          </div>
-                          {item.ingredients && item.ingredients.length > 0 && (
-                            <div className='mt-1'>
-                              <span className='text-xs text-gray-500'>
-                                Ingredients:{" "}
-                                {item.ingredients.slice(0, 2).join(", ")}
-                                {item.ingredients.length > 2 && "..."}
-                              </span>
+          <>
+            {/* Table view - hidden on small screens, visible on md+ */}
+            <div className='hidden md:block overflow-x-auto border border-gray-200 rounded-lg'>
+              <table className='min-w-full divide-y divide-gray-200'>
+                <thead className='bg-gray-50'>
+                  <tr>
+                    <th className='px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500'>
+                      Item
+                    </th>
+                    <th className='px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500'>
+                      Category
+                    </th>
+                    <th className='px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500'>
+                      Price
+                    </th>
+                    <th className='px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500'>
+                      Prep Time
+                    </th>
+                    <th className='px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500'>
+                      Status
+                    </th>
+                    <th className='px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500'>
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className='divide-y divide-gray-200 bg-white'>
+                  {filteredMenu.map((item) => (
+                    <tr key={item._id} className='hover:bg-gray-50'>
+                      <td className='px-4 py-4'>
+                        <div className='flex items-center'>
+                          {item.image && (
+                            <div className='h-10 w-10 shrink-0'>
+                              <img
+                                className='h-10 w-10 rounded-full object-cover'
+                                src={item.image}
+                                alt={item.name}
+                              />
                             </div>
+                          )}
+                          <div className='ml-3'>
+                            <div className='text-sm font-medium text-gray-900'>
+                              {item.name}
+                            </div>
+                            <div className='text-xs text-gray-500'>
+                              {item.description && item.description.length > 40
+                                ? `${item.description.substring(0, 40)}...`
+                                : item.description}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className='px-4 py-4'>
+                        <span className='inline-flex rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800'>
+                          {item.category}
+                        </span>
+                      </td>
+                      <td className='px-4 py-4 text-sm font-semibold text-gray-900'>
+                        ETB {item.price?.toFixed(2)}
+                      </td>
+                      <td className='px-4 py-4 text-sm text-gray-500'>
+                        {item.preparation_time} min
+                      </td>
+                      <td className='px-4 py-4'>
+                        <span
+                          className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${
+                            item.is_available
+                              ? "bg-green-100 text-green-800"
+                              : "bg-red-100 text-red-800"
+                          }`}
+                        >
+                          {item.is_available ? "Available" : "Unavailable"}
+                        </span>
+                      </td>
+                      <td className='px-4 py-4 text-sm font-medium'>
+                        <div className='flex flex-col items-start gap-2'>
+                          <button
+                            onClick={() =>
+                              toggleMenuItemAvailability(
+                                item._id,
+                                item.is_available,
+                              )
+                            }
+                            className={`flex items-center text-xs ${
+                              item.is_available
+                                ? "text-yellow-600 hover:text-yellow-900"
+                                : "text-green-600 hover:text-green-900"
+                            }`}
+                          >
+                            {item.is_available ? (
+                              <>
+                                <FiEyeOff className='mr-1 h-3 w-3' />
+                                Unavailable
+                              </>
+                            ) : (
+                              <>
+                                <FiEye className='mr-1 h-3 w-3' />
+                                Available
+                              </>
+                            )}
+                          </button>
+                          <button
+                            onClick={() =>
+                              navigate(
+                                `/restaurants/${restaurant._id}/menu/${item._id}/edit`,
+                              )
+                            }
+                            className='text-blue-600 hover:text-blue-900 text-xs'
+                          >
+                            Edit
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Grid view - visible on small screens, hidden on md+ */}
+            <div className='grid grid-cols-1 gap-4 md:hidden'>
+              {filteredMenu.map((item) => (
+                <div
+                  key={item._id}
+                  className='overflow-hidden rounded-lg border border-gray-200'
+                >
+                  {item.image && (
+                    <div className='aspect-w-16 aspect-h-9'>
+                      <img
+                        src={item.image}
+                        alt={item.name}
+                        className='h-40 w-full object-cover'
+                      />
+                    </div>
+                  )}
+                  <div className='p-4'>
+                    <div className='flex items-start justify-between'>
+                      <div className='flex-1'>
+                        <h4 className='font-semibold text-gray-900'>
+                          {item.name}
+                        </h4>
+                        <p className='mt-1 text-sm text-gray-600'>
+                          {item.category}
+                        </p>
+                      </div>
+                      <span className='rounded-lg bg-blue-100 px-2 py-1 text-sm font-semibold text-blue-800 whitespace-nowrap ml-2'>
+                        ETB {item.price?.toFixed(2)}
+                      </span>
+                    </div>
+                    <p className='mt-2 text-sm text-gray-600 line-clamp-2'>
+                      {item.description}
+                    </p>
+                    {item.ingredients && item.ingredients.length > 0 && (
+                      <div className='mt-3'>
+                        <p className='text-xs font-medium text-gray-500'>
+                          Ingredients:
+                        </p>
+                        <div className='mt-1 flex flex-wrap gap-1'>
+                          {item.ingredients
+                            .slice(0, 3)
+                            .map((ingredient, idx) => (
+                              <span
+                                key={idx}
+                                className='rounded-full bg-gray-100 px-2 py-1 text-xs'
+                              >
+                                {ingredient}
+                              </span>
+                            ))}
+                          {item.ingredients.length > 3 && (
+                            <span className='rounded-full bg-gray-100 px-2 py-1 text-xs'>
+                              +{item.ingredients.length - 3}
+                            </span>
                           )}
                         </div>
                       </div>
-                    </td>
-                    <td className='px-6 py-4'>
-                      <span className='inline-flex rounded-full bg-green-100 px-2 py-1 text-xs font-semibold leading-5 text-green-800'>
-                        {item.category}
-                      </span>
-                    </td>
-                    <td className='px-6 py-4 text-sm font-semibold text-gray-900'>
-                      ETB {item.price?.toFixed(2)}
-                    </td>
-                    <td className='px-6 py-4 text-sm text-gray-500'>
-                      {item.preparation_time} min
-                    </td>
-                    <td className='px-6 py-4'>
+                    )}
+                    <div className='mt-4 flex items-center justify-between'>
                       <span
-                        className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold leading-5 ${
+                        className={`rounded-full px-2 py-1 text-xs font-medium ${
                           item.is_available
                             ? "bg-green-100 text-green-800"
                             : "bg-red-100 text-red-800"
@@ -433,130 +578,48 @@ const RestaurantDetail: React.FC = () => {
                       >
                         {item.is_available ? "Available" : "Unavailable"}
                       </span>
-                    </td>
-                    <td className='px-6 py-4 text-sm font-medium'>
-                      <div className='flex space-x-2'>
-                        <button
-                          onClick={() =>
-                            toggleMenuItemAvailability(
-                              item._id,
-                              item.is_available,
-                            )
-                          }
-                          className={`${
-                            item.is_available
-                              ? "text-yellow-600 hover:text-yellow-900"
-                              : "text-green-600 hover:text-green-900"
-                          }`}
-                        >
-                          {item.is_available ? (
-                            <>
-                              <FiEyeOff className='inline h-4 w-4' />
-                              <span className='ml-1'>Make Unavailable</span>
-                            </>
-                          ) : (
-                            <>
-                              <FiEye className='inline h-4 w-4' />
-                              <span className='ml-1'>Make Available</span>
-                            </>
-                          )}
-                        </button>
-                        <button
-                          onClick={() =>
-                            navigate(
-                              `/restaurants/${restaurant._id}/menu/${item._id}/edit`,
-                            )
-                          }
-                          className='text-blue-600 hover:text-blue-900'
-                        >
-                          Edit
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                      <span className='text-xs text-gray-500'>
+                        {item.preparation_time} min
+                      </span>
+                    </div>
+                    <div className='mt-4 flex justify-end space-x-3'>
+                      <button
+                        onClick={() =>
+                          toggleMenuItemAvailability(
+                            item._id,
+                            item.is_available,
+                          )
+                        }
+                        className={`text-sm ${
+                          item.is_available
+                            ? "text-yellow-600 hover:text-yellow-900"
+                            : "text-green-600 hover:text-green-900"
+                        }`}
+                      >
+                        {item.is_available
+                          ? "Make Unavailable"
+                          : "Make Available"}
+                      </button>
+                      <button
+                        onClick={() =>
+                          navigate(
+                            `/restaurants/${restaurant._id}/menu/${item._id}/edit`,
+                          )
+                        }
+                        className='text-sm text-blue-600 hover:text-blue-900'
+                      >
+                        Edit
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </div>
 
-      {/* Menu Items Grid View (Alternative) */}
-      <div className='mt-6'>
-        <h3 className='mb-4 text-lg font-semibold text-gray-800'>
-          Menu Items Grid View
-        </h3>
-        <div className='grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3'>
-          {filteredMenu.map((item) => (
-            <div
-              key={item._id}
-              className='overflow-hidden rounded-lg border border-gray-200'
-            >
-              {item.image && (
-                <div className='aspect-w-16 aspect-h-9'>
-                  <img
-                    src={item.image}
-                    alt={item.name}
-                    className='h-48 w-full object-cover'
-                  />
-                </div>
-              )}
-              <div className='p-4'>
-                <div className='flex items-start justify-between'>
-                  <div>
-                    <h4 className='font-semibold text-gray-900'>{item.name}</h4>
-                    <p className='mt-1 text-sm text-gray-600'>
-                      {item.category}
-                    </p>
-                  </div>
-                  <span className='rounded-lg bg-blue-100 px-2 py-1 text-sm font-semibold text-blue-800'>
-                    ETB {item.price?.toFixed(2)}
-                  </span>
-                </div>
-                <p className='mt-2 text-sm text-gray-600 line-clamp-2'>
-                  {item.description}
-                </p>
-                {item.ingredients && item.ingredients.length > 0 && (
-                  <div className='mt-3'>
-                    <p className='text-xs font-medium text-gray-500'>
-                      Ingredients:
-                    </p>
-                    <div className='mt-1 flex flex-wrap gap-1'>
-                      {item.ingredients.slice(0, 3).map((ingredient, idx) => (
-                        <span
-                          key={idx}
-                          className='rounded-full bg-gray-100 px-2 py-1 text-xs'
-                        >
-                          {ingredient}
-                        </span>
-                      ))}
-                      {item.ingredients.length > 3 && (
-                        <span className='rounded-full bg-gray-100 px-2 py-1 text-xs'>
-                          +{item.ingredients.length - 3} more
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                )}
-                <div className='mt-4 flex items-center justify-between'>
-                  <span
-                    className={`rounded-full px-2 py-1 text-xs font-medium ${
-                      item.is_available
-                        ? "bg-green-100 text-green-800"
-                        : "bg-red-100 text-red-800"
-                    }`}
-                  >
-                    {item.is_available ? "Available" : "Unavailable"}
-                  </span>
-                  <span className='text-sm text-gray-500'>
-                    {item.preparation_time} min
-                  </span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+      {/* The duplicate grid view at bottom is removed - we already have responsive handling above */}
     </div>
   );
 };
