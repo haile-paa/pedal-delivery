@@ -1,143 +1,160 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { FiSave } from "react-icons/fi";
+import { useAuth } from "../contexts/AuthContext";
+import { adminAPI } from "../services/api";
+
+interface AdminProfile {
+  phone: string;
+  email: string;
+  firstName: string;
+  lastName?: string;
+}
 
 const Settings: React.FC = () => {
-  const [settings, setSettings] = useState({
-    siteName: "FoodAdmin",
-    adminEmail: "admin@foodadmin.com",
-    currency: "ETB",
-    timezone: "Africa/Addis_Ababa",
-    enableNotifications: true,
-    maintenanceMode: false,
+  const { user } = useAuth();
+  const [profile, setProfile] = useState<AdminProfile>({
+    phone: user?.phone || "",
+    email: user?.email || "",
+    firstName: user?.firstName || "",
   });
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
-  const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
-  ) => {
-    const { name, value, type } = e.target;
-    setSettings((prev) => ({
-      ...prev,
-      [name]:
-        type === "checkbox" ? (e.target as HTMLInputElement).checked : value,
-    }));
+  useEffect(() => {
+    const fetchProfile = async () => {
+      if (!user) return;
+      try {
+        setLoading(true);
+        const response = await adminAPI.getProfile();
+        setProfile(response.data);
+      } catch (err: any) {
+        console.error("Failed to fetch admin profile", err);
+        setError("Could not load profile. Please refresh.");
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchProfile();
+  }, [user]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setProfile((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Save settings logic here
-    console.log("Settings saved:", settings);
-    alert("Settings saved (demo)");
+    setError("");
+    setSuccess("");
+    setSaving(true);
+    try {
+      await adminAPI.updateProfile({
+        email: profile.email,
+        firstName: profile.firstName,
+        lastName: profile.lastName,
+      });
+      setSuccess("Profile updated successfully");
+    } catch (err: any) {
+      setError(err.response?.data?.error || "Failed to update profile");
+    } finally {
+      setSaving(false);
+    }
   };
+
+  if (loading) {
+    return (
+      <div className='flex justify-center items-center h-64'>
+        <div className='text-lg'>Loading profile...</div>
+      </div>
+    );
+  }
 
   return (
     <div>
       <div className='mb-6'>
         <h1 className='text-2xl font-bold text-gray-800'>Settings</h1>
-        <p className='text-gray-600'>Manage platform configuration</p>
+        <p className='text-gray-600'>Manage your admin profile</p>
       </div>
 
       <div className='rounded-lg bg-white p-6 shadow'>
+        {error && (
+          <div className='mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-600'>
+            {error}
+          </div>
+        )}
+        {success && (
+          <div className='mb-4 rounded-lg bg-green-50 p-3 text-sm text-green-600'>
+            {success}
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className='space-y-6'>
           <div className='grid grid-cols-1 gap-6 md:grid-cols-2'>
+            {/* Phone (read‑only) */}
             <div>
               <label className='mb-2 block text-sm font-medium text-gray-700'>
-                Site Name
+                Phone Number
               </label>
               <input
-                type='text'
-                name='siteName'
-                value={settings.siteName}
-                onChange={handleChange}
-                className='w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none'
+                type='tel'
+                value={profile.phone}
+                readOnly
+                className='w-full rounded-lg border border-gray-300 bg-gray-100 px-4 py-2 text-gray-500 cursor-not-allowed'
               />
+              <p className='mt-1 text-xs text-gray-500'>
+                Phone number cannot be changed
+              </p>
             </div>
+
+            {/* Email */}
             <div>
               <label className='mb-2 block text-sm font-medium text-gray-700'>
-                Admin Email
+                Email Address
               </label>
               <input
                 type='email'
-                name='adminEmail'
-                value={settings.adminEmail}
+                name='email'
+                value={profile.email}
                 onChange={handleChange}
                 className='w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none'
+                placeholder='admin@example.com'
               />
             </div>
-            <div>
-              <label className='mb-2 block text-sm font-medium text-gray-700'>
-                Currency
-              </label>
-              <select
-                name='currency'
-                value={settings.currency}
-                onChange={handleChange}
-                className='w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none'
-              >
-                <option value='ETB'>ETB (Ethiopian Birr)</option>
-                <option value='USD'>USD (US Dollar)</option>
-                <option value='EUR'>EUR (Euro)</option>
-              </select>
-            </div>
-            <div>
-              <label className='mb-2 block text-sm font-medium text-gray-700'>
-                Timezone
-              </label>
-              <select
-                name='timezone'
-                value={settings.timezone}
-                onChange={handleChange}
-                className='w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none'
-              >
-                <option value='Africa/Addis_Ababa'>
-                  East Africa Time (Addis Ababa)
-                </option>
-                <option value='UTC'>UTC</option>
-                <option value='America/New_York'>Eastern Time</option>
-              </select>
-            </div>
-          </div>
 
-          <div className='space-y-4'>
-            <div className='flex items-center'>
-              <input
-                type='checkbox'
-                name='enableNotifications'
-                id='enableNotifications'
-                checked={settings.enableNotifications}
-                onChange={handleChange}
-                className='h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500'
-              />
-              <label
-                htmlFor='enableNotifications'
-                className='ml-2 text-sm text-gray-700'
-              >
-                Enable email notifications
+            {/* First Name */}
+            <div>
+              <label className='mb-2 block text-sm font-medium text-gray-700'>
+                First Name
               </label>
-            </div>
-            <div className='flex items-center'>
               <input
-                type='checkbox'
-                name='maintenanceMode'
-                id='maintenanceMode'
-                checked={settings.maintenanceMode}
+                type='text'
+                name='firstName'
+                value={profile.firstName}
                 onChange={handleChange}
-                className='h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500'
+                className='w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none'
+                placeholder='Your name'
               />
-              <label
-                htmlFor='maintenanceMode'
-                className='ml-2 text-sm text-gray-700'
-              >
-                Maintenance mode (disable frontend access)
-              </label>
             </div>
           </div>
 
           <div className='flex justify-end'>
             <button
               type='submit'
-              className='flex items-center gap-2 rounded-lg bg-blue-600 px-6 py-2 text-white hover:bg-blue-700'
+              disabled={saving}
+              className='flex items-center gap-2 rounded-lg bg-blue-600 px-6 py-2 text-white hover:bg-blue-700 disabled:opacity-50'
             >
-              <FiSave /> Save Settings
+              {saving ? (
+                <>
+                  <div className='h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent'></div>
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <FiSave /> Save Changes
+                </>
+              )}
             </button>
           </div>
         </form>

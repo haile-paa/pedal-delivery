@@ -8,24 +8,127 @@ import (
 	"github.com/haile-paa/pedal-delivery/internal/models"
 	"github.com/haile-paa/pedal-delivery/internal/repositories"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type AdminHandler struct {
 	orderRepo      repositories.OrderRepository
 	restaurantRepo repositories.RestaurantRepository
 	driverRepo     repositories.DriverRepository
+	adminRepo      repositories.AdminRepository // added
 }
 
 func NewAdminHandler(
 	orderRepo repositories.OrderRepository,
 	restaurantRepo repositories.RestaurantRepository,
 	driverRepo repositories.DriverRepository,
+	adminRepo repositories.AdminRepository, // added
 ) *AdminHandler {
 	return &AdminHandler{
 		orderRepo:      orderRepo,
 		restaurantRepo: restaurantRepo,
 		driverRepo:     driverRepo,
+		adminRepo:      adminRepo,
 	}
+}
+
+// GetProfile returns the current admin's profile
+// @Summary Get admin profile
+// @Tags admin
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} models.Admin
+// @Router /api/v1/admin/profile [get]
+func (h *AdminHandler) GetProfile(c *gin.Context) {
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	objID, err := primitive.ObjectIDFromHex(userID.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+
+	admin, err := h.adminRepo.FindByID(c.Request.Context(), objID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Admin not found"})
+		return
+	}
+
+	// Map to frontend-friendly JSON (camelCase)
+	c.JSON(http.StatusOK, gin.H{
+		"id":         admin.ID.Hex(),
+		"phone":      admin.Phone,
+		"email":      admin.Email,
+		"firstName":  admin.FirstName,
+		"lastName":   admin.LastName,
+		"isVerified": admin.IsVerified,
+		"isActive":   admin.IsActive,
+		"lastLogin":  admin.LastLoginAt,
+		"createdAt":  admin.CreatedAt,
+		"updatedAt":  admin.UpdatedAt,
+	})
+}
+
+// UpdateProfile updates the current admin's profile
+// @Summary Update admin profile
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body object {email:"string", firstName:"string", lastName:"string"}
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/admin/profile [put]
+func (h *AdminHandler) UpdateProfile(c *gin.Context) {
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	objID, err := primitive.ObjectIDFromHex(userID.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+
+	var req struct {
+		Email     string `json:"email"`
+		FirstName string `json:"firstName"`
+		LastName  string `json:"lastName"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	update := bson.M{}
+	if req.Email != "" {
+		update["email"] = req.Email
+	}
+	if req.FirstName != "" {
+		update["first_name"] = req.FirstName
+	}
+	if req.LastName != "" {
+		update["last_name"] = req.LastName
+	}
+
+	if len(update) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No fields to update"})
+		return
+	}
+
+	err = h.adminRepo.Update(c.Request.Context(), objID, update)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Profile updated successfully"})
 }
 
 // GetDashboardStats returns aggregated statistics for the admin dashboard.
@@ -68,7 +171,6 @@ func (h *AdminHandler) GetDashboardStats(c *gin.Context) {
 		"status":     models.OrderDelivered,
 	})
 	if err != nil {
-		// If no delivered orders, set to 0
 		avgDeliveryTime = 0
 	}
 

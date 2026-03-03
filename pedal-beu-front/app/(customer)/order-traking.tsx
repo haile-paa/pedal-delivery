@@ -67,7 +67,7 @@ class WebSocketService {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectInterval = 3000;
-  private pingInterval: NodeJS.Timeout | null = null;
+  private pingInterval: any = null;
 
   private constructor() {}
 
@@ -80,20 +80,17 @@ class WebSocketService {
 
   async connect(token: string) {
     try {
-      // Use wss:// for production
       const baseUrl = "wss://pedal-delivery-back.onrender.com";
       const url = `${baseUrl}/ws/orders?token=${token}`;
-      
+
       console.log(`🔌 Connecting to WebSocket: ${url}`);
-      
+
       this.socket = new WebSocket(url);
 
       this.socket.onopen = () => {
         console.log("✅ WebSocket connected successfully");
         this.reconnectAttempts = 0;
         this.trigger("connect", null);
-        
-        // Start ping interval to keep connection alive
         this.startPing();
       };
 
@@ -116,8 +113,7 @@ class WebSocketService {
         console.log("⚠️ WebSocket closed:", event.code, event.reason);
         this.stopPing();
         this.trigger("disconnect", event);
-        
-        // Attempt to reconnect
+
         if (this.reconnectAttempts < this.maxReconnectAttempts) {
           setTimeout(() => {
             this.reconnectAttempts++;
@@ -133,14 +129,13 @@ class WebSocketService {
 
   private handleMessage(message: any) {
     const { type, data } = message;
-    
+
     switch (type) {
       case "order_update":
       case "order:status_update":
         console.log("📦 Order status update:", data);
         this.trigger("order:status_update", data);
-        
-        // Trigger specific status events
+
         if (data?.status) {
           switch (data.status) {
             case "accepted":
@@ -154,7 +149,6 @@ class WebSocketService {
               break;
             case "picked_up":
               this.trigger("order:picked_up", data);
-              // If driver is assigned, trigger driver:assigned
               if (data.driver) {
                 this.trigger("driver:assigned", { driver: data.driver });
               }
@@ -168,35 +162,33 @@ class WebSocketService {
           }
         }
         break;
-        
+
       case "driver_location":
       case "driver:location_update":
         console.log("📍 Driver location update:", data);
         this.trigger("driver:location_update", data);
         break;
-        
+
       case "driver_assigned":
       case "driver:assigned":
         console.log("🚗 Driver assigned:", data);
         this.trigger("driver:assigned", data);
         break;
-        
+
       case "notification":
         console.log("🔔 Notification:", data);
         this.trigger("notification", data);
         break;
-        
+
       case "pong":
-        // Heartbeat response
         break;
-        
+
       default:
         console.log("📨 Unhandled message type:", type, data);
     }
   }
 
   private startPing() {
-    // Send ping every 30 seconds to keep connection alive
     this.pingInterval = setInterval(() => {
       if (this.socket?.readyState === WebSocket.OPEN) {
         this.socket.send(JSON.stringify({ type: "ping" }));
@@ -245,21 +237,21 @@ class WebSocketService {
   joinOrderRoom(orderId: string) {
     this.send({
       type: "join:order_room",
-      data: { orderId }
+      data: { orderId },
     });
   }
 
   joinDriverRoom(driverId: string) {
     this.send({
       type: "join:driver_room",
-      data: { driverId }
+      data: { driverId },
     });
   }
 
   updateDriverLocation(location: { lat: number; lng: number }, orderId: string) {
     this.send({
       type: "driver:location_update",
-      data: { location, orderId }
+      data: { location, orderId },
     });
   }
 
@@ -298,7 +290,6 @@ class WebSocketService {
       if (this.isConnected()) {
         resolve(true);
       } else {
-        // Wait for connection or timeout
         const timeout = setTimeout(() => resolve(false), 3000);
         const handleConnect = () => {
           clearTimeout(timeout);
@@ -311,7 +302,6 @@ class WebSocketService {
   }
 }
 
-// Export the singleton instance (renamed to camelCase)
 const webSocketService = WebSocketService.getInstance();
 
 const OrderTrackingScreen: React.FC = () => {
@@ -322,6 +312,7 @@ const OrderTrackingScreen: React.FC = () => {
   }>();
 
   const mapRef = useRef<MapView>(null);
+  const webSocketConnectedRef = useRef(false);
 
   const [driverLocation, setDriverLocation] = useState<{
     latitude: number;
@@ -346,9 +337,7 @@ const OrderTrackingScreen: React.FC = () => {
     Array<{ latitude: number; longitude: number }>
   >([]);
   const [useFallback, setUseFallback] = useState(false);
-  const [pollingInterval, setPollingInterval] = useState<number | null>(
-    null,
-  );
+  const [pollingInterval, setPollingInterval] = useState<number | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<string>("disconnected");
 
   const statusSteps = [
@@ -416,16 +405,9 @@ const OrderTrackingScreen: React.FC = () => {
     try {
       setLoading(true);
 
-      // Get user location
       await getUserLocation();
-
-      // Fetch order details
       await fetchOrderDetails();
-
-      // Try to connect to WebSocket with fallback
       await setupWebSocketWithFallback();
-
-      // Set up time remaining timer
       startTimer();
     } catch (error) {
       console.error("Initialization error:", error);
@@ -435,7 +417,7 @@ const OrderTrackingScreen: React.FC = () => {
   };
 
   const getUserLocation = () => {
-    return new Promise<void>((resolve, reject) => {
+    return new Promise<void>((resolve) => {
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
           (position) => {
@@ -447,34 +429,31 @@ const OrderTrackingScreen: React.FC = () => {
           },
           (error) => {
             console.error("Location error:", error);
-            // Use default location in Addis Ababa
             setUserLocation({
               latitude: 9.032,
               longitude: 38.75,
             });
-            resolve(); // Continue without location
+            resolve();
           },
           { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 },
         );
       } else {
-        // Use default location in Addis Ababa
         setUserLocation({
           latitude: 9.032,
           longitude: 38.75,
         });
-        resolve(); // Continue without location
+        resolve();
       }
     });
   };
 
   const fetchOrderDetails = async () => {
     try {
-      const token = await AsyncStorage.getItem("userToken");
+      const token = await AsyncStorage.getItem("accessToken");
 
       if (!token) {
         console.log("No token available, using fallback");
         setUseFallback(true);
-        // Create mock data for testing
         createMockData();
         return;
       }
@@ -498,7 +477,6 @@ const OrderTrackingScreen: React.FC = () => {
         const data = await response.json();
         console.log("Order data received:", data);
 
-        // Handle different response structures
         const orderData = data.data || data;
 
         setOrderDetails({
@@ -527,7 +505,6 @@ const OrderTrackingScreen: React.FC = () => {
 
         setCurrentStatus(orderData.status || "pending");
 
-        // Convert restaurant location from GeoLocation to {latitude, longitude}
         if (orderData.restaurant?.location?.coordinates) {
           setRestaurantLocation({
             latitude: orderData.restaurant.location.coordinates[1],
@@ -539,7 +516,6 @@ const OrderTrackingScreen: React.FC = () => {
             longitude: orderData.restaurant_location.coordinates[0],
           });
         } else {
-          // Use default restaurant location
           setRestaurantLocation({
             latitude: 9.022,
             longitude: 38.746,
@@ -559,7 +535,6 @@ const OrderTrackingScreen: React.FC = () => {
           });
         }
 
-        // Convert driver location from GeoLocation to {latitude, longitude}
         if (orderData.driver_location?.coordinates) {
           const driverLoc = {
             latitude: orderData.driver_location.coordinates[1],
@@ -571,6 +546,11 @@ const OrderTrackingScreen: React.FC = () => {
 
         if (orderData.estimated_delivery_minutes) {
           setTimeRemaining(orderData.estimated_delivery_minutes);
+        }
+
+        // If WebSocket already connected, join the real order room
+        if (webSocketConnectedRef.current) {
+          webSocketService.joinOrderRoom(orderData._id || orderData.id);
         }
       } else {
         console.log("API response not OK, using fallback data");
@@ -598,7 +578,6 @@ const OrderTrackingScreen: React.FC = () => {
       latitude: 9.022,
       longitude: 38.746,
     });
-    // Create mock driver location near restaurant
     const mockDriverLoc = {
       latitude: 9.024,
       longitude: 38.748,
@@ -618,7 +597,7 @@ const OrderTrackingScreen: React.FC = () => {
 
   const setupWebSocketWithFallback = async () => {
     try {
-      const token = await AsyncStorage.getItem("userToken");
+      const token = await AsyncStorage.getItem("accessToken");
 
       if (!token) {
         console.log("❌ No token available, using fallback");
@@ -629,23 +608,23 @@ const OrderTrackingScreen: React.FC = () => {
 
       console.log("🔌 Setting up WebSocket with token...");
 
-      // Setup event listeners FIRST
       webSocketService.on("connect", () => {
         console.log("✅ WebSocket connected in component");
         setWebSocketConnected(true);
+        webSocketConnectedRef.current = true;
         setConnectionStatus("connected");
         setUseFallback(false);
-        
-        // Join order room after connection
+
         setTimeout(() => {
           webSocketService.joinOrderRoom(orderId);
           console.log(`Joined order room: ${orderId}`);
         }, 500);
       });
 
-      webSocketService.on("connect_error", (error) => {
+      webSocketService.on("connect_error", (error: any) => {
         console.error("❌ WebSocket connection error:", error);
         setWebSocketConnected(false);
+        webSocketConnectedRef.current = false;
         setConnectionStatus("error");
         setUseFallback(true);
         startPolling();
@@ -654,12 +633,12 @@ const OrderTrackingScreen: React.FC = () => {
       webSocketService.on("disconnect", () => {
         console.log("⚠️ WebSocket disconnected");
         setWebSocketConnected(false);
+        webSocketConnectedRef.current = false;
         setConnectionStatus("disconnected");
         setUseFallback(true);
         startPolling();
       });
 
-      // Setup other event listeners
       webSocketService.on("driver:assigned", (data: any) => {
         console.log("🚗 Driver assigned via WebSocket:", data);
         handleDriverAssigned(data);
@@ -700,32 +679,29 @@ const OrderTrackingScreen: React.FC = () => {
         handleOrderDelivered(data);
       });
 
-      // Now connect
       webSocketService.connect(token);
-      
-      // Check connection status after 3 seconds
+
       setTimeout(async () => {
         const isConnected = await webSocketService.checkConnection();
         console.log("🔍 Initial connection check:", isConnected);
-        
+
         if (!isConnected) {
           console.log("🔄 WebSocket not connected, using polling fallback");
           setUseFallback(true);
           setWebSocketConnected(false);
+          webSocketConnectedRef.current = false;
           setConnectionStatus("failed");
           startPolling();
         }
       }, 3000);
 
-      // Final fallback after 10 seconds
       setTimeout(() => {
-        if (!webSocketConnected && !useFallback) {
+        if (!webSocketConnectedRef.current && !useFallback) {
           console.log("⏰ WebSocket connection timeout, enabling fallback");
           setUseFallback(true);
           startPolling();
         }
       }, 10000);
-
     } catch (error) {
       console.error("❌ WebSocket setup error:", error);
       setUseFallback(true);
@@ -735,16 +711,14 @@ const OrderTrackingScreen: React.FC = () => {
 
   const startPolling = () => {
     console.log("🔄 Starting polling for updates...");
-    // Clear any existing interval
     if (pollingInterval) {
       clearInterval(pollingInterval);
     }
 
     const interval = setInterval(async () => {
       try {
-        const token = await AsyncStorage.getItem("userToken");
+        const token = await AsyncStorage.getItem("accessToken");
         if (token) {
-          // Poll for updates every 20 seconds
           const response = await fetch(
             `https://pedal-delivery-back.onrender.com/api/v1/orders/${orderId}`,
             {
@@ -759,12 +733,10 @@ const OrderTrackingScreen: React.FC = () => {
             const data = await response.json();
             const orderData = data.data || data;
 
-            // Update status if changed
             if (orderData.status && orderData.status !== currentStatus) {
               console.log("🔄 Polling: Status updated to", orderData.status);
               setCurrentStatus(orderData.status);
 
-              // Show alert for status changes
               if (orderData.status === "picked_up") {
                 Alert.alert(
                   "Order Picked Up!",
@@ -780,7 +752,6 @@ const OrderTrackingScreen: React.FC = () => {
               }
             }
 
-            // Update driver location if available
             if (orderData.driver_location?.coordinates) {
               const driverLoc = {
                 latitude: orderData.driver_location.coordinates[1],
@@ -791,7 +762,6 @@ const OrderTrackingScreen: React.FC = () => {
               calculateRoute(driverLoc);
             }
 
-            // Update driver info if available
             if (orderData.driver && !driverInfo) {
               setDriverInfo({
                 id: orderData.driver._id || orderData.driver.id,
@@ -810,15 +780,15 @@ const OrderTrackingScreen: React.FC = () => {
       } catch (error) {
         console.error("Polling error:", error);
       }
-    }, 20000); // Poll every 20 seconds
+    }, 20000);
 
-    setPollingInterval(interval as any);
+    setPollingInterval(interval); // TypeScript accepts number
   };
 
   const handleDriverAssigned = (data: any) => {
     if (data.driver) {
       setDriverInfo({
-        id: data.driver._id || data.driver.id || data.driver._id || "unknown",
+        id: data.driver._id || data.driver.id || "unknown",
         name: data.driver.name || "Unknown Driver",
         phone: data.driver.phone || "N/A",
         profile_picture: data.driver.profile_picture,
@@ -830,23 +800,20 @@ const OrderTrackingScreen: React.FC = () => {
     }
     Alert.alert(
       "Driver Assigned!",
-      `${data.driver?.name || 'A driver'} has accepted your order and will be arriving soon.`,
+      `${data.driver?.name || "A driver"} has accepted your order and will be arriving soon.`,
       [{ text: "OK" }],
     );
   };
 
   const handleDriverLocationUpdate = (data: any) => {
     let location = data.location;
-    
-    // Handle different location formats
+
     if (location?.coordinates) {
-      // GeoJSON format: [longitude, latitude]
       location = {
         latitude: location.coordinates[1],
         longitude: location.coordinates[0],
       };
     } else if (location?.lat && location?.lng) {
-      // Standard format
       location = {
         latitude: location.lat,
         longitude: location.lng,
@@ -855,13 +822,11 @@ const OrderTrackingScreen: React.FC = () => {
 
     console.log("📍 Updating driver location:", location);
     setDriverLocation(location);
-    
-    // Calculate route if we have user location
+
     if (userLocation) {
       calculateRoute(location);
     }
 
-    // Animate map to show driver location
     if (mapRef.current && location) {
       mapRef.current.animateToRegion({
         latitude: location.latitude,
@@ -929,9 +894,6 @@ const OrderTrackingScreen: React.FC = () => {
     longitude: number;
   }) => {
     if (!userLocation) return;
-
-    // In a real app, you would use a routing API like Google Maps Directions
-    // For now, we'll create a simple straight line
     setRouteCoordinates([driverLoc, userLocation]);
   };
 
@@ -944,7 +906,7 @@ const OrderTrackingScreen: React.FC = () => {
         }
         return prev - 1;
       });
-    }, 60000); // Update every minute
+    }, 60000);
 
     return () => clearInterval(timer);
   };
@@ -971,8 +933,6 @@ const OrderTrackingScreen: React.FC = () => {
       Alert.alert("No Driver", "Driver has not been assigned yet.");
       return;
     }
-
-    // For SMS
     Linking.openURL(`sms:${driverInfo.phone}`);
   };
 
@@ -984,7 +944,7 @@ const OrderTrackingScreen: React.FC = () => {
         style: "destructive",
         onPress: async () => {
           try {
-            const token = await AsyncStorage.getItem("userToken");
+            const token = await AsyncStorage.getItem("accessToken");
             if (!token) {
               Alert.alert("Error", "Please login to cancel order");
               return;
@@ -1025,7 +985,6 @@ const OrderTrackingScreen: React.FC = () => {
 
   const handleContactRestaurant = () => {
     if (!orderDetails) return;
-
     Alert.alert("Contact Restaurant", "This feature is coming soon!", [
       { text: "OK" },
     ]);
@@ -1041,7 +1000,6 @@ const OrderTrackingScreen: React.FC = () => {
     Alert.alert("Help", "Help feature coming soon!", [{ text: "OK" }]);
   };
 
-  // Check if order can be cancelled
   const canCancelOrder = () => {
     const cancellableStatuses = [
       "pending",
@@ -1055,13 +1013,12 @@ const OrderTrackingScreen: React.FC = () => {
 
   const handleReconnectWebSocket = async () => {
     try {
-      const token = await AsyncStorage.getItem("userToken");
+      const token = await AsyncStorage.getItem("accessToken");
       if (token) {
         console.log("🔄 Attempting to reconnect WebSocket...");
         setUseFallback(false);
         webSocketService.connect(token);
-        
-        // Check connection after 3 seconds
+
         setTimeout(async () => {
           const connected = await webSocketService.checkConnection();
           if (connected) {
@@ -1083,11 +1040,8 @@ const OrderTrackingScreen: React.FC = () => {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <StatusBar
-          barStyle='dark-content'
-          backgroundColor={colors.background}
-        />
-        <ActivityIndicator size='large' color={colors.primary} />
+        <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
+        <ActivityIndicator size="large" color={colors.primary} />
         <Text style={styles.loadingText}>Loading order details...</Text>
       </View>
     );
@@ -1096,14 +1050,11 @@ const OrderTrackingScreen: React.FC = () => {
   if (currentStatus === "cancelled") {
     return (
       <View style={styles.container}>
-        <StatusBar
-          barStyle='dark-content'
-          backgroundColor={colors.background}
-        />
+        <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
         <Stack.Screen options={{ title: "Order Cancelled" }} />
 
         <View style={styles.centeredContent}>
-          <Ionicons name='close-circle' size={80} color={colors.error} />
+          <Ionicons name="close-circle" size={80} color={colors.error} />
           <Text style={styles.cancelledTitle}>Order Cancelled</Text>
           <Text style={styles.cancelledMessage}>
             Your order has been cancelled successfully.
@@ -1112,7 +1063,7 @@ const OrderTrackingScreen: React.FC = () => {
             Any payments made will be refunded within 3-5 business days.
           </Text>
           <AnimatedButton
-            title='Back to Home'
+            title="Back to Home"
             onPress={() => router.replace("/(customer)/home")}
             style={styles.homeButton}
           />
@@ -1124,14 +1075,11 @@ const OrderTrackingScreen: React.FC = () => {
   if (currentStatus === "delivered") {
     return (
       <View style={styles.container}>
-        <StatusBar
-          barStyle='dark-content'
-          backgroundColor={colors.background}
-        />
+        <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
         <Stack.Screen options={{ title: "Order Delivered" }} />
 
         <View style={styles.centeredContent}>
-          <Ionicons name='checkmark-circle' size={80} color={colors.success} />
+          <Ionicons name="checkmark-circle" size={80} color={colors.success} />
           <Text style={styles.deliveredTitle}>🎉 Order Delivered!</Text>
           <Text style={styles.deliveredMessage}>
             Your food has been delivered. Enjoy your meal!
@@ -1147,24 +1095,23 @@ const OrderTrackingScreen: React.FC = () => {
                 Total: {orderDetails.total_amount.toFixed(2)} Birr
               </Text>
               <Text style={styles.summaryText}>
-                Delivered at:{" "}
-                {new Date(orderDetails.created_at).toLocaleTimeString()}
+                Delivered at: {new Date(orderDetails.created_at).toLocaleTimeString()}
               </Text>
             </View>
           )}
 
           <View style={styles.deliveredActions}>
             <AnimatedButton
-              title='Rate Your Order'
+              title="Rate Your Order"
               onPress={() =>
                 Alert.alert("Rating", "Rate your order feature coming soon!")
               }
               style={styles.rateButton}
             />
             <AnimatedButton
-              title='Back to Home'
+              title="Back to Home"
               onPress={() => router.replace("/(customer)/home")}
-              variant='outline'
+              variant="outline"
               style={styles.homeButton}
             />
           </View>
@@ -1175,7 +1122,7 @@ const OrderTrackingScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle='light-content' backgroundColor={colors.primary} />
+      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
       <Stack.Screen
         options={{
           title: "Track Order",
@@ -1184,7 +1131,6 @@ const OrderTrackingScreen: React.FC = () => {
         }}
       />
 
-      {/* Map Section */}
       <View style={styles.mapSection}>
         <MapView
           ref={mapRef}
@@ -1198,43 +1144,39 @@ const OrderTrackingScreen: React.FC = () => {
           showsUserLocation={true}
           showsMyLocationButton={true}
         >
-          {/* Restaurant Marker */}
           {restaurantLocation && (
             <Marker
               coordinate={restaurantLocation}
               title={restaurantName || "Restaurant"}
-              description='Pickup location'
+              description="Pickup location"
             >
               <View style={styles.restaurantMarker}>
-                <Ionicons name='restaurant' size={20} color={colors.white} />
+                <Ionicons name="restaurant" size={20} color={colors.white} />
               </View>
             </Marker>
           )}
 
-          {/* Driver Marker */}
           {driverLocation && (
             <Marker
               coordinate={driverLocation}
               title={driverInfo?.name || "Driver"}
-              description='Your delivery driver'
+              description="Your delivery driver"
             >
               <View style={styles.driverMarker}>
-                <Ionicons name='bicycle' size={20} color={colors.white} />
+                <Ionicons name="bicycle" size={20} color={colors.white} />
               </View>
             </Marker>
           )}
 
-          {/* User Marker */}
           {userLocation && (
             <Marker
               coordinate={userLocation}
-              title='You'
-              description='Delivery location'
+              title="You"
+              description="Delivery location"
               pinColor={colors.primary}
             />
           )}
 
-          {/* Route Line */}
           {routeCoordinates.length > 0 && (
             <Polyline
               coordinates={routeCoordinates}
@@ -1245,7 +1187,6 @@ const OrderTrackingScreen: React.FC = () => {
           )}
         </MapView>
 
-        {/* WebSocket Status */}
         <View style={styles.connectionStatus}>
           <View
             style={[
@@ -1266,9 +1207,9 @@ const OrderTrackingScreen: React.FC = () => {
                 ? "Polling for Updates"
                 : "Connecting..."}
           </Text>
-          
+
           {useFallback && !webSocketConnected && (
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.reconnectButton}
               onPress={handleReconnectWebSocket}
             >
@@ -1279,7 +1220,6 @@ const OrderTrackingScreen: React.FC = () => {
         </View>
       </View>
 
-      {/* Tracking Info */}
       <ScrollView
         style={styles.trackingSection}
         showsVerticalScrollIndicator={false}
@@ -1314,7 +1254,6 @@ const OrderTrackingScreen: React.FC = () => {
           showLabels={true}
         />
 
-        {/* Driver Info */}
         {driverInfo ? (
           <View style={styles.driverInfoCard}>
             <Text style={styles.sectionTitle}>Your Driver</Text>
@@ -1351,7 +1290,7 @@ const OrderTrackingScreen: React.FC = () => {
                 style={styles.callDriverButton}
                 onPress={handleCallDriver}
               >
-                <Ionicons name='call' size={20} color={colors.white} />
+                <Ionicons name="call" size={20} color={colors.white} />
                 <Text style={styles.callDriverText}>Call Driver</Text>
               </TouchableOpacity>
 
@@ -1360,7 +1299,7 @@ const OrderTrackingScreen: React.FC = () => {
                 onPress={handleMessageDriver}
               >
                 <Ionicons
-                  name='chatbubble-ellipses'
+                  name="chatbubble-ellipses"
                   size={20}
                   color={colors.primary}
                 />
@@ -1370,35 +1309,34 @@ const OrderTrackingScreen: React.FC = () => {
           </View>
         ) : (
           <View style={styles.noDriverCard}>
-            <Ionicons name='time' size={24} color={colors.gray500} />
+            <Ionicons name="time" size={24} color={colors.gray500} />
             <Text style={styles.noDriverText}>
               Waiting for a driver to accept your order...
             </Text>
-            <ActivityIndicator size='small' color={colors.primary} />
+            <ActivityIndicator size="small" color={colors.primary} />
           </View>
         )}
 
-        {/* Order Details */}
         {orderDetails && (
           <View style={styles.orderDetailsCard}>
             <Text style={styles.sectionTitle}>Order Details</Text>
 
             <View style={styles.orderInfoRow}>
-              <Ionicons name='restaurant' size={20} color={colors.gray600} />
+              <Ionicons name="restaurant" size={20} color={colors.gray600} />
               <Text style={styles.orderInfoText}>
                 {orderDetails.restaurant_name}
               </Text>
             </View>
 
             <View style={styles.orderInfoRow}>
-              <Ionicons name='location' size={20} color={colors.gray600} />
+              <Ionicons name="location" size={20} color={colors.gray600} />
               <Text style={styles.orderInfoText}>
                 {orderDetails.delivery_address}
               </Text>
             </View>
 
             <View style={styles.orderInfoRow}>
-              <Ionicons name='time' size={20} color={colors.gray600} />
+              <Ionicons name="time" size={20} color={colors.gray600} />
               <Text style={styles.orderInfoText}>
                 Ordered at{" "}
                 {new Date(orderDetails.created_at).toLocaleTimeString()}
@@ -1411,7 +1349,7 @@ const OrderTrackingScreen: React.FC = () => {
             >
               <Text style={styles.viewOrderText}>View Full Order Details</Text>
               <Ionicons
-                name='chevron-forward'
+                name="chevron-forward"
                 size={20}
                 color={colors.primary}
               />
@@ -1419,26 +1357,24 @@ const OrderTrackingScreen: React.FC = () => {
           </View>
         )}
 
-        {/* Actions */}
         <View style={styles.actionsSection}>
           <View style={styles.actionButtons}>
             <TouchableOpacity
               style={styles.restaurantContactButton}
               onPress={handleContactRestaurant}
             >
-              <Ionicons name='business' size={20} color={colors.white} />
+              <Ionicons name="business" size={20} color={colors.white} />
               <Text style={styles.restaurantContactText}>
                 Contact Restaurant
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.helpButton} onPress={handleHelp}>
-              <Ionicons name='help-circle' size={20} color={colors.primary} />
+              <Ionicons name="help-circle" size={20} color={colors.primary} />
               <Text style={styles.helpText}>Help</Text>
             </TouchableOpacity>
           </View>
 
-          {/* Show cancel button only if order can be cancelled */}
           {canCancelOrder() && (
             <TouchableOpacity
               style={styles.cancelButton}
