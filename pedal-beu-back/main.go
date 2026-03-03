@@ -135,7 +135,7 @@ func main() {
 	adminRepo := repositories.NewAdminRepository()
 	orderRepo := repositories.NewOrderRepository()
 	restaurantRepo := repositories.NewRestaurantRepository()
-	driverRepo := repositories.NewDriverRepository() // moved up before usage
+	driverRepo := repositories.NewDriverRepository()
 
 	var smsClient *sms.Client
 	if cfg.SMS.APIToken != "" {
@@ -159,7 +159,8 @@ func main() {
 	authHandler := handlers.NewAuthHandler(authService, smsClient)
 	orderHandler := handlers.NewOrderHandler(orderService)
 	restaurantHandler := handlers.NewRestaurantHandler(restaurantService)
-	adminHandler := handlers.NewAdminHandler(orderRepo, restaurantRepo, driverRepo) // now driverRepo is defined
+	// Pass adminRepo to AdminHandler
+	adminHandler := handlers.NewAdminHandler(orderRepo, restaurantRepo, driverRepo, adminRepo)
 
 	handlers.SetUserRepository(userRepo)
 	handlers.SetAdminRepository(adminRepo)
@@ -393,6 +394,8 @@ func main() {
 			admin.Use(middleware.AdminOnly())
 			{
 				admin.GET("/dashboard/stats", adminHandler.GetDashboardStats)
+				admin.GET("/profile", adminHandler.GetProfile)    // new
+				admin.PUT("/profile", adminHandler.UpdateProfile) // new
 				admin.GET("/orders", orderHandler.GetAllOrders)
 			}
 

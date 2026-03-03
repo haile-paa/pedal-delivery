@@ -51,6 +51,8 @@ export const adminAPI = {
   getDashboardStats: () => api.get("/admin/dashboard/stats"),
   getAllOrders: (page = 1, limit = 20) =>
     api.get("/admin/orders", { params: { page, limit } }),
+  getProfile: () => api.get("/admin/profile"), // new
+  updateProfile: (data: any) => api.put("/admin/profile", data), // new
 };
 
 // ==================== Restaurant API ====================

@@ -18,6 +18,7 @@ import Orders from "./pages/Orders";
 // import Analytics from "./pages/Analytics";
 import Settings from "./pages/Settings";
 import Layout from "./components/Layout/Layout";
+import EditRestaurant from "./pages/EditRestaurant";
 
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({
   children,
@@ -62,7 +63,7 @@ const App: React.FC = () => {
                 <Route index element={<RestaurantDetail />} />
                 <Route path='menu/add' element={<AddMenuItem />} />
                 <Route path='menu/:itemId/edit' element={<AddMenuItem />} />
-                <Route path='edit' element={<AddRestaurant />} />
+                <Route path='edit' element={<EditRestaurant />} />
               </Route>
             </Route>
 

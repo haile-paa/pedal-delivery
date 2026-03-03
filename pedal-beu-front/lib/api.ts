@@ -23,14 +23,46 @@ const api = axios.create({
   timeout: 30000,
 });
 
-// Request interceptor to add auth token
+// Retry helper for network errors
+const retryRequest = async <T>(
+  fn: () => Promise<T>,
+  retries = 3,
+  delay = 1000,
+): Promise<T> => {
+  try {
+    return await fn();
+  } catch (error: any) {
+    if (
+      retries <= 0 ||
+      (error.response &&
+        error.response.status >= 400 &&
+        error.response.status < 500)
+    ) {
+      throw error;
+    }
+    console.log(
+      `Retry attempt ${3 - retries + 1}/3 after error: ${error.message}`,
+    );
+    await new Promise((resolve) => setTimeout(resolve, delay));
+    return retryRequest(fn, retries - 1, delay * 2);
+  }
+};
+
+// Request interceptor
 api.interceptors.request.use(
   async (config) => {
     try {
-      const token = await AsyncStorage.getItem("access_token");
+      const token = await AsyncStorage.getItem("accessToken");
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
+      console.log(
+        `🌐 Request: ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`,
+        {
+          headers: config.headers,
+          params: config.params,
+        },
+      );
     } catch (error) {
       console.error("Error getting token:", error);
     }
@@ -41,42 +73,28 @@ api.interceptors.request.use(
 
 // Response interceptor
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    console.log(`✅ Response: ${response.status} ${response.config.url}`);
+    return response;
+  },
   async (error) => {
-    const originalRequest = error.config;
-
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true;
-
-      try {
-        const refreshToken = await AsyncStorage.getItem("refresh_token");
-        if (!refreshToken) throw new Error("No refresh token");
-
-        const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {
-          refresh_token: refreshToken,
-        });
-
-        const { access_token } = response.data.tokens;
-        await AsyncStorage.setItem("access_token", access_token);
-
-        originalRequest.headers.Authorization = `Bearer ${access_token}`;
-        return api(originalRequest);
-      } catch (refreshError) {
-        await AsyncStorage.multiRemove([
-          "access_token",
-          "refresh_token",
-          "user",
-        ]);
-        throw refreshError;
-      }
+    if (error.response) {
+      console.error("❌ API Error Response:", {
+        url: error.config?.url,
+        status: error.response.status,
+        data: error.response.data,
+        headers: error.response.headers,
+      });
+    } else if (error.request) {
+      console.error("❌ No response received:", error.request);
+    } else {
+      console.error("❌ Request setup error:", error.message);
     }
-
-    throw error;
+    return Promise.reject(error);
   },
 );
 
 export const authAPI = {
-  // Send OTP
   sendOTP: async (
     phone: string,
     role?: "customer" | "driver",
@@ -93,7 +111,6 @@ export const authAPI = {
     }
   },
 
-  // Verify OTP
   verifyOTP: async (
     phone: string,
     code: string,
@@ -112,27 +129,19 @@ export const authAPI = {
     }
   },
 
-  // Register (simplified)
   register: async (data: RegisterRequest): Promise<AuthResponse> => {
     try {
       const formattedPhone = formatPhoneNumber(data.phone);
-      const registerData = {
-        ...data,
-        phone: formattedPhone,
-        // Backend will auto-generate password for drivers if not provided
-      };
-
+      const registerData = { ...data, phone: formattedPhone };
       const response = await api.post("/auth/register", registerData);
-
       if (response.data.user && response.data.tokens) {
         const { user, tokens } = response.data;
         await AsyncStorage.multiSet([
-          ["access_token", tokens.access_token],
-          ["refresh_token", tokens.refresh_token],
+          ["accessToken", tokens.access_token],
+          ["refreshToken", tokens.refresh_token],
           ["user", JSON.stringify(user)],
         ]);
       }
-
       return {
         success: true,
         message: "Registration successful",
@@ -147,23 +156,20 @@ export const authAPI = {
     }
   },
 
-  // Login with OTP (for existing users)
   loginWithOTP: async (phone: string): Promise<AuthResponse> => {
     try {
       const formattedPhone = formatPhoneNumber(phone);
       const response = await api.post("/auth/login-otp", {
         phone: formattedPhone,
       });
-
       if (response.data.user && response.data.tokens) {
         const { user, tokens } = response.data;
         await AsyncStorage.multiSet([
-          ["access_token", tokens.access_token],
-          ["refresh_token", tokens.refresh_token],
+          ["accessToken", tokens.access_token],
+          ["refreshToken", tokens.refresh_token],
           ["user", JSON.stringify(user)],
         ]);
       }
-
       return {
         success: true,
         message: "Login successful",
@@ -178,7 +184,6 @@ export const authAPI = {
     }
   },
 
-  // Traditional login (optional)
   login: async (data: LoginRequest): Promise<AuthResponse> => {
     try {
       const formattedPhone = formatPhoneNumber(data.phone);
@@ -186,16 +191,14 @@ export const authAPI = {
         phone: formattedPhone,
         password: data.password,
       });
-
       if (response.data.user && response.data.tokens) {
         const { user, tokens } = response.data;
         await AsyncStorage.multiSet([
-          ["access_token", tokens.access_token],
-          ["refresh_token", tokens.refresh_token],
+          ["accessToken", tokens.access_token],
+          ["refreshToken", tokens.refresh_token],
           ["user", JSON.stringify(user)],
         ]);
       }
-
       return {
         success: true,
         message: "Login successful",
@@ -210,7 +213,6 @@ export const authAPI = {
     }
   },
 
-  // Refresh token
   refreshToken: async (refreshToken: string) => {
     const response = await api.post("/auth/refresh", {
       refresh_token: refreshToken,
@@ -218,54 +220,109 @@ export const authAPI = {
     return response.data;
   },
 
-  // Logout
   logout: async () => {
     try {
       await api.post("/auth/logout");
     } catch (error) {
       console.error("Logout error:", error);
     } finally {
-      await AsyncStorage.multiRemove(["access_token", "refresh_token", "user"]);
+      await AsyncStorage.multiRemove(["accessToken", "refreshToken", "user"]);
     }
   },
 
-  // Get profile
   getProfile: async (): Promise<User> => {
     const response = await api.get("/users/me");
     return response.data;
   },
 
-  // Update profile
   updateProfile: async (data: any) => {
     const response = await api.put("/users/profile", data);
     return response.data;
   },
 };
 
-// Helper function to format phone number
+// Order API
+export const orderAPI = {
+  createOrder: async (orderData: any): Promise<any> => {
+    try {
+      const response = await api.post("/orders", orderData, { timeout: 60000 });
+      console.log("📦 createOrder API response:", response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error("❌ createOrder API error:", error);
+      throw new Error(
+        error.response?.data?.message || "Failed to create order",
+      );
+    }
+  },
+
+  getOrderById: async (orderId: string): Promise<any> => {
+    try {
+      const response = await api.get(`/orders/${orderId}`, { timeout: 60000 });
+      return response.data;
+    } catch (error: any) {
+      throw new Error(error.response?.data?.message || "Failed to fetch order");
+    }
+  },
+
+  cancelOrder: async (orderId: string): Promise<any> => {
+    try {
+      const response = await api.post(
+        `/orders/${orderId}/cancel`,
+        {},
+        { timeout: 60000 },
+      );
+      return response.data;
+    } catch (error: any) {
+      throw new Error(
+        error.response?.data?.message || "Failed to cancel order",
+      );
+    }
+  },
+
+  rateOrder: async (orderId: string, ratingData: any): Promise<any> => {
+    try {
+      const response = await api.post(`/orders/${orderId}/rate`, ratingData, {
+        timeout: 60000,
+      });
+      return response.data;
+    } catch (error: any) {
+      throw new Error(error.response?.data?.message || "Failed to rate order");
+    }
+  },
+
+  getCustomerOrders: async (page = 1, limit = 10): Promise<any> => {
+    try {
+      const response = await api.get("/orders", {
+        params: { page, limit },
+        timeout: 60000,
+      });
+      return response.data;
+    } catch (error: any) {
+      throw new Error(
+        error.response?.data?.message || "Failed to fetch orders",
+      );
+    }
+  },
+};
+
 const formatPhoneNumber = (phone: string): string => {
   let formattedPhone = phone;
-  if (phone.startsWith("9")) {
-    formattedPhone = `+251${phone}`;
-  } else if (phone.startsWith("0")) {
-    formattedPhone = `+251${phone.substring(1)}`;
-  } else if (!phone.startsWith("+")) {
-    formattedPhone = `+251${phone}`;
-  }
+  if (phone.startsWith("9")) formattedPhone = `+251${phone}`;
+  else if (phone.startsWith("0")) formattedPhone = `+251${phone.substring(1)}`;
+  else if (!phone.startsWith("+")) formattedPhone = `+251${phone}`;
   return formattedPhone;
 };
 
-// Helper function to check auth status
 export const checkAuth = async (): Promise<{
   isAuthenticated: boolean;
   user?: User;
 }> => {
   try {
     const [token, user] = await Promise.all([
-      AsyncStorage.getItem("access_token"),
+      AsyncStorage.getItem("accessToken"),
       AsyncStorage.getItem("user"),
     ]);
-
     if (token && user) {
       return {
         isAuthenticated: true,
