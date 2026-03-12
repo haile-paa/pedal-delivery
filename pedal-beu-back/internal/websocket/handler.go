@@ -22,6 +22,7 @@ var hub *Hub
 func init() {
 	hub = NewHub()
 	go hub.Run()
+	GlobalHub = hub // 👈 Export the hub for other packages
 }
 
 func GetHub() *Hub {
@@ -69,6 +70,15 @@ func wsHandler(c *gin.Context, channel string) {
 	}
 
 	client.hub.register <- client
+
+	// 👇 AUTOMATIC ROOM JOINING BASED ON ROLE
+	if client.role == "driver" {
+		hub.JoinRoom(client, "drivers")                     // all drivers
+		hub.JoinRoom(client, "driver:"+client.userID.Hex()) // personal room
+	} else if client.role == "customer" {
+		hub.JoinRoom(client, "customers")                 // all customers (optional)
+		hub.JoinRoom(client, "user:"+client.userID.Hex()) // personal room
+	}
 
 	go client.writePump()
 	go client.readPump()

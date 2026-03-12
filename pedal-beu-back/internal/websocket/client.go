@@ -10,30 +10,21 @@ import (
 )
 
 const (
-	// Time allowed to write a message to the peer.
-	writeWait = 10 * time.Second
-
-	// Time allowed to read the next pong message from the peer.
-	pongWait = 60 * time.Second
-
-	// Send pings to peer with this period. Must be less than pongWait.
-	pingPeriod = (pongWait * 9) / 10
-
-	// Maximum message size allowed from peer.
+	writeWait      = 10 * time.Second
+	pongWait       = 60 * time.Second
+	pingPeriod     = (pongWait * 9) / 10
 	maxMessageSize = 512
 )
 
-// Client represents a connected WebSocket client.
 type Client struct {
 	hub    *Hub
 	conn   *websocket.Conn
 	send   chan []byte
 	userID primitive.ObjectID
 	role   string
-	rooms  map[string]bool // rooms this client has joined
+	rooms  map[string]bool
 }
 
-// readPump pumps messages from the websocket connection to the hub.
 func (c *Client) readPump() {
 	defer func() {
 		c.hub.unregister <- c
@@ -66,7 +57,6 @@ func (c *Client) readPump() {
 	}
 }
 
-// handleMessage processes incoming messages from the client.
 func (c *Client) handleMessage(msg map[string]interface{}) {
 	msgType, ok := msg["type"].(string)
 	if !ok {
@@ -78,15 +68,15 @@ func (c *Client) handleMessage(msg map[string]interface{}) {
 	switch msgType {
 	case "join:order_room":
 		if orderID, ok := data["orderId"].(string); ok && orderID != "" {
-			c.hub.joinRoom(c, "order:"+orderID)
+			c.hub.JoinRoom(c, "order:"+orderID) // ✅ fixed: JoinRoom (capital J)
 		}
 	case "join:driver_room":
 		if driverID, ok := data["driverId"].(string); ok && driverID != "" {
-			c.hub.joinRoom(c, "driver:"+driverID)
+			c.hub.JoinRoom(c, "driver:"+driverID) // ✅ fixed
 		}
 	case "leave:room":
 		if room, ok := data["room"].(string); ok && room != "" {
-			c.hub.leaveRoom(c, room)
+			c.hub.LeaveRoom(c, room) // ✅ fixed: LeaveRoom (capital L)
 		}
 	case "location_update":
 		c.handleLocationUpdate(data)
@@ -100,11 +90,9 @@ func (c *Client) handleMessage(msg map[string]interface{}) {
 }
 
 func (c *Client) handleLocationUpdate(data map[string]interface{}) {
-	// Driver sending location update
 	orderID, _ := data["orderId"].(string)
 	location, _ := data["location"].(map[string]interface{})
 	if orderID != "" && location != nil {
-		// Broadcast to the order room
 		event := WebSocketEvent{
 			Type: "driver_location",
 			Data: map[string]interface{}{
@@ -118,7 +106,6 @@ func (c *Client) handleLocationUpdate(data map[string]interface{}) {
 }
 
 func (c *Client) handleOrderStatusUpdate(data map[string]interface{}) {
-	// Restaurant or driver updating order status
 	orderID, _ := data["orderId"].(string)
 	if orderID != "" {
 		event := WebSocketEvent{
@@ -140,7 +127,6 @@ func (c *Client) handleChatMessage(data map[string]interface{}) {
 	}
 }
 
-// writePump pumps messages from the hub to the websocket connection.
 func (c *Client) writePump() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
@@ -153,7 +139,6 @@ func (c *Client) writePump() {
 		case message, ok := <-c.send:
 			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if !ok {
-				// The hub closed the channel.
 				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
@@ -164,7 +149,6 @@ func (c *Client) writePump() {
 			}
 			w.Write(message)
 
-			// Add queued messages to the current websocket message.
 			n := len(c.send)
 			for i := 0; i < n; i++ {
 				w.Write([]byte{'\n'})

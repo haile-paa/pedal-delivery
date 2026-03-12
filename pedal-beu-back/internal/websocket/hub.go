@@ -6,10 +6,12 @@ import (
 	"sync"
 
 	"github.com/gin-gonic/gin"
-
 	"github.com/haile-paa/pedal-delivery/internal/models"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
+
+// GlobalHub is the singleton hub instance accessible from other packages.
+var GlobalHub *Hub
 
 type WebSocketEvent struct {
 	Type string      `json:"type"`
@@ -74,7 +76,6 @@ func (h *Hub) Run() {
 								select {
 								case client.send <- h.serializeEvent(event):
 								default:
-									// Client's send buffer is full; disconnect client
 									go h.unregisterClient(client)
 								}
 							}
@@ -111,7 +112,7 @@ func (h *Hub) serializeEvent(event WebSocketEvent) []byte {
 }
 
 // Add client to a room
-func (h *Hub) joinRoom(client *Client, room string) {
+func (h *Hub) JoinRoom(client *Client, room string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if _, ok := h.rooms[room]; !ok {
@@ -123,7 +124,7 @@ func (h *Hub) joinRoom(client *Client, room string) {
 }
 
 // Remove client from a room
-func (h *Hub) leaveRoom(client *Client, room string) {
+func (h *Hub) LeaveRoom(client *Client, room string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if clients, ok := h.rooms[room]; ok {
@@ -198,7 +199,12 @@ func (h *Hub) HandleNewMessage(message *models.ChatMessage) {
 	// Send to order room so both customer and driver receive it
 	h.BroadcastToRoom("order:"+message.OrderID.Hex(), event)
 }
+
+// SetupWebSocketRoutes registers WebSocket endpoints and initializes the global hub.
 func SetupWebSocketRoutes(router *gin.RouterGroup, authMiddleware gin.HandlerFunc) {
+	GlobalHub = NewHub()
+	go GlobalHub.Run()
+
 	ws := router.Group("/ws")
 	ws.Use(authMiddleware)
 	{
