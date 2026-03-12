@@ -36,24 +36,18 @@ const PhoneVerificationScreen: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resendTimer, setResendTimer] = useState(0);
-  const [showOtpAlert, setShowOtpAlert] = useState(true); // New state to control OTP alert
   const inputRefs = useRef<TextInput[]>([]);
   const shakeAnimation = useSharedValue(0);
 
-  // Timer for resend OTP
   useEffect(() => {
     let interval: number | null = null;
-
     if (resendTimer > 0) {
       interval = setInterval(() => {
         setResendTimer((prev) => prev - 1);
       }, 1000);
     }
-
     return () => {
-      if (interval !== null) {
-        clearInterval(interval);
-      }
+      if (interval !== null) clearInterval(interval);
     };
   }, [resendTimer]);
 
@@ -103,11 +97,6 @@ const PhoneVerificationScreen: React.FC = () => {
     setError(null);
 
     try {
-      console.log("Sending OTP verification request...");
-      console.log("Phone:", phone);
-      console.log("Role:", role);
-      console.log("OTP:", otpString);
-
       const res = await fetch(
         "https://pedal-delivery-back.onrender.com/api/v1/auth/verify-otp",
         {
@@ -121,72 +110,57 @@ const PhoneVerificationScreen: React.FC = () => {
         },
       );
 
-      console.log("Response status:", res.status);
       const data = await res.json();
-      console.log("Response data:", JSON.stringify(data, null, 2));
 
       if (res.ok) {
         console.log("OTP verified successfully. exists:", data.exists);
 
-        // Check if user exists from the response
         if (data.exists) {
           console.log("User exists, logging in automatically...");
 
-          // Check if tokens are present
-          if (!data.tokens || !data.tokens.accessToken) {
-            console.error("No tokens received from server");
+          // ✅ Use camelCase property names as returned by backend
+          const { accessToken, refreshToken } = data.tokens || {};
+
+          if (!accessToken) {
+            console.error("No access token received from server");
             setError("Authentication failed. Please try again.");
             return;
           }
 
-          // Store refreshToken in AsyncStorage for future use
-          if (data.tokens.refreshToken) {
-            await AsyncStorage.setItem(
-              "refreshToken",
-              data.tokens.refreshToken,
-            );
+          // Store tokens
+          await AsyncStorage.setItem("accessToken", accessToken);
+          if (refreshToken) {
+            await AsyncStorage.setItem("refreshToken", refreshToken);
           }
-
-          // Store accessToken in AsyncStorage
-          await AsyncStorage.setItem("accessToken", data.tokens.accessToken);
-
-          // Store user data in AsyncStorage
           await AsyncStorage.setItem("user", JSON.stringify(data.user));
 
-          // User already exists - use the tokens from verify-otp response
           dispatch({
             type: "LOGIN_SUCCESS",
             payload: {
               user: data.user,
-              token: data.tokens.accessToken,
+              token: accessToken,
               role: data.user.role || role,
             },
           });
 
-          // Navigate to appropriate screen based on role
           if (data.user.role === "driver" || role === "driver") {
-            console.log("Navigating to driver dashboard...");
             router.replace(`/(driver)/dashboard`);
           } else {
-            console.log("Navigating to customer home...");
             router.replace(`/(customer)/home`);
           }
         } else {
           console.log("User doesn't exist, navigating to registration...");
-          // New user - navigate to registration
           router.push({
             pathname: "/(auth)/register",
             params: { phone, role },
           });
         }
       } else {
-        console.error("OTP verification failed:", data.message || data.error);
         setError(data.message || data.error || "Invalid OTP");
         triggerShake();
       }
     } catch (err: any) {
       console.error("Fetch error during OTP verification:", err);
-      console.error("Error message:", err.message);
       setError("Verification failed. Please try again.");
       triggerShake();
     } finally {
@@ -198,7 +172,6 @@ const PhoneVerificationScreen: React.FC = () => {
     if (resendTimer > 0) return;
 
     try {
-      console.log("Resending OTP for phone:", phone, "role:", role);
       const res = await fetch(
         "https://pedal-delivery-back.onrender.com/api/v1/auth/send-otp",
         {
@@ -213,18 +186,14 @@ const PhoneVerificationScreen: React.FC = () => {
 
       const data = await res.json();
       if (res.ok) {
-        // Show OTP in alert for testing
         if (data.otp) {
           Alert.alert("OTP Sent Successfully", `Your OTP is: ${data.otp}`, [
             {
               text: "OK",
               onPress: () => {
-                console.log("OTP alert dismissed");
-                // Auto-fill OTP for convenience during testing
                 const otpDigits = data.otp.split("");
                 if (otpDigits.length === 6) {
                   setOtp(otpDigits);
-                  // Focus on first input after auto-fill
                   setTimeout(() => {
                     inputRefs.current[0]?.focus();
                   }, 100);
@@ -235,8 +204,7 @@ const PhoneVerificationScreen: React.FC = () => {
         } else {
           Alert.alert("Success", "OTP resent successfully!");
         }
-
-        setResendTimer(30); // 30-second cooldown
+        setResendTimer(30);
       } else {
         Alert.alert(
           "Error",
@@ -244,51 +212,17 @@ const PhoneVerificationScreen: React.FC = () => {
         );
       }
     } catch (err) {
-      console.error("Resend OTP error:", err);
       Alert.alert("Error", "Server error. Please try again.");
     }
   };
 
-  // Function to show OTP alert (you can call this on component mount or when OTP is sent)
-  const showOtpInAlert = (otpCode: string) => {
-    Alert.alert(
-      "Development OTP",
-      `Your OTP is: ${otpCode}\n\nEnter this code to verify your phone number.`,
-      [
-        {
-          text: "OK, I'll enter it",
-          onPress: () => {
-            console.log("OTP alert dismissed");
-            // Auto-fill OTP for convenience during testing
-            const otpDigits = otpCode.split("");
-            if (otpDigits.length === 6) {
-              setOtp(otpDigits);
-              // Focus on first input after auto-fill
-              setTimeout(() => {
-                inputRefs.current[0]?.focus();
-              }, 100);
-            }
-          },
-        },
-      ],
-    );
-  };
-
-  // Optional: Add a button to show OTP again
   const handleShowOtpAgain = () => {
-    // You could fetch the OTP from backend again or show a message
     Alert.alert(
       "Get OTP Again",
       "Would you like to see the OTP again? This will resend a new OTP.",
       [
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
-        {
-          text: "Resend & Show",
-          onPress: handleResendOtp,
-        },
+        { text: "Cancel", style: "cancel" },
+        { text: "Resend & Show", onPress: handleResendOtp },
       ],
     );
   };
@@ -315,7 +249,6 @@ const PhoneVerificationScreen: React.FC = () => {
           {role === "driver" ? "Driver" : "Customer"}
         </Text>
 
-        {/* Clickable text to resend OTP */}
         <TouchableOpacity onPress={handleShowOtpAgain}>
           <Text style={styles.helpText}>
             If you didn't get the OTP, click here

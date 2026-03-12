@@ -19,7 +19,6 @@ import {
 } from "../types";
 import { authAPI, checkAuth, orderAPI } from "../../lib/api";
 import { restaurantAPI } from "../../lib/restaurant";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 
 interface AppState {
   auth: {
@@ -65,7 +64,10 @@ interface AppState {
 }
 
 export interface LocationState {
-  currentLocation: { latitude: number; longitude: number } | null;
+  currentLocation: {
+    latitude: number;
+    longitude: number;
+  } | null;
   addresses: Address[];
   selectedAddress: Address | null;
 }
@@ -125,7 +127,13 @@ const initialState: AppState = {
   driver: {
     isOnline: false,
     currentOrder: null,
-    earnings: { today: 0, this_week: 0, this_month: 0, total: 0, pending: 0 },
+    earnings: {
+      today: 0,
+      this_week: 0,
+      this_month: 0,
+      total: 0,
+      pending: 0,
+    },
     documents: [],
     availableOrders: [],
     isLoading: false,
@@ -147,36 +155,50 @@ const initialState: AppState = {
   },
 };
 
+// Helper function to compare cart items
 const cartItemsMatch = (item1: CartItem, item2: CartItem): boolean => {
   if (item1.id !== item2.id) return false;
+
   const addons1 = item1.selected_addons.map((a) => a.id).sort();
   const addons2 = item2.selected_addons.map((a) => a.id).sort();
+
   return JSON.stringify(addons1) === JSON.stringify(addons2);
 };
 
-const normalizeUser = (backendUser: any): User => ({
-  id: backendUser.id || backendUser._id,
-  phone: backendUser.phone,
-  email: backendUser.email,
-  role: backendUser.role?.type || backendUser.role,
-  name: backendUser.profile?.first_name || backendUser.username || "",
-  profile: {
-    first_name: backendUser.profile?.first_name || "",
-    last_name: backendUser.profile?.last_name || "",
-    avatar: backendUser.profile?.avatar,
-    addresses: backendUser.profile?.addresses || [],
-  },
-  is_verified: backendUser.is_verified || false,
-  created_at: backendUser.created_at,
-  updated_at: backendUser.updated_at,
-});
+// Normalize user object from backend to frontend shape
+const normalizeUser = (backendUser: any): User => {
+  return {
+    id: backendUser.id || backendUser._id,
+    phone: backendUser.phone,
+    email: backendUser.email,
+    role: backendUser.role?.type || backendUser.role,
+    name: backendUser.profile?.first_name || backendUser.username || "",
+    profile: {
+      first_name: backendUser.profile?.first_name || "",
+      last_name: backendUser.profile?.last_name || "",
+      avatar: backendUser.profile?.avatar,
+      addresses: backendUser.profile?.addresses || [],
+    },
+    is_verified: backendUser.is_verified || false,
+    created_at: backendUser.created_at,
+    updated_at: backendUser.updated_at,
+  };
+};
 
 const appReducer = (state: AppState, action: AppAction): AppState => {
   switch (action.type) {
     case "SET_LOADING":
-      return { ...state, ui: { ...state.ui, loading: action.payload } };
+      return {
+        ...state,
+        ui: { ...state.ui, loading: action.payload },
+      };
+
     case "SET_ERROR":
-      return { ...state, ui: { ...state.ui, error: action.payload } };
+      return {
+        ...state,
+        ui: { ...state.ui, error: action.payload },
+      };
+
     case "LOGIN_SUCCESS":
       return {
         ...state,
@@ -188,36 +210,52 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
           isAuthenticated: true,
         },
       };
+
     case "LOGOUT":
       return {
         ...initialState,
         auth: { ...initialState.auth, isLoading: false },
       };
+
     case "UPDATE_USER":
       return {
         ...state,
-        auth: { ...state.auth, user: normalizeUser(action.payload) },
+        auth: {
+          ...state.auth,
+          user: normalizeUser(action.payload),
+        },
       };
-    case "ADD_TO_CART": {
+
+    case "ADD_TO_CART":
+      // Guard cart array
       const currentCart = state.customer.cart || [];
       const existingItem = currentCart.find((item) =>
         cartItemsMatch(item, action.payload),
       );
+
       if (existingItem) {
         const updatedCart = currentCart.map((item) =>
           cartItemsMatch(item, action.payload)
             ? { ...item, quantity: item.quantity + action.payload.quantity }
             : item,
         );
-        return { ...state, customer: { ...state.customer, cart: updatedCart } };
+        return {
+          ...state,
+          customer: { ...state.customer, cart: updatedCart },
+        };
       }
+
       return {
         ...state,
-        customer: { ...state.customer, cart: [...currentCart, action.payload] },
+        customer: {
+          ...state.customer,
+          cart: [...currentCart, action.payload],
+        },
       };
-    }
-    case "REMOVE_FROM_CART": {
-      const filtered = (state.customer.cart || []).filter((item) => {
+
+    case "REMOVE_FROM_CART":
+      const currentCartForRemove = state.customer.cart || [];
+      const filteredCart = currentCartForRemove.filter((item) => {
         if (action.payload.selectedAddonsIds) {
           const itemAddonIds = item.selected_addons.map((a) => a.id).sort();
           const targetAddonIds = action.payload.selectedAddonsIds.sort();
@@ -228,10 +266,14 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
         }
         return item.id !== action.payload.id;
       });
-      return { ...state, customer: { ...state.customer, cart: filtered } };
-    }
-    case "UPDATE_CART_QUANTITY": {
-      const updated = (state.customer.cart || [])
+      return {
+        ...state,
+        customer: { ...state.customer, cart: filteredCart },
+      };
+
+    case "UPDATE_CART_QUANTITY":
+      const currentCartForUpdate = state.customer.cart || [];
+      const updatedCart = currentCartForUpdate
         .map((item) => {
           if (action.payload.selectedAddonsIds) {
             const itemAddonIds = item.selected_addons.map((a) => a.id).sort();
@@ -248,20 +290,30 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
           return item;
         })
         .filter((item) => item.quantity > 0);
-      return { ...state, customer: { ...state.customer, cart: updated } };
-    }
+
+      return {
+        ...state,
+        customer: { ...state.customer, cart: updatedCart },
+      };
+
     case "CLEAR_CART":
-      return { ...state, customer: { ...state.customer, cart: [] } };
+      return {
+        ...state,
+        customer: { ...state.customer, cart: [] },
+      };
+
     case "SET_DRIVER_ONLINE":
       return {
         ...state,
         driver: { ...state.driver, isOnline: action.payload },
       };
+
     case "SET_CURRENT_ORDER":
       return {
         ...state,
         driver: { ...state.driver, currentOrder: action.payload },
       };
+
     case "SET_CUSTOMER_ORDERS":
       return {
         ...state,
@@ -271,6 +323,7 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
           isLoading: false,
         },
       };
+
     case "SET_DRIVER_ORDERS":
       return {
         ...state,
@@ -280,40 +333,65 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
           isLoading: false,
         },
       };
+
     case "UPDATE_ORDER_STATUS": {
-      if (!action.payload?.orderId || !action.payload?.status) return state;
+      // Validate payload to prevent crashes
+      if (
+        !action.payload ||
+        !action.payload.orderId ||
+        !action.payload.status
+      ) {
+        console.warn(
+          "UPDATE_ORDER_STATUS received invalid payload",
+          action.payload,
+        );
+        return state;
+      }
+
       try {
+        // Guard all arrays and objects before spreading
         const customerOrders = state.customer.orders || [];
         const driverOrders = state.driver.availableOrders || [];
         const currentOrder = state.driver.currentOrder;
-        const updatedCustomer = customerOrders.map((o) =>
-          o?.id === action.payload.orderId
-            ? { ...o, status: action.payload.status as any }
-            : o,
+
+        const updatedCustomerOrders = customerOrders.map((order) =>
+          order && order.id === action.payload.orderId
+            ? { ...order, status: action.payload.status as any }
+            : order,
         );
-        const updatedDriver = driverOrders.map((o) =>
-          o?.id === action.payload.orderId
-            ? { ...o, status: action.payload.status as any }
-            : o,
+
+        const updatedDriverOrders = driverOrders.map((order) =>
+          order && order.id === action.payload.orderId
+            ? { ...order, status: action.payload.status as any }
+            : order,
         );
-        const updatedCurrent =
+
+        const updatedCurrentOrder =
           currentOrder?.id === action.payload.orderId
             ? { ...currentOrder, status: action.payload.status as any }
             : currentOrder;
+
         return {
           ...state,
-          customer: { ...state.customer, orders: updatedCustomer },
+          customer: {
+            ...state.customer,
+            orders: updatedCustomerOrders,
+          },
           driver: {
             ...state.driver,
-            availableOrders: updatedDriver,
-            currentOrder: updatedCurrent,
+            availableOrders: updatedDriverOrders,
+            currentOrder: updatedCurrentOrder,
           },
         };
       } catch (error) {
-        console.error("Error in UPDATE_ORDER_STATUS:", error);
-        return state;
+        console.error("Error in UPDATE_ORDER_STATUS:", error, {
+          action,
+          state,
+        });
+        return state; // Fallback to current state
       }
     }
+
     case "ADD_NOTIFICATION":
       return {
         ...state,
@@ -322,6 +400,7 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
           notifications: [action.payload, ...(state.ui.notifications || [])],
         },
       };
+
     case "SET_RESTAURANTS":
       return {
         ...state,
@@ -331,6 +410,7 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
           isLoading: false,
         },
       };
+
     case "SET_CURRENT_RESTAURANT":
       return {
         ...state,
@@ -339,16 +419,25 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
           currentRestaurant: action.payload,
         },
       };
+
     case "SET_RESTAURANTS_LOADING":
       return {
         ...state,
-        restaurants: { ...state.restaurants, isLoading: action.payload },
+        restaurants: {
+          ...state.restaurants,
+          isLoading: action.payload,
+        },
       };
+
     case "SET_LOCATION":
       return {
         ...state,
-        location: { ...state.location, currentLocation: action.payload },
+        location: {
+          ...state.location,
+          currentLocation: action.payload,
+        },
       };
+
     case "SET_ADDRESSES":
       return {
         ...state,
@@ -357,12 +446,17 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
           addresses: Array.isArray(action.payload) ? action.payload : [],
         },
       };
+
     case "SELECT_ADDRESS":
       return {
         ...state,
-        location: { ...state.location, selectedAddress: action.payload },
+        location: {
+          ...state.location,
+          selectedAddress: action.payload,
+        },
       };
-    case "ADD_ORDER": {
+
+    case "ADD_ORDER":
       const currentOrders = state.customer.orders || [];
       return {
         ...state,
@@ -371,15 +465,17 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
           orders: [action.payload, ...currentOrders],
         },
       };
-    }
-    case "UPDATE_RESTAURANT": {
+
+    case "UPDATE_RESTAURANT":
       const currentRestaurants = state.restaurants.list || [];
       return {
         ...state,
         restaurants: {
           ...state.restaurants,
-          list: currentRestaurants.map((r) =>
-            r?.id === action.payload.id ? action.payload : r,
+          list: currentRestaurants.map((restaurant) =>
+            restaurant && restaurant.id === action.payload.id
+              ? action.payload
+              : restaurant,
           ),
           currentRestaurant:
             state.restaurants.currentRestaurant?.id === action.payload.id
@@ -387,7 +483,7 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
               : state.restaurants.currentRestaurant,
         },
       };
-    }
+
     default:
       return state;
   }
@@ -422,21 +518,35 @@ export const AppStateProvider: React.FC<{ children: ReactNode }> = ({
 }) => {
   const [state, dispatch] = useReducer(appReducer, initialState);
 
+  // Load user on mount
   useEffect(() => {
     const loadUser = async () => {
       try {
         const authStatus = await checkAuth();
         if (authStatus.isAuthenticated && authStatus.user) {
-          const token = await AsyncStorage.getItem("accessToken");
+          // Get token from AsyncStorage
+          const token = await (async () => {
+            try {
+              const AsyncStorage =
+                await import("@react-native-async-storage/async-storage");
+              return await AsyncStorage.default.getItem("accessToken");
+            } catch (error) {
+              console.error("Error getting token:", error);
+              return null;
+            }
+          })();
+
           if (token) {
             dispatch({
               type: "LOGIN_SUCCESS",
               payload: {
                 user: authStatus.user,
-                token,
+                token: token,
                 role: authStatus.user.role as "customer" | "driver",
               },
             });
+
+            // Load additional data based on role
             if (authStatus.user.role === "customer") {
               await loadCustomerOrders();
               await loadRestaurants();
@@ -451,6 +561,7 @@ export const AppStateProvider: React.FC<{ children: ReactNode }> = ({
         dispatch({ type: "SET_LOADING", payload: false });
       }
     };
+
     loadUser();
   }, []);
 
@@ -458,7 +569,9 @@ export const AppStateProvider: React.FC<{ children: ReactNode }> = ({
     try {
       dispatch({ type: "SET_LOADING", payload: true });
       const response = await authAPI.getProfile();
-      if (response) dispatch({ type: "UPDATE_USER", payload: response });
+      if (response) {
+        dispatch({ type: "UPDATE_USER", payload: response });
+      }
     } catch (error) {
       console.error("Error loading profile:", error);
     } finally {
@@ -470,10 +583,12 @@ export const AppStateProvider: React.FC<{ children: ReactNode }> = ({
     try {
       dispatch({ type: "SET_LOADING", payload: true });
       const response = await orderAPI.getCustomerOrders(1, 10);
-      const ordersArray = response.orders || [];
-      dispatch({ type: "SET_CUSTOMER_ORDERS", payload: ordersArray });
+      // Assuming response.data is an array of orders
+      const orders = response.data || response.orders || [];
+      dispatch({ type: "SET_CUSTOMER_ORDERS", payload: orders });
     } catch (error) {
       console.error("Error loading orders:", error);
+      // Fallback to empty array
       dispatch({ type: "SET_CUSTOMER_ORDERS", payload: [] });
     } finally {
       dispatch({ type: "SET_LOADING", payload: false });
@@ -498,11 +613,18 @@ export const AppStateProvider: React.FC<{ children: ReactNode }> = ({
   }) => {
     try {
       dispatch({ type: "SET_RESTAURANTS_LOADING", payload: true });
+
       const response = await restaurantAPI.getAll({
         page: 1,
         limit: 20,
-        ...(location && { location: { ...location, radius: 10000 } }),
+        ...(location && {
+          location: {
+            ...location,
+            radius: 10000,
+          },
+        }),
       });
+
       if (response.success && response.data.length > 0) {
         const restaurants: Restaurant[] = response.data.map(
           (restaurant: any) => ({
@@ -540,12 +662,15 @@ export const AppStateProvider: React.FC<{ children: ReactNode }> = ({
             updated_at: restaurant.updated_at || new Date().toISOString(),
           }),
         );
+
         dispatch({ type: "SET_RESTAURANTS", payload: restaurants });
       } else {
+        // Fallback to empty array
         dispatch({ type: "SET_RESTAURANTS", payload: [] });
       }
     } catch (error) {
       console.error("Error loading restaurants:", error);
+      dispatch({ type: "SET_RESTAURANTS", payload: [] });
     } finally {
       dispatch({ type: "SET_RESTAURANTS_LOADING", payload: false });
     }
@@ -556,19 +681,25 @@ export const AppStateProvider: React.FC<{ children: ReactNode }> = ({
   ): Promise<Restaurant | null> => {
     try {
       dispatch({ type: "SET_RESTAURANTS_LOADING", payload: true });
-      const existing = state.restaurants.list.find(
-        (r: Restaurant) => r.id === restaurantId,
+
+      const existingRestaurant = state.restaurants.list.find(
+        (r) => r.id === restaurantId,
       );
-      if (existing) {
-        dispatch({ type: "SET_CURRENT_RESTAURANT", payload: existing });
-        return existing;
+      if (existingRestaurant) {
+        dispatch({
+          type: "SET_CURRENT_RESTAURANT",
+          payload: existingRestaurant,
+        });
+        return existingRestaurant;
       }
+
       const response = await restaurantAPI.getById(restaurantId);
       if (response.success && response.data) {
         const restaurant = response.data as Restaurant;
         dispatch({ type: "SET_CURRENT_RESTAURANT", payload: restaurant });
         return restaurant;
       }
+
       return null;
     } catch (error) {
       console.error("Error loading restaurant details:", error);
@@ -632,7 +763,9 @@ export const AppStateProvider: React.FC<{ children: ReactNode }> = ({
   ): Promise<MenuItem[]> => {
     try {
       const response = await restaurantAPI.getMenu(restaurantId);
-      if (response.success) return response.data;
+      if (response.success) {
+        return response.data;
+      }
       return [];
     } catch (error) {
       console.error("Error loading restaurant menu:", error);
@@ -649,68 +782,45 @@ export const AppStateProvider: React.FC<{ children: ReactNode }> = ({
     }
   };
 
+  // *** UPDATED createOrder: calls the real backend API ***
   const createOrder = async (orderData: any): Promise<Order> => {
     try {
       dispatch({ type: "SET_LOADING", payload: true });
 
-      const items = (state.customer.cart || []).map((cartItem: CartItem) => ({
-        menu_item_id: cartItem.menu_item.id,
-        quantity: cartItem.quantity,
-        addons: cartItem.selected_addons.map((addon: any) => ({
-          addon_id: addon.id,
-        })),
-        notes: cartItem.special_instructions,
-      }));
-
+      // Prepare payload for backend
       const payload = {
         restaurant_id: orderData.restaurant_id,
-        items,
-        address_id: orderData.address_id,
+        items: (state.customer.cart || []).map((item) => ({
+          menu_item_id: item.menu_item.id,
+          quantity: item.quantity,
+          selected_addons: item.selected_addons.map((a) => a.id),
+          special_instructions: item.special_instructions,
+        })),
+        delivery_address: orderData.address, // adjust field name to match backend
+        payment_method: orderData.payment_method,
         notes: orderData.notes,
-        payment_method: orderData.payment_method || "cash",
+        scheduled_for: orderData.scheduled_for,
       };
 
-      console.log("📤 createOrder payload:", payload);
+      // Call the real API (retry logic inside orderAPI)
       const response = await orderAPI.createOrder(payload);
-      console.log("📥 createOrder raw response:", response);
 
-      const newOrder = response.data || response;
-      if (!newOrder || !newOrder._id) {
-        throw new Error("Invalid response from server: missing order ID");
-      }
+      // Extract the order – adjust based on your API response structure
+      const serverOrder: Order = response.order || response.data || response;
 
-      const frontendOrder: Order = {
-        id: newOrder._id || newOrder.id,
-        order_number: newOrder.order_number,
-        customer_id: newOrder.customer_id,
-        restaurant_id: newOrder.restaurant_id,
-        items: newOrder.items,
-        status: newOrder.status,
-        total_amount: newOrder.total_amount,
-        delivery_info: newOrder.delivery_info,
-        timeline: newOrder.timeline,
-        payment_method: newOrder.payment_method,
-        payment_status: newOrder.payment_status,
-        is_scheduled: newOrder.is_scheduled,
-        scheduled_for: newOrder.scheduled_for,
-        created_at: newOrder.created_at,
-        updated_at: newOrder.updated_at,
-      };
-
-      console.log("✅ Created order:", frontendOrder);
-
+      // Update state with the real order
       const currentOrders = state.customer.orders || [];
       dispatch({
         type: "SET_CUSTOMER_ORDERS",
-        payload: [frontendOrder, ...currentOrders],
+        payload: [serverOrder, ...currentOrders],
       });
 
       dispatch({ type: "CLEAR_CART" });
 
-      return frontendOrder;
-    } catch (error) {
-      console.error("❌ Error creating order:", error);
-      throw error;
+      return serverOrder;
+    } catch (error: any) {
+      console.error("Error creating order:", error);
+      throw new Error(error.message || "Failed to create order");
     } finally {
       dispatch({ type: "SET_LOADING", payload: false });
     }
@@ -720,7 +830,9 @@ export const AppStateProvider: React.FC<{ children: ReactNode }> = ({
     try {
       dispatch({ type: "SET_LOADING", payload: true });
       const response = await authAPI.updateProfile(data);
-      if (response) dispatch({ type: "UPDATE_USER", payload: response });
+      if (response) {
+        dispatch({ type: "UPDATE_USER", payload: response });
+      }
     } catch (error) {
       console.error("Error updating profile:", error);
       throw error;
@@ -761,7 +873,8 @@ export const AppStateProvider: React.FC<{ children: ReactNode }> = ({
 
 export const useAppState = () => {
   const context = useContext(AppStateContext);
-  if (!context)
+  if (!context) {
     throw new Error("useAppState must be used within AppStateProvider");
+  }
   return context;
 };

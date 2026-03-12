@@ -18,7 +18,6 @@ class WebSocketService {
 
   async connect(token: string) {
     try {
-      // Use your render.com backend URL for WebSocket
       const baseUrl = "wss://pedal-delivery-back.onrender.com";
 
       console.log(`Connecting to WebSocket at ${baseUrl}`);
@@ -76,13 +75,11 @@ class WebSocketService {
     // Also listen for the raw events that might come from Go server
     this.socket.on("order_update", (data: any) => {
       console.log("Received order_update (raw):", data);
-      // Transform to match your React Native expected format
       this.trigger("order:status_update", data);
     });
 
     this.socket.on("driver_location", (data: any) => {
       console.log("Received driver_location (raw):", data);
-      // Transform to match your React Native expected format
       this.trigger("driver:location_update", data);
     });
   }
@@ -143,9 +140,10 @@ class WebSocketService {
     this.emit("join:driver_room", { driverId });
   }
 
+  // ✅ orderId is now optional – used for order‑specific tracking, but can be omitted for general location updates
   updateDriverLocation(
     location: { lat: number; lng: number },
-    orderId: string,
+    orderId?: string,
   ) {
     this.emit("driver:location_update", { location, orderId });
   }

@@ -91,6 +91,7 @@ const OrderTrackingScreen: React.FC = () => {
   const [routeCoordinates, setRouteCoordinates] = useState<
     Array<{ latitude: number; longitude: number }>
   >([]);
+  const [error, setError] = useState<string | null>(null);
 
   const statusSteps = [
     { title: "Order Placed", description: "Restaurant confirmed" },
@@ -153,6 +154,7 @@ const OrderTrackingScreen: React.FC = () => {
   const initializeTracking = async () => {
     try {
       setLoading(true);
+      setError(null);
 
       // Get user location
       await getUserLocation();
@@ -165,16 +167,16 @@ const OrderTrackingScreen: React.FC = () => {
 
       // Set up time remaining timer
       startTimer();
-    } catch (error) {
-      console.error("Initialization error:", error);
-      Alert.alert("Error", "Failed to initialize order tracking");
+    } catch (err) {
+      console.error("Initialization error:", err);
+      setError("Failed to load order details. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
   const getUserLocation = () => {
-    return new Promise<void>((resolve, reject) => {
+    return new Promise<void>((resolve) => {
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
           (position) => {
@@ -191,16 +193,21 @@ const OrderTrackingScreen: React.FC = () => {
           { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 },
         );
       } else {
-        resolve(); // Continue without location
+        resolve();
       }
     });
   };
 
   const fetchOrderDetails = async () => {
     try {
-      const token = await AsyncStorage.getItem("userToken");
-      const response = await fetch(
-        `http://192.168.1.3:8080/api/v1/orders/${orderId}`,
+      const token = await AsyncStorage.getItem("accessToken");
+      if (!token) {
+        throw new Error("You are not logged in");
+      }
+
+      // Fetch order
+      const orderRes = await fetch(
+        `https://pedal-delivery-back.onrender.com/api/v1/orders/${orderId}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -208,59 +215,87 @@ const OrderTrackingScreen: React.FC = () => {
           },
         },
       );
-
-      const data = await response.json();
-
-      if (response.ok) {
-        setOrderDetails(data);
-        setCurrentStatus(data.status);
-
-        // Convert restaurant location from GeoLocation to {latitude, longitude}
-        if (data.restaurant_location && data.restaurant_location.coordinates) {
-          setRestaurantLocation({
-            latitude: data.restaurant_location.coordinates[1],
-            longitude: data.restaurant_location.coordinates[0],
-          });
-        }
-
-        if (data.driver) {
-          setDriverInfo(data.driver);
-        }
-
-        // Convert driver location from GeoLocation to {latitude, longitude}
-        if (data.driver_location && data.driver_location.coordinates) {
-          const driverLoc = {
-            latitude: data.driver_location.coordinates[1],
-            longitude: data.driver_location.coordinates[0],
-          };
-          setDriverLocation(driverLoc);
-          calculateRoute(driverLoc);
-        }
-
-        if (data.estimated_delivery_minutes) {
-          setTimeRemaining(data.estimated_delivery_minutes);
-        }
-      } else {
-        throw new Error(data.message || "Failed to fetch order details");
+      const orderData = await orderRes.json();
+      if (!orderRes.ok) {
+        throw new Error(orderData.message || "Failed to fetch order");
       }
-    } catch (error) {
+
+      console.log("Order data from backend:", orderData);
+
+      // Fetch restaurant details using restaurant_id
+      const restaurantRes = await fetch(
+        `https://pedal-delivery-back.onrender.com/api/v1/restaurants/${orderData.restaurant_id}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
+      const restaurantData = await restaurantRes.json();
+      if (!restaurantRes.ok) {
+        throw new Error("Failed to fetch restaurant");
+      }
+
+      // Transform into OrderDetails
+      const details: OrderDetails = {
+        id: orderData.id,
+        restaurant_name: restaurantData.name,
+        restaurant_address: restaurantData.address,
+        items: orderData.items.map((item: any) => ({
+          name: item.name,
+          quantity: item.quantity,
+          price: item.price,
+        })),
+        total_amount: orderData.total_amount?.total || 0,
+        delivery_address: orderData.delivery_info?.address?.address || "",
+        estimated_delivery_time:
+          orderData.delivery_info?.estimated_delivery || "",
+        created_at: orderData.created_at,
+      };
+
+      setOrderDetails(details);
+      setCurrentStatus(orderData.status);
+
+      // Restaurant location
+      if (restaurantData.location?.coordinates) {
+        setRestaurantLocation({
+          latitude: restaurantData.location.coordinates[1],
+          longitude: restaurantData.location.coordinates[0],
+        });
+      }
+
+      // Driver info (if already assigned)
+      if (orderData.driver_id && orderData.driver) {
+        setDriverInfo(orderData.driver);
+      }
+
+      // Driver location (if any)
+      if (orderData.driver_location?.coordinates) {
+        const driverLoc = {
+          latitude: orderData.driver_location.coordinates[1],
+          longitude: orderData.driver_location.coordinates[0],
+        };
+        setDriverLocation(driverLoc);
+        calculateRoute(driverLoc);
+      }
+
+      if (orderData.estimated_delivery_minutes) {
+        setTimeRemaining(orderData.estimated_delivery_minutes);
+      }
+    } catch (error: any) {
       console.error("Fetch order error:", error);
-      Alert.alert("Error", "Could not load order details");
+      throw error; // re-throw to be caught by initializeTracking
     }
   };
 
   const setupWebSocket = async () => {
     try {
-      const token = await AsyncStorage.getItem("userToken");
+      const token = await AsyncStorage.getItem("accessToken");
+      if (!token) return;
 
-      WebSocketService.connect(token || "");
+      WebSocketService.connect(token);
 
-      // Set up event listeners
       WebSocketService.on("connect", () => {
         console.log("WebSocket connected");
         setWebSocketConnected(true);
-
-        // Join order room
         WebSocketService.joinOrderRoom(orderId);
       });
 
@@ -292,7 +327,6 @@ const OrderTrackingScreen: React.FC = () => {
   };
 
   const handleDriverLocationUpdate = (data: any) => {
-    // Convert GeoLocation to {latitude, longitude} if needed
     let location = data.location;
     if (location.coordinates) {
       location = {
@@ -304,7 +338,6 @@ const OrderTrackingScreen: React.FC = () => {
     setDriverLocation(location);
     calculateRoute(location);
 
-    // Animate map to show driver location
     if (mapRef.current && location) {
       mapRef.current.animateToRegion({
         latitude: location.latitude,
@@ -317,7 +350,6 @@ const OrderTrackingScreen: React.FC = () => {
 
   const handleOrderStatusUpdate = (data: any) => {
     setCurrentStatus(data.status);
-
     if (data.message) {
       Alert.alert("Status Update", data.message, [{ text: "OK" }]);
     }
@@ -369,9 +401,6 @@ const OrderTrackingScreen: React.FC = () => {
     longitude: number;
   }) => {
     if (!userLocation) return;
-
-    // In a real app, you would use a routing API like Google Maps Directions
-    // For now, we'll create a simple straight line
     setRouteCoordinates([driverLoc, userLocation]);
   };
 
@@ -384,7 +413,7 @@ const OrderTrackingScreen: React.FC = () => {
         }
         return prev - 1;
       });
-    }, 60000); // Update every minute
+    }, 60000);
 
     return () => clearInterval(timer);
   };
@@ -394,7 +423,6 @@ const OrderTrackingScreen: React.FC = () => {
       Alert.alert("No Driver", "Driver has not been assigned yet.");
       return;
     }
-
     Alert.alert("Call Driver", `Would you like to call ${driverInfo.name}?`, [
       { text: "Cancel", style: "cancel" },
       {
@@ -411,8 +439,6 @@ const OrderTrackingScreen: React.FC = () => {
       Alert.alert("No Driver", "Driver has not been assigned yet.");
       return;
     }
-
-    // For SMS
     Linking.openURL(`sms:${driverInfo.phone}`);
   };
 
@@ -424,9 +450,9 @@ const OrderTrackingScreen: React.FC = () => {
         style: "destructive",
         onPress: async () => {
           try {
-            const token = await AsyncStorage.getItem("userToken");
+            const token = await AsyncStorage.getItem("accessToken");
             const response = await fetch(
-              `http://192.168.1.3:8080/api/v1/orders/${orderId}/cancel`,
+              `https://pedal-delivery-back.onrender.com/api/v1/orders/${orderId}/cancel`,
               {
                 method: "POST",
                 headers: {
@@ -442,7 +468,6 @@ const OrderTrackingScreen: React.FC = () => {
                 "Order Cancelled",
                 "Your order has been cancelled successfully.",
               );
-
               setTimeout(() => {
                 router.replace("/(customer)/home");
               }, 2000);
@@ -459,8 +484,6 @@ const OrderTrackingScreen: React.FC = () => {
   };
 
   const handleContactRestaurant = () => {
-    if (!orderDetails) return;
-
     Alert.alert("Contact Restaurant", "This feature is coming soon!", [
       { text: "OK" },
     ]);
@@ -476,7 +499,10 @@ const OrderTrackingScreen: React.FC = () => {
     Alert.alert("Help", "Help feature coming soon!", [{ text: "OK" }]);
   };
 
-  // Check if order can be cancelled
+  const handleRetry = () => {
+    initializeTracking();
+  };
+
   const canCancelOrder = () => {
     const cancellableStatuses = [
       "pending",
@@ -501,6 +527,29 @@ const OrderTrackingScreen: React.FC = () => {
     );
   }
 
+  if (error) {
+    return (
+      <View style={styles.errorContainer}>
+        <StatusBar
+          barStyle='dark-content'
+          backgroundColor={colors.background}
+        />
+        <Ionicons name='alert-circle' size={64} color={colors.error} />
+        <Text style={styles.errorTitle}>Something went wrong</Text>
+        <Text style={styles.errorMessage}>{error}</Text>
+        <TouchableOpacity style={styles.retryButton} onPress={handleRetry}>
+          <Text style={styles.retryButtonText}>Try Again</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.goBackButton}
+          onPress={() => router.back()}
+        >
+          <Text style={styles.goBackButtonText}>Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   if (currentStatus === "cancelled") {
     return (
       <View style={styles.container}>
@@ -509,7 +558,6 @@ const OrderTrackingScreen: React.FC = () => {
           backgroundColor={colors.background}
         />
         <Stack.Screen options={{ title: "Order Cancelled" }} />
-
         <View style={styles.centeredContent}>
           <Ionicons name='close-circle' size={80} color={colors.error} />
           <Text style={styles.cancelledTitle}>Order Cancelled</Text>
@@ -537,14 +585,12 @@ const OrderTrackingScreen: React.FC = () => {
           backgroundColor={colors.background}
         />
         <Stack.Screen options={{ title: "Order Delivered" }} />
-
         <View style={styles.centeredContent}>
           <Ionicons name='checkmark-circle' size={80} color={colors.success} />
           <Text style={styles.deliveredTitle}>🎉 Order Delivered!</Text>
           <Text style={styles.deliveredMessage}>
             Your food has been delivered. Enjoy your meal!
           </Text>
-
           {orderDetails && (
             <View style={styles.deliverySummary}>
               <Text style={styles.summaryTitle}>Order Summary</Text>
@@ -560,7 +606,6 @@ const OrderTrackingScreen: React.FC = () => {
               </Text>
             </View>
           )}
-
           <View style={styles.deliveredActions}>
             <AnimatedButton
               title='Rate Your Order'
@@ -606,11 +651,12 @@ const OrderTrackingScreen: React.FC = () => {
           showsUserLocation={true}
           showsMyLocationButton={true}
         >
-          {/* Restaurant Marker */}
           {restaurantLocation && (
             <Marker
               coordinate={restaurantLocation}
-              title={restaurantName || "Restaurant"}
+              title={
+                orderDetails?.restaurant_name || restaurantName || "Restaurant"
+              }
               description='Pickup location'
             >
               <View style={styles.restaurantMarker}>
@@ -618,8 +664,6 @@ const OrderTrackingScreen: React.FC = () => {
               </View>
             </Marker>
           )}
-
-          {/* Driver Marker */}
           {driverLocation && (
             <Marker
               coordinate={driverLocation}
@@ -631,8 +675,6 @@ const OrderTrackingScreen: React.FC = () => {
               </View>
             </Marker>
           )}
-
-          {/* User Marker */}
           {userLocation && (
             <Marker
               coordinate={userLocation}
@@ -641,8 +683,6 @@ const OrderTrackingScreen: React.FC = () => {
               pinColor={colors.primary}
             />
           )}
-
-          {/* Route Line */}
           {routeCoordinates.length > 0 && (
             <Polyline
               coordinates={routeCoordinates}
@@ -653,7 +693,6 @@ const OrderTrackingScreen: React.FC = () => {
           )}
         </MapView>
 
-        {/* WebSocket Status */}
         <View style={styles.connectionStatus}>
           <View
             style={[
@@ -681,7 +720,6 @@ const OrderTrackingScreen: React.FC = () => {
             <Text style={styles.timeLabel}>Estimated Delivery</Text>
             <Text style={styles.timeValue}>{timeRemaining} min</Text>
           </View>
-
           <View style={styles.currentStatus}>
             <Ionicons
               name={statusIcons[currentStatus] as any}
@@ -706,7 +744,6 @@ const OrderTrackingScreen: React.FC = () => {
           showLabels={true}
         />
 
-        {/* Driver Info */}
         {driverInfo ? (
           <View style={styles.driverInfoCard}>
             <Text style={styles.sectionTitle}>Your Driver</Text>
@@ -737,7 +774,6 @@ const OrderTrackingScreen: React.FC = () => {
                 </View>
               </View>
             </View>
-
             <View style={styles.driverActions}>
               <TouchableOpacity
                 style={styles.callDriverButton}
@@ -746,7 +782,6 @@ const OrderTrackingScreen: React.FC = () => {
                 <Ionicons name='call' size={20} color={colors.white} />
                 <Text style={styles.callDriverText}>Call Driver</Text>
               </TouchableOpacity>
-
               <TouchableOpacity
                 style={styles.messageDriverButton}
                 onPress={handleMessageDriver}
@@ -770,25 +805,21 @@ const OrderTrackingScreen: React.FC = () => {
           </View>
         )}
 
-        {/* Order Details */}
         {orderDetails && (
           <View style={styles.orderDetailsCard}>
             <Text style={styles.sectionTitle}>Order Details</Text>
-
             <View style={styles.orderInfoRow}>
               <Ionicons name='restaurant' size={20} color={colors.gray600} />
               <Text style={styles.orderInfoText}>
                 {orderDetails.restaurant_name}
               </Text>
             </View>
-
             <View style={styles.orderInfoRow}>
               <Ionicons name='location' size={20} color={colors.gray600} />
               <Text style={styles.orderInfoText}>
                 {orderDetails.delivery_address}
               </Text>
             </View>
-
             <View style={styles.orderInfoRow}>
               <Ionicons name='time' size={20} color={colors.gray600} />
               <Text style={styles.orderInfoText}>
@@ -796,7 +827,6 @@ const OrderTrackingScreen: React.FC = () => {
                 {new Date(orderDetails.created_at).toLocaleTimeString()}
               </Text>
             </View>
-
             <TouchableOpacity
               style={styles.viewOrderButton}
               onPress={handleViewOrderDetails}
@@ -811,7 +841,6 @@ const OrderTrackingScreen: React.FC = () => {
           </View>
         )}
 
-        {/* Actions */}
         <View style={styles.actionsSection}>
           <View style={styles.actionButtons}>
             <TouchableOpacity
@@ -823,14 +852,11 @@ const OrderTrackingScreen: React.FC = () => {
                 Contact Restaurant
               </Text>
             </TouchableOpacity>
-
             <TouchableOpacity style={styles.helpButton} onPress={handleHelp}>
               <Ionicons name='help-circle' size={20} color={colors.primary} />
               <Text style={styles.helpText}>Help</Text>
             </TouchableOpacity>
           </View>
-
-          {/* Show cancel button only if order can be cancelled */}
           {canCancelOrder() && (
             <TouchableOpacity
               style={styles.cancelButton}
@@ -860,6 +886,54 @@ const styles = StyleSheet.create({
     marginTop: 12,
     fontSize: 16,
     color: colors.gray600,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: colors.white,
+    paddingHorizontal: 24,
+  },
+  errorTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: colors.gray800,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  errorMessage: {
+    fontSize: 16,
+    color: colors.gray600,
+    textAlign: "center",
+    marginBottom: 24,
+  },
+  retryButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 12,
+    marginBottom: 12,
+    width: "100%",
+    alignItems: "center",
+  },
+  retryButtonText: {
+    color: colors.white,
+    fontSize: 16,
+    fontWeight: "bold",
+  },
+  goBackButton: {
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.gray300,
+    width: "100%",
+    alignItems: "center",
+  },
+  goBackButtonText: {
+    color: colors.gray700,
+    fontSize: 16,
+    fontWeight: "600",
   },
   mapSection: {
     flex: 1,

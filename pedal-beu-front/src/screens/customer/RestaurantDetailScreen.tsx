@@ -13,7 +13,13 @@ import {
 } from "react-native";
 import { useAppState } from "../../context/AppStateContext";
 import { colors } from "../../theme/colors";
-import { Restaurant, MenuItem, CartItem, OrderStatus } from "../../types";
+import {
+  Restaurant,
+  MenuItem,
+  CartItem,
+  OrderStatus,
+  Order,
+} from "../../types";
 import CategoryFilter from "../../components/customer/CategoryFilter";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
@@ -183,8 +189,12 @@ const RestaurantDetailScreen: React.FC = () => {
     setShowCheckout(true);
   };
 
-  const handlePlaceOrder = (paymentMethod: string) => {
-    if (!restaurant) return;
+  // *** FIXED: now async and always returns a Promise<Order> ***
+  const handlePlaceOrder = async (paymentMethod: string): Promise<Order> => {
+    // Guard: restaurant must exist (should always be true when this is called)
+    if (!restaurant) {
+      throw new Error("Restaurant information is missing");
+    }
 
     setShowCheckout(false);
 
@@ -193,7 +203,6 @@ const RestaurantDetailScreen: React.FC = () => {
     const serviceCharge = cartTotal * 0.1;
     const grandTotal = cartTotal + deliveryFee + serviceCharge;
 
-    // Ensure coordinates are a tuple [number, number]
     const getCoordinates = (coords: number[] | undefined): [number, number] => {
       if (Array.isArray(coords) && coords.length >= 2) {
         return [coords[0], coords[1]];
@@ -201,7 +210,7 @@ const RestaurantDetailScreen: React.FC = () => {
       return [0, 0];
     };
 
-    const order = {
+    const order: Order = {
       id: `order-${Date.now()}`,
       order_number: `ORD-${Date.now()}`,
       customer_id: state.auth.user?.id || "",
@@ -275,6 +284,8 @@ const RestaurantDetailScreen: React.FC = () => {
         restaurantName: restaurant.name,
       },
     });
+
+    return order; // now this returns a Promise<Order> because the function is async
   };
 
   const handleAddressChange = () => {
@@ -771,10 +782,6 @@ const styles = StyleSheet.create({
   },
   addButtonDisabled: {
     backgroundColor: colors.gray400,
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    borderRadius: 20,
-    alignSelf: "flex-start",
   },
   addButtonText: {
     color: colors.white,

@@ -6,6 +6,7 @@ import (
 
 	"github.com/haile-paa/pedal-delivery/internal/models"
 	"github.com/haile-paa/pedal-delivery/internal/services"
+	"github.com/haile-paa/pedal-delivery/internal/websocket"
 
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -86,6 +87,14 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
+	}
+
+	// Broadcast new order to all drivers (no location filtering)
+	if websocket.GlobalHub != nil {
+		websocket.GlobalHub.BroadcastToRoom("drivers", websocket.WebSocketEvent{
+			Type: "order:new",
+			Data: order,
+		})
 	}
 
 	c.JSON(http.StatusCreated, order)

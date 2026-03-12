@@ -21,6 +21,50 @@ import WebSocketService from "../../services/websocket.service";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 
+// Define the expected shape of a backend order (from REST or WebSocket)
+interface BackendOrder {
+  id: string;
+  order_number?: string;
+  restaurant_id: string;
+  customer_id: string;
+  items: Array<{
+    name: string;
+    quantity: number;
+    price: number;
+  }>;
+  total_amount: {
+    total: number;
+  };
+  delivery_info: {
+    address: {
+      address: string;
+      location?: {
+        coordinates: [number, number]; // [lng, lat]
+      };
+    };
+    contact_name: string;
+    contact_phone: string;
+    estimated_delivery?: string;
+  };
+  special_instructions?: string;
+  payment_method: string;
+  created_at: string;
+  restaurant?: {
+    name: string;
+    address: string;
+    image?: string;
+    rating: number;
+    location?: {
+      coordinates: [number, number];
+    };
+  };
+  customer?: {
+    name: string;
+    phone: string;
+  };
+}
+
+// Frontend Order interface used in the screen
 interface Order {
   id: string;
   orderId: string;
@@ -70,6 +114,63 @@ interface DriverStats {
   acceptanceRate: number;
 }
 
+// Helper to convert backend order to frontend Order
+const mapBackendOrder = (backendOrder: BackendOrder): Order => {
+  const restaurantLocation = backendOrder.restaurant?.location?.coordinates
+    ? {
+        latitude: backendOrder.restaurant.location.coordinates[1],
+        longitude: backendOrder.restaurant.location.coordinates[0],
+      }
+    : { latitude: 0, longitude: 0 };
+
+  const customerLocation = backendOrder.delivery_info.address.location
+    ?.coordinates
+    ? {
+        latitude: backendOrder.delivery_info.address.location.coordinates[1],
+        longitude: backendOrder.delivery_info.address.location.coordinates[0],
+      }
+    : { latitude: 0, longitude: 0 };
+
+  return {
+    id: backendOrder.id,
+    orderId: backendOrder.order_number || backendOrder.id,
+    restaurant: {
+      id: backendOrder.restaurant_id,
+      name: backendOrder.restaurant?.name || "Restaurant",
+      address: backendOrder.restaurant?.address || "",
+      image: backendOrder.restaurant?.image,
+      rating: backendOrder.restaurant?.rating || 0,
+    },
+    customer: {
+      id: backendOrder.customer_id,
+      name: backendOrder.delivery_info.contact_name,
+      phone: backendOrder.delivery_info.contact_phone,
+      location: customerLocation,
+    },
+    amount: backendOrder.total_amount.total,
+    distance: "N/A", // will be calculated later if driver location available
+    items: backendOrder.items.map((item) => ({
+      name: item.name,
+      quantity: item.quantity,
+    })),
+    itemsCount: backendOrder.items.reduce(
+      (sum, item) => sum + item.quantity,
+      0,
+    ),
+    estimatedPreparationTime: 15, // placeholder, could come from backend
+    estimatedDeliveryTime: backendOrder.delivery_info.estimated_delivery
+      ? new Date(
+          backendOrder.delivery_info.estimated_delivery,
+        ).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      : "30 min",
+    specialInstructions: backendOrder.special_instructions,
+    createdAt: backendOrder.created_at,
+    restaurantLocation,
+    customerLocation,
+    paymentMethod: backendOrder.payment_method,
+  };
+};
+
 const AvailableOrdersScreen: React.FC = () => {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
@@ -94,17 +195,21 @@ const AvailableOrdersScreen: React.FC = () => {
   });
   const [loading, setLoading] = useState(true);
   const appState = useRef(AppState.currentState);
+  const locationInterval = useRef<ReturnType<typeof setInterval> | null>(null); // ✅ React Native interval type
 
   useEffect(() => {
     initializeDriver();
 
     const subscription = AppState.addEventListener(
       "change",
-      handleAppStateChange
+      handleAppStateChange,
     );
 
     return () => {
       subscription.remove();
+      if (locationInterval.current) {
+        clearInterval(locationInterval.current);
+      }
       WebSocketService.disconnect();
     };
   }, []);
@@ -124,6 +229,11 @@ const AvailableOrdersScreen: React.FC = () => {
 
       // Fetch driver stats
       await fetchDriverStats();
+
+      // Start periodic location updates if online
+      if (isOnline) {
+        startLocationUpdates();
+      }
     } catch (error) {
       console.error("Initialization error:", error);
       Alert.alert("Error", "Failed to initialize driver app");
@@ -137,32 +247,23 @@ const AvailableOrdersScreen: React.FC = () => {
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
           (position) => {
-            setDriverLocation({
-              latitude: position.coords.latitude,
-              longitude: position.coords.longitude,
-            });
+            const { latitude, longitude } = position.coords;
+            setDriverLocation({ latitude, longitude });
 
-            // Store driver location for WebSocket
-            const updateLocation = async () => {
-              const token = await AsyncStorage.getItem("driverToken");
-              if (token) {
-                WebSocketService.updateDriverLocation(
-                  {
-                    lat: position.coords.latitude,
-                    lng: position.coords.longitude,
-                  },
-                  "driver"
-                );
-              }
-            };
-            updateLocation();
+            // Send initial location via WebSocket – ✅ convert to lat/lng format
+            if (isOnline) {
+              WebSocketService.updateDriverLocation({
+                lat: latitude,
+                lng: longitude,
+              });
+            }
             resolve();
           },
           (error) => {
             console.error("Location error:", error);
             resolve(); // Continue without location
           },
-          { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+          { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 },
         );
       } else {
         resolve(); // Continue without location
@@ -170,11 +271,28 @@ const AvailableOrdersScreen: React.FC = () => {
     });
   };
 
+  const startLocationUpdates = () => {
+    if (locationInterval.current) clearInterval(locationInterval.current);
+    locationInterval.current = setInterval(() => {
+      if (driverLocation && isOnline) {
+        WebSocketService.updateDriverLocation({
+          lat: driverLocation.latitude,
+          lng: driverLocation.longitude,
+        });
+      }
+    }, 10000); // every 10 seconds
+  };
+
   const connectWebSocket = async () => {
     try {
-      const token = await AsyncStorage.getItem("driverToken");
+      const token = await AsyncStorage.getItem("accessToken"); // unified token
+      if (!token) {
+        Alert.alert("Error", "You are not logged in");
+        router.replace("/login");
+        return;
+      }
 
-      WebSocketService.connect(token || "");
+      WebSocketService.connect(token);
 
       WebSocketService.on("connect", () => {
         console.log("Driver WebSocket connected");
@@ -207,20 +325,30 @@ const AvailableOrdersScreen: React.FC = () => {
       initializeDriver();
     } else if (isGoingToBackground) {
       // App went to background
+      if (locationInterval.current) {
+        clearInterval(locationInterval.current);
+      }
       WebSocketService.disconnect();
     }
 
     appState.current = nextAppState;
   };
 
-  const handleNewOrder = (order: Order) => {
-    setAvailableOrders((prev) => {
-      // Check if order already exists
-      if (prev.some((o) => o.id === order.id)) {
-        return prev;
-      }
+  const handleNewOrder = (data: BackendOrder) => {
+    const order = mapBackendOrder(data);
+    // Calculate distance if driver location is available
+    if (driverLocation) {
+      const dist = calculateDistance(
+        driverLocation.latitude,
+        driverLocation.longitude,
+        order.restaurantLocation.latitude,
+        order.restaurantLocation.longitude,
+      );
+      order.distance = `${dist.toFixed(1)} km`;
+    }
 
-      // Add new order to the beginning
+    setAvailableOrders((prev) => {
+      if (prev.some((o) => o.id === order.id)) return prev;
       return [order, ...prev];
     });
 
@@ -228,7 +356,7 @@ const AvailableOrdersScreen: React.FC = () => {
     Alert.alert(
       "🎉 New Order Available!",
       `New order from ${order.restaurant.name} for ${order.amount.toFixed(
-        2
+        2,
       )} Birr`,
       [
         {
@@ -238,19 +366,16 @@ const AvailableOrdersScreen: React.FC = () => {
         {
           text: "View",
           onPress: () => {
-            // Scroll to the new order
-            setTimeout(() => {
-              // You could add animation or scroll logic here
-            }, 100);
+            // Optionally scroll to the order
           },
         },
-      ]
+      ],
     );
   };
 
   const handleOrderCancelled = (data: { orderId: string }) => {
     setAvailableOrders((prev) =>
-      prev.filter((order) => order.id !== data.orderId)
+      prev.filter((order) => order.id !== data.orderId),
     );
   };
 
@@ -259,60 +384,44 @@ const AvailableOrdersScreen: React.FC = () => {
     driverId: string;
   }) => {
     // If another driver took the order, remove it from available list
-    const driverId = await AsyncStorage.getItem("driverId");
+    const driverId = await AsyncStorage.getItem("userId");
     if (data.driverId !== driverId) {
       setAvailableOrders((prev) =>
-        prev.filter((order) => order.id !== data.orderId)
+        prev.filter((order) => order.id !== data.orderId),
       );
     }
   };
 
   const fetchAvailableOrders = async () => {
     try {
-      const token = await AsyncStorage.getItem("driverToken");
+      const token = await AsyncStorage.getItem("accessToken");
       const response = await fetch(
-        "http://192.168.1.3:8080/api/v1/driver/orders/available",
+        "https://pedal-delivery-back.onrender.com/api/v1/driver/orders/available",
         {
           headers: {
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
           },
-        }
+        },
       );
 
       const data = await response.json();
 
       if (response.ok) {
-        // Calculate distances if driver location is available
-        const ordersWithDistance = data.map((order: any) => {
-          // Convert GeoLocation to {latitude, longitude} if needed
-          let restaurantLocation = order.restaurantLocation;
-          if (restaurantLocation && restaurantLocation.coordinates) {
-            restaurantLocation = {
-              latitude: restaurantLocation.coordinates[1],
-              longitude: restaurantLocation.coordinates[0],
-            };
-          }
-
-          let distance = "N/A";
-          if (driverLocation && restaurantLocation) {
+        const orders = (data as BackendOrder[]).map((order) => {
+          const mapped = mapBackendOrder(order);
+          if (driverLocation) {
             const dist = calculateDistance(
               driverLocation.latitude,
               driverLocation.longitude,
-              restaurantLocation.latitude,
-              restaurantLocation.longitude
+              mapped.restaurantLocation.latitude,
+              mapped.restaurantLocation.longitude,
             );
-            distance = `${dist.toFixed(1)} km`;
+            mapped.distance = `${dist.toFixed(1)} km`;
           }
-
-          return {
-            ...order,
-            restaurantLocation,
-            distance,
-          };
+          return mapped;
         });
-
-        setAvailableOrders(ordersWithDistance);
+        setAvailableOrders(orders);
       } else {
         throw new Error(data.message || "Failed to fetch orders");
       }
@@ -324,15 +433,15 @@ const AvailableOrdersScreen: React.FC = () => {
 
   const fetchDriverStats = async () => {
     try {
-      const token = await AsyncStorage.getItem("driverToken");
+      const token = await AsyncStorage.getItem("accessToken");
       const response = await fetch(
-        "http://192.168.1.3:8080/api/v1/driver/stats",
+        "https://pedal-delivery-back.onrender.com/api/v1/driver/stats",
         {
           headers: {
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
           },
-        }
+        },
       );
 
       const data = await response.json();
@@ -349,7 +458,7 @@ const AvailableOrdersScreen: React.FC = () => {
     lat1: number,
     lon1: number,
     lat2: number,
-    lon2: number
+    lon2: number,
   ): number => {
     const R = 6371; // Earth's radius in km
     const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -376,16 +485,16 @@ const AvailableOrdersScreen: React.FC = () => {
 
   const handleAcceptOrder = async (orderId: string) => {
     try {
-      const token = await AsyncStorage.getItem("driverToken");
+      const token = await AsyncStorage.getItem("accessToken");
       const response = await fetch(
-        `http://192.168.1.3:8080/api/v1/driver/orders/${orderId}/accept`,
+        `https://pedal-delivery-back.onrender.com/api/v1/driver/orders/${orderId}/accept`,
         {
           method: "POST",
           headers: {
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
           },
-        }
+        },
       );
 
       const data = await response.json();
@@ -393,14 +502,14 @@ const AvailableOrdersScreen: React.FC = () => {
       if (response.ok) {
         // Remove order from available list
         setAvailableOrders((prev) =>
-          prev.filter((order) => order.id !== orderId)
+          prev.filter((order) => order.id !== orderId),
         );
 
         // Notify customer via WebSocket
-        const driverId = await AsyncStorage.getItem("driverId");
-        const driverName = await AsyncStorage.getItem("driverName");
-        const driverPhone = await AsyncStorage.getItem("driverPhone");
-        const driverProfilePic = await AsyncStorage.getItem("driverProfilePic");
+        const driverId = await AsyncStorage.getItem("userId");
+        const driverName = await AsyncStorage.getItem("userName");
+        const driverPhone = await AsyncStorage.getItem("userPhone");
+        const driverProfilePic = await AsyncStorage.getItem("userAvatar");
 
         WebSocketService.emit("driver:accepted", {
           orderId,
@@ -412,16 +521,16 @@ const AvailableOrdersScreen: React.FC = () => {
           },
         });
 
-        // Navigate to order details
+        // Navigate to order details – ✅ use correct path with type assertion if needed
         router.push({
-          pathname: "./(driver)/order-detail",
+          pathname: "/(driver)/order-detail" as any, // temporary type assertion to bypass strict check
           params: { orderId },
         });
 
         Alert.alert(
           "✅ Order Accepted!",
           "You have accepted the order. Navigate to the restaurant for pickup.",
-          [{ text: "Proceed" }]
+          [{ text: "Proceed" }],
         );
       } else {
         throw new Error(data.message || "Failed to accept order");
@@ -439,20 +548,20 @@ const AvailableOrdersScreen: React.FC = () => {
         style: "destructive",
         onPress: async () => {
           try {
-            const token = await AsyncStorage.getItem("driverToken");
+            const token = await AsyncStorage.getItem("accessToken");
             await fetch(
-              `http://192.168.1.3:8080/api/v1/driver/orders/${orderId}/reject`,
+              `https://pedal-delivery-back.onrender.com/api/v1/driver/orders/${orderId}/reject`,
               {
                 method: "POST",
                 headers: {
                   Authorization: `Bearer ${token}`,
                   "Content-Type": "application/json",
                 },
-              }
+              },
             );
 
             setAvailableOrders((prev) =>
-              prev.filter((order) => order.id !== orderId)
+              prev.filter((order) => order.id !== orderId),
             );
           } catch (error) {
             console.error("Reject order error:", error);
@@ -474,7 +583,7 @@ const AvailableOrdersScreen: React.FC = () => {
           text: "Accept All",
           onPress: async () => {
             try {
-              const token = await AsyncStorage.getItem("driverToken");
+              const token = await AsyncStorage.getItem("accessToken");
 
               // Accept the first order and navigate to it
               const firstOrder = availableOrders[0];
@@ -484,14 +593,14 @@ const AvailableOrdersScreen: React.FC = () => {
               const remainingOrders = availableOrders.slice(1);
               for (const order of remainingOrders) {
                 await fetch(
-                  `http://192.168.1.3:8080/api/v1/driver/orders/${order.id}/reject`,
+                  `https://pedal-delivery-back.onrender.com/api/v1/driver/orders/${order.id}/reject`,
                   {
                     method: "POST",
                     headers: {
                       Authorization: `Bearer ${token}`,
                       "Content-Type": "application/json",
                     },
-                  }
+                  },
                 );
               }
 
@@ -501,7 +610,7 @@ const AvailableOrdersScreen: React.FC = () => {
             }
           },
         },
-      ]
+      ],
     );
   };
 
@@ -510,14 +619,18 @@ const AvailableOrdersScreen: React.FC = () => {
     setIsOnline(newStatus);
 
     if (newStatus) {
-      // Go online
       connectWebSocket();
+      if (driverLocation) {
+        startLocationUpdates();
+      }
       Alert.alert(
         "✅ You're Online",
-        "You will now receive new order notifications"
+        "You will now receive new order notifications",
       );
     } else {
-      // Go offline
+      if (locationInterval.current) {
+        clearInterval(locationInterval.current);
+      }
       WebSocketService.disconnect();
       Alert.alert("⏸️ You're Offline", "You won't receive new orders");
     }
@@ -527,16 +640,13 @@ const AvailableOrdersScreen: React.FC = () => {
     setActiveFilters((prev) => {
       const newFilters = { ...prev };
 
-      // Toggle the clicked filter
       newFilters[filter] = !prev[filter];
 
-      // If "all" is selected, deselect others
       if (filter === "all" && newFilters[filter]) {
         newFilters.nearby = false;
         newFilters.highValue = false;
         newFilters.quickDelivery = false;
       } else if (newFilters[filter]) {
-        // If another filter is selected, deselect "all"
         newFilters.all = false;
       }
 
@@ -551,13 +661,13 @@ const AvailableOrdersScreen: React.FC = () => {
       const filters = [];
       if (activeFilters.nearby) {
         const distance = parseFloat(order.distance.replace(" km", ""));
-        filters.push(distance <= 5); // Within 5km
+        filters.push(distance <= 5);
       }
       if (activeFilters.highValue) {
-        filters.push(order.amount >= 30); // High value orders
+        filters.push(order.amount >= 30);
       }
       if (activeFilters.quickDelivery) {
-        filters.push(order.estimatedPreparationTime <= 20); // Quick preparation
+        filters.push(order.estimatedPreparationTime <= 20);
       }
 
       return filters.some(Boolean);
@@ -846,7 +956,7 @@ const AvailableOrdersScreen: React.FC = () => {
         ) : (
           <View style={styles.ordersList}>
             {getFilteredOrders().map((order, index) =>
-              renderOrderCard(order, index)
+              renderOrderCard(order, index),
             )}
           </View>
         )}

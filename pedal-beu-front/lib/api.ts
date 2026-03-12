@@ -1,5 +1,6 @@
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import axiosRetry from "axios-retry";
 import {
   AuthResponse,
   RegisterRequest,
@@ -23,30 +24,24 @@ const api = axios.create({
   timeout: 30000,
 });
 
-// Retry helper for network errors
-const retryRequest = async <T>(
-  fn: () => Promise<T>,
-  retries = 3,
-  delay = 1000,
-): Promise<T> => {
-  try {
-    return await fn();
-  } catch (error: any) {
-    if (
-      retries <= 0 ||
-      (error.response &&
-        error.response.status >= 400 &&
-        error.response.status < 500)
-    ) {
-      throw error;
-    }
-    console.log(
-      `Retry attempt ${3 - retries + 1}/3 after error: ${error.message}`,
+// Configure retry logic with axios-retry
+axiosRetry(api, {
+  retries: 5,
+  retryDelay: (retryCount) => axiosRetry.exponentialDelay(retryCount),
+  retryCondition: (error) => {
+    return (
+      axiosRetry.isNetworkOrIdempotentRequestError(error) ||
+      error.code === "ECONNABORTED" ||
+      (error.response && error.response.status >= 500) ||
+      error.response?.status === 429
     );
-    await new Promise((resolve) => setTimeout(resolve, delay));
-    return retryRequest(fn, retries - 1, delay * 2);
-  }
-};
+  },
+  onRetry: (retryCount, error, requestConfig) => {
+    console.log(
+      `🔄 Retry attempt #${retryCount} for ${requestConfig.method?.toUpperCase()} ${requestConfig.url} after error: ${error.message}`,
+    );
+  },
+});
 
 // Request interceptor
 api.interceptors.request.use(
@@ -71,24 +66,129 @@ api.interceptors.request.use(
   (error) => Promise.reject(error),
 );
 
-// Response interceptor
+// Create a separate axios instance for refresh requests (no interceptors)
+const refreshApi = axios.create({
+  baseURL: API_BASE_URL,
+  headers: { "Content-Type": "application/json" },
+  timeout: 30000,
+});
+
+// Response interceptor with token refresh (using a dedicated instance to avoid loops)
 api.interceptors.response.use(
   (response) => {
     console.log(`✅ Response: ${response.status} ${response.config.url}`);
     return response;
   },
   async (error) => {
+    const originalRequest = error.config;
+
+    // If error is 401 and we haven't tried to refresh yet
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+      console.log("🔄 401 detected, attempting token refresh...");
+
+      try {
+        const refreshToken = await AsyncStorage.getItem("refreshToken");
+        if (!refreshToken) {
+          console.warn("No refresh token available, logging out");
+          await AsyncStorage.multiRemove([
+            "accessToken",
+            "refreshToken",
+            "user",
+          ]);
+          return Promise.reject(error);
+        }
+
+        console.log("🔄 Sending refresh request...");
+        const response = await refreshApi.post("/auth/refresh", {
+          refresh_token: refreshToken,
+        });
+
+        console.log(
+          "🔄 Refresh response received:",
+          JSON.stringify(response.data, null, 2),
+        );
+
+        // Try to extract tokens – handle both camelCase and snake_case
+        let newAccessToken, newRefreshToken;
+        if (response.data.tokens) {
+          // Backend returns tokens inside a "tokens" object with snake_case keys
+          newAccessToken = response.data.tokens.access_token;
+          newRefreshToken = response.data.tokens.refresh_token;
+          // Fallback to camelCase if snake_case not found
+          if (!newAccessToken) {
+            newAccessToken = response.data.tokens.accessToken;
+            newRefreshToken = response.data.tokens.refreshToken;
+          }
+        } else if (response.data.access_token) {
+          // Direct snake_case at top level
+          newAccessToken = response.data.access_token;
+          newRefreshToken = response.data.refresh_token;
+        } else if (response.data.accessToken) {
+          // Direct camelCase at top level
+          newAccessToken = response.data.accessToken;
+          newRefreshToken = response.data.refreshToken;
+        } else {
+          console.error(
+            "Refresh response did not contain tokens",
+            response.data,
+          );
+          return Promise.reject(error);
+        }
+
+        if (!newAccessToken) {
+          console.error("No access token in refresh response");
+          return Promise.reject(error);
+        }
+
+        // Store new tokens – we store as camelCase in AsyncStorage for consistency
+        await AsyncStorage.setItem("accessToken", newAccessToken);
+        if (newRefreshToken) {
+          await AsyncStorage.setItem("refreshToken", newRefreshToken);
+        }
+
+        console.log(
+          "🔄 Token refreshed successfully, retrying original request...",
+        );
+
+        // Update authorization header and retry
+        originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+        return api(originalRequest);
+      } catch (refreshError: any) {
+        console.error("❌ Token refresh failed:", refreshError.message);
+        if (refreshError.response?.status === 401) {
+          console.warn("Refresh token invalid, logging out");
+          await AsyncStorage.multiRemove([
+            "accessToken",
+            "refreshToken",
+            "user",
+          ]);
+        }
+        return Promise.reject(refreshError);
+      }
+    }
+
+    // Original error logging (for non-401 errors or when refresh already attempted)
     if (error.response) {
       console.error("❌ API Error Response:", {
         url: error.config?.url,
+        method: error.config?.method?.toUpperCase(),
         status: error.response.status,
+        statusText: error.response.statusText,
         data: error.response.data,
         headers: error.response.headers,
       });
     } else if (error.request) {
-      console.error("❌ No response received:", error.request);
+      console.error("❌ No response received:", {
+        url: error.config?.url,
+        method: error.config?.method?.toUpperCase(),
+        request: error.request,
+      });
     } else {
-      console.error("❌ Request setup error:", error.message);
+      console.error("❌ Request setup error:", {
+        message: error.message,
+        config: error.config,
+      });
     }
     return Promise.reject(error);
   },
@@ -137,8 +237,8 @@ export const authAPI = {
       if (response.data.user && response.data.tokens) {
         const { user, tokens } = response.data;
         await AsyncStorage.multiSet([
-          ["accessToken", tokens.access_token],
-          ["refreshToken", tokens.refresh_token],
+          ["accessToken", tokens.accessToken],
+          ["refreshToken", tokens.refreshToken],
           ["user", JSON.stringify(user)],
         ]);
       }
@@ -165,8 +265,8 @@ export const authAPI = {
       if (response.data.user && response.data.tokens) {
         const { user, tokens } = response.data;
         await AsyncStorage.multiSet([
-          ["accessToken", tokens.access_token],
-          ["refreshToken", tokens.refresh_token],
+          ["accessToken", tokens.accessToken],
+          ["refreshToken", tokens.refreshToken],
           ["user", JSON.stringify(user)],
         ]);
       }
@@ -194,8 +294,8 @@ export const authAPI = {
       if (response.data.user && response.data.tokens) {
         const { user, tokens } = response.data;
         await AsyncStorage.multiSet([
-          ["accessToken", tokens.access_token],
-          ["refreshToken", tokens.refresh_token],
+          ["accessToken", tokens.accessToken],
+          ["refreshToken", tokens.refreshToken],
           ["user", JSON.stringify(user)],
         ]);
       }
@@ -214,7 +314,7 @@ export const authAPI = {
   },
 
   refreshToken: async (refreshToken: string) => {
-    const response = await api.post("/auth/refresh", {
+    const response = await refreshApi.post("/auth/refresh", {
       refresh_token: refreshToken,
     });
     return response.data;
