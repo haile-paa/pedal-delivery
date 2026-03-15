@@ -10,12 +10,14 @@ import {
   ScrollView,
   Image,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { colors } from "../../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { Restaurant, CartItem, Order } from "../../types";
 import * as Location from "expo-location";
+import { addressAPI } from "../../../lib/api";
 
 interface CheckoutBottomSheetProps {
   visible: boolean;
@@ -26,8 +28,9 @@ interface CheckoutBottomSheetProps {
   deliveryFee: number;
   serviceCharge: number;
   grandTotal: number;
-  onPlaceOrder: (paymentMethod: string) => Promise<Order>;
+  onPlaceOrder: (paymentMethod: string, addressId: string) => Promise<Order>;
   address?: {
+    id?: string;
     label: string;
     address: string;
   };
@@ -62,14 +65,18 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
     number | null
   >(null);
   const [locationError, setLocationError] = useState<string | null>(null);
+  const [resolvedAddressId, setResolvedAddressId] = useState<string | null>(
+    null,
+  );
+  const [isSavingAddress, setIsSavingAddress] = useState(false);
 
   const panResponder = PanResponder.create({
     onStartShouldSetPanResponder: () => true,
-    onPanResponderMove: (_, gestureState) => {
-      translateY.setValue(Math.max(gestureState.dy, 0));
+    onPanResponderMove: (_, gs) => {
+      translateY.setValue(Math.max(gs.dy, 0));
     },
-    onPanResponderRelease: (_, gestureState) => {
-      if (gestureState.dy > 100) {
+    onPanResponderRelease: (_, gs) => {
+      if (gs.dy > 100) {
         onClose();
       } else {
         Animated.spring(translateY, {
@@ -84,6 +91,7 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
 
   useEffect(() => {
     if (visible) {
+      setResolvedAddressId(address?.id || null);
       getUserLocation();
     }
   }, [visible]);
@@ -102,41 +110,42 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
       });
       const { latitude, longitude } = location.coords;
 
-      let addressFromCoords = address?.address;
+      let addressStr = address?.address || "Current Location";
       try {
-        const [reverseGeocode] = await Location.reverseGeocodeAsync({
+        const [rg] = await Location.reverseGeocodeAsync({
           latitude,
           longitude,
         });
-        if (reverseGeocode) {
-          const { street, city, region } = reverseGeocode;
-          addressFromCoords = `${street || ""}${city ? `, ${city}` : ""}${region ? `, ${region}` : ""}`;
+        if (rg) {
+          addressStr = `${rg.street || ""}${rg.city ? `, ${rg.city}` : ""}${rg.region ? `, ${rg.region}` : ""}`;
         }
-      } catch (geocodeError) {
-        console.log("Reverse geocoding failed:", geocodeError);
-      }
+      } catch {}
 
-      setUserLocation({
-        latitude,
-        longitude,
-        address: addressFromCoords || address?.address || "Current Location",
-      });
+      setUserLocation({ latitude, longitude, address: addressStr });
 
       if (restaurant.location?.coordinates?.length >= 2) {
-        const distance = calculateDistance(
-          latitude,
-          longitude,
-          restaurant.location.coordinates[1],
-          restaurant.location.coordinates[0],
+        setDistanceToRestaurant(
+          calcDist(
+            latitude,
+            longitude,
+            restaurant.location.coordinates[1],
+            restaurant.location.coordinates[0],
+          ),
         );
-        setDistanceToRestaurant(distance);
       } else {
         setDistanceToRestaurant(2.5);
+      }
+
+      // If no saved address, auto-save current location (but we don't need to wait here)
+      if (!address?.id) {
+        // Fire and forget – the ID will be captured later if needed
+        autoSaveAddress(latitude, longitude, addressStr).then((id) => {
+          if (id) setResolvedAddressId(id);
+        });
       }
     } catch (error: any) {
       console.error("Location error:", error);
       setLocationError(error.message || "Failed to get location");
-      // Fallback
       setUserLocation({
         latitude: 9.032,
         longitude: 38.746,
@@ -146,7 +155,49 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
     }
   };
 
-  const calculateDistance = (
+  /**
+   * Auto-save the current location as a delivery address.
+   * Returns the saved address ID or null if failed.
+   */
+  const autoSaveAddress = async (
+    lat: number,
+    lng: number,
+    addressStr: string,
+  ): Promise<string | null> => {
+    try {
+      setIsSavingAddress(true);
+      console.log("📍 Auto-saving current location as delivery address...");
+
+      const saved = await addressAPI.addAddress({
+        label: "Current Location",
+        address: addressStr,
+        latitude: lat,
+        longitude: lng,
+        is_default: true,
+      });
+
+      if (saved?.id) {
+        console.log("📍 Address saved with ID:", saved.id);
+        return saved.id;
+      }
+    } catch (error: any) {
+      console.error("Auto-save address failed:", error.message);
+      // Fallback: try to get any existing address
+      try {
+        const existing = await addressAPI.getAddresses();
+        if (existing.length > 0) {
+          const addr = existing.find((a: any) => a.is_default) || existing[0];
+          console.log("📍 Using existing address ID:", addr.id);
+          return addr.id;
+        }
+      } catch {}
+    } finally {
+      setIsSavingAddress(false);
+    }
+    return null;
+  };
+
+  const calcDist = (
     lat1: number,
     lon1: number,
     lat2: number,
@@ -156,13 +207,13 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
     const dLat = ((lat2 - lat1) * Math.PI) / 180;
     const dLon = ((lon2 - lon1) * Math.PI) / 180;
     const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.sin(dLat / 2) ** 2 +
       Math.cos((lat1 * Math.PI) / 180) *
         Math.cos((lat2 * Math.PI) / 180) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return Math.round(R * c * 100) / 100;
+        Math.sin(dLon / 2) ** 2;
+    return (
+      Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * 100) / 100
+    );
   };
 
   const handleClose = () => {
@@ -177,9 +228,8 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
   };
 
   const handlePlaceOrder = async () => {
-    const isBelowMinOrder =
-      restaurant.min_order != null && cartTotal < restaurant.min_order;
-    if (isBelowMinOrder) return;
+    if (restaurant.min_order != null && cartTotal < restaurant.min_order)
+      return;
     if (!userLocation) {
       Alert.alert("Location Required", "Please enable location to continue.");
       return;
@@ -187,7 +237,7 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
     if (distanceToRestaurant && distanceToRestaurant > 5) {
       Alert.alert(
         "Out of Delivery Range",
-        `You are ${distanceToRestaurant}km away from ${restaurant.name}. Delivery is only available within 5km.`,
+        `You are ${distanceToRestaurant}km away. Max is 5km.`,
       );
       return;
     }
@@ -195,18 +245,42 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
       selectedPaymentMethod === "telebirr" ||
       selectedPaymentMethod === "cbe"
     ) {
-      Alert.alert(
-        "Coming Soon",
-        `${selectedPaymentMethod === "telebirr" ? "Telebirr" : "CBE"} payment is coming soon. Please use Cash on Delivery for now.`,
-      );
+      Alert.alert("Coming Soon", "This payment method is coming soon.");
       return;
+    }
+
+    // Resolve address ID
+    let finalAddressId = resolvedAddressId || address?.id;
+    if (!finalAddressId) {
+      // Try to auto-save now and get the ID directly
+      if (userLocation) {
+        const newId = await autoSaveAddress(
+          userLocation.latitude,
+          userLocation.longitude,
+          userLocation.address || "Current Location",
+        );
+        if (newId) {
+          finalAddressId = newId; // use the returned ID immediately
+          setResolvedAddressId(newId); // also update state for UI
+        }
+      }
+      if (!finalAddressId) {
+        Alert.alert(
+          "Address Required",
+          "Unable to save delivery address. Please try again.",
+        );
+        return;
+      }
     }
 
     setIsPlacingOrder(true);
     try {
-      const createdOrder = await onPlaceOrder(selectedPaymentMethod);
+      const createdOrder = await onPlaceOrder(
+        selectedPaymentMethod,
+        finalAddressId,
+      );
       if (!createdOrder) {
-        throw new Error("Order creation failed: no order returned from server");
+        throw new Error("No order returned from server");
       }
       router.push({
         pathname: "/(customer)/order-traking",
@@ -223,10 +297,7 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
       );
     } catch (error: any) {
       console.error("Order placement error:", error);
-      Alert.alert(
-        "Order Failed",
-        error.message || "Something went wrong. Please try again.",
-      );
+      Alert.alert("Order Failed", error.message || "Something went wrong.");
     } finally {
       setIsPlacingOrder(false);
     }
@@ -234,10 +305,7 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
 
   const handlePaymentMethodSelect = (method: string) => {
     if (method === "telebirr" || method === "cbe") {
-      Alert.alert(
-        "Coming Soon",
-        `${method === "telebirr" ? "Telebirr" : "CBE"} payment is coming soon. Please use Cash on Delivery for now.`,
-      );
+      Alert.alert("Coming Soon", "This payment method is coming soon.");
     } else {
       setSelectedPaymentMethod(method);
     }
@@ -245,31 +313,6 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
 
   const isBelowMinOrder =
     restaurant.min_order != null && cartTotal < restaurant.min_order;
-
-  const getDistanceMessage = () => {
-    if (!distanceToRestaurant) return null;
-    const inRange = distanceToRestaurant <= 5;
-    return (
-      <View
-        style={[
-          styles.distanceInfo,
-          inRange ? styles.distanceSuccess : styles.distanceWarning,
-        ]}
-      >
-        <Ionicons
-          name={inRange ? "checkmark-circle" : "warning"}
-          size={16}
-          color={inRange ? colors.success : colors.warning}
-        />
-        <Text style={styles.distanceText}>
-          You're {distanceToRestaurant}km away •{" "}
-          {inRange
-            ? "Within delivery range"
-            : "Outside delivery range (max 5km)"}
-        </Text>
-      </View>
-    );
-  };
 
   return (
     <Modal
@@ -298,22 +341,59 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
               </TouchableOpacity>
             </View>
 
+            {/* Distance info */}
             {distanceToRestaurant !== null && (
-              <View style={styles.section}>{getDistanceMessage()}</View>
+              <View style={styles.section}>
+                <View
+                  style={[
+                    styles.distanceInfo,
+                    distanceToRestaurant <= 5
+                      ? styles.distanceSuccess
+                      : styles.distanceWarning,
+                  ]}
+                >
+                  <Ionicons
+                    name={
+                      distanceToRestaurant <= 5 ? "checkmark-circle" : "warning"
+                    }
+                    size={16}
+                    color={
+                      distanceToRestaurant <= 5
+                        ? colors.success
+                        : colors.warning
+                    }
+                  />
+                  <Text style={styles.distanceText}>
+                    You're {distanceToRestaurant}km away •{" "}
+                    {distanceToRestaurant <= 5
+                      ? "Within delivery range"
+                      : "Outside delivery range (max 5km)"}
+                  </Text>
+                </View>
+              </View>
             )}
 
             {locationError && (
               <View style={[styles.distanceInfo, styles.distanceWarning]}>
                 <Ionicons name='warning' size={16} color={colors.warning} />
-                <Text style={styles.distanceText}>
-                  Using default location. {locationError}
-                </Text>
+                <Text style={styles.distanceText}>{locationError}</Text>
                 <TouchableOpacity
                   onPress={getUserLocation}
                   style={styles.retryButton}
                 >
                   <Text style={styles.retryText}>Retry</Text>
                 </TouchableOpacity>
+              </View>
+            )}
+
+            {isSavingAddress && (
+              <View
+                style={[styles.distanceInfo, { backgroundColor: "#e0f2fe" }]}
+              >
+                <ActivityIndicator size='small' color={colors.primary} />
+                <Text style={styles.distanceText}>
+                  Saving delivery address...
+                </Text>
               </View>
             )}
 
@@ -339,7 +419,7 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
               ))}
               <View style={styles.restaurantInfo}>
                 <Ionicons name='restaurant' size={20} color={colors.gray600} />
-                <View style={styles.restaurantDetails}>
+                <View style={{ flex: 1 }}>
                   <Text style={styles.restaurantName}>{restaurant.name}</Text>
                   {restaurant.address && (
                     <Text style={styles.restaurantAddress}>
@@ -353,7 +433,7 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
             {/* Payment Methods */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Payment Method</Text>
-              {["telebirr", "cbe", "cash"].map((method) => (
+              {(["telebirr", "cbe", "cash"] as const).map((method) => (
                 <TouchableOpacity
                   key={method}
                   style={[
@@ -400,33 +480,29 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
                         {method === "telebirr"
                           ? "Telebirr"
                           : method === "cbe"
-                            ? "CBE (Commercial Bank of Ethiopia)"
+                            ? "CBE"
                             : "Cash on Delivery"}
                       </Text>
                       <Text style={styles.paymentDescription}>
-                        {method === "telebirr"
-                          ? "Mobile money • Coming Soon"
-                          : method === "cbe"
-                            ? "Bank transfer • Coming Soon"
-                            : "Pay when you receive"}
+                        {method === "cash"
+                          ? "Pay when you receive"
+                          : "Coming Soon"}
                       </Text>
                     </View>
                   </View>
-                  <View style={styles.radioContainer}>
-                    <Ionicons
-                      name={
-                        selectedPaymentMethod === method
-                          ? "radio-button-on"
-                          : "radio-button-off"
-                      }
-                      size={24}
-                      color={
-                        selectedPaymentMethod === method
-                          ? colors.primary
-                          : colors.gray400
-                      }
-                    />
-                  </View>
+                  <Ionicons
+                    name={
+                      selectedPaymentMethod === method
+                        ? "radio-button-on"
+                        : "radio-button-off"
+                    }
+                    size={24}
+                    color={
+                      selectedPaymentMethod === method
+                        ? colors.primary
+                        : colors.gray400
+                    }
+                  />
                 </TouchableOpacity>
               ))}
             </View>
@@ -470,7 +546,7 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
                   />
                   <Text style={styles.minOrderText}>
                     Minimum order is {restaurant.min_order} Birr. Add{" "}
-                    {(restaurant.min_order - cartTotal).toFixed(2)} Birr more.
+                    {(restaurant.min_order! - cartTotal).toFixed(2)} Birr more.
                   </Text>
                 </View>
               )}
@@ -494,9 +570,19 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
                   <Text style={styles.addressText}>
                     {userLocation?.address ||
                       address?.address ||
-                      restaurant.address ||
                       "Select an address"}
                   </Text>
+                  {resolvedAddressId && (
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        color: colors.success,
+                        marginTop: 4,
+                      }}
+                    >
+                      ✓ Address saved for delivery
+                    </Text>
+                  )}
                   {onAddressChange && (
                     <TouchableOpacity
                       style={styles.changeAddressButton}
@@ -516,10 +602,11 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
             <TouchableOpacity
               style={[
                 styles.placeOrderButton,
-                (isBelowMinOrder || isPlacingOrder) && styles.disabledButton,
+                (isBelowMinOrder || isPlacingOrder || isSavingAddress) &&
+                  styles.disabledButton,
               ]}
               onPress={handlePlaceOrder}
-              disabled={isBelowMinOrder || isPlacingOrder}
+              disabled={isBelowMinOrder || isPlacingOrder || isSavingAddress}
             >
               {isPlacingOrder ? (
                 <Text style={styles.placeOrderText}>Processing...</Text>

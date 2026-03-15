@@ -583,12 +583,12 @@ export const AppStateProvider: React.FC<{ children: ReactNode }> = ({
     try {
       dispatch({ type: "SET_LOADING", payload: true });
       const response = await orderAPI.getCustomerOrders(1, 10);
-      // Assuming response.data is an array of orders
-      const orders = response.data || response.orders || [];
+      // Backend returns { orders: [...], pagination: {...} }
+      const orders = response.orders || response.data || [];
+      console.log(`📋 Loaded ${orders.length} customer orders`);
       dispatch({ type: "SET_CUSTOMER_ORDERS", payload: orders });
     } catch (error) {
       console.error("Error loading orders:", error);
-      // Fallback to empty array
       dispatch({ type: "SET_CUSTOMER_ORDERS", payload: [] });
     } finally {
       dispatch({ type: "SET_LOADING", payload: false });
@@ -787,39 +787,39 @@ export const AppStateProvider: React.FC<{ children: ReactNode }> = ({
     try {
       dispatch({ type: "SET_LOADING", payload: true });
 
-      // Prepare payload for backend
+      // Build payload matching backend's CreateOrderRequest exactly
       const payload = {
         restaurant_id: orderData.restaurant_id,
         items: (state.customer.cart || []).map((item) => ({
           menu_item_id: item.menu_item.id,
           quantity: item.quantity,
-          selected_addons: item.selected_addons.map((a) => a.id),
-          special_instructions: item.special_instructions,
+          addons: item.selected_addons.map((a) => ({
+            addon_id: a.id,
+          })),
+          notes: item.special_instructions || "",
         })),
-        delivery_address: orderData.address, // adjust field name to match backend
+        address_id: orderData.address_id,
         payment_method: orderData.payment_method,
-        notes: orderData.notes,
-        scheduled_for: orderData.scheduled_for,
+        notes: orderData.notes || "",
       };
 
-      // Call the real API (retry logic inside orderAPI)
-      const response = await orderAPI.createOrder(payload);
+      console.log(
+        "📦 Sending order payload:",
+        JSON.stringify(payload, null, 2),
+      );
 
-      // Extract the order – adjust based on your API response structure
-      const serverOrder: Order = response.order || response.data || response;
+      // Call the real API
+      const serverOrder: Order = await orderAPI.createOrder(payload);
 
-      // Update state with the real order
-      const currentOrders = state.customer.orders || [];
-      dispatch({
-        type: "SET_CUSTOMER_ORDERS",
-        payload: [serverOrder, ...currentOrders],
-      });
+      console.log("📦 Order created successfully:", serverOrder.id);
 
+      // Add to state
+      dispatch({ type: "ADD_ORDER", payload: serverOrder });
       dispatch({ type: "CLEAR_CART" });
 
       return serverOrder;
     } catch (error: any) {
-      console.error("Error creating order:", error);
+      console.error("❌ Error creating order:", error);
       throw new Error(error.message || "Failed to create order");
     } finally {
       dispatch({ type: "SET_LOADING", payload: false });

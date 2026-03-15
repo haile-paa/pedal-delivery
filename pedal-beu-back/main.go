@@ -164,6 +164,8 @@ func main() {
 
 	handlers.SetUserRepository(userRepo)
 	handlers.SetAdminRepository(adminRepo)
+	// Add this after existing handler initializations
+	userHandler := handlers.NewUserHandler(userRepo)
 
 	router := gin.New()
 
@@ -404,6 +406,11 @@ func main() {
 				user.GET("/me", authHandler.GetProfile)
 				user.PUT("/profile", authHandler.UpdateProfile)
 				user.POST("/logout", authHandler.Logout)
+
+				// Address management endpoints
+				user.POST("/addresses", userHandler.AddAddress)
+				user.GET("/addresses", userHandler.GetAddresses)
+				user.DELETE("/addresses/:addressId", userHandler.DeleteAddress)
 
 				user.POST("/upload", func(c *gin.Context) {
 					file, err := c.FormFile("image")

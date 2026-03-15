@@ -20,6 +20,7 @@ type UserRepository interface {
 	FindByID(ctx context.Context, id primitive.ObjectID) (*models.User, error)
 	FindByPhone(ctx context.Context, phone string) (*models.User, error)
 	FindByEmail(ctx context.Context, email string) (*models.User, error)
+	FindByUsername(ctx context.Context, username string) (*models.User, error)
 	Update(ctx context.Context, id primitive.ObjectID, update interface{}) error
 	UpdateOTP(ctx context.Context, phone, otpCode string) error
 	VerifyPhone(ctx context.Context, phone string) error
@@ -80,26 +81,21 @@ func (r *userRepository) FindByPhone(ctx context.Context, phone string) (*models
 	}
 
 	// If not found, try to normalize and search with different formats
-	// Remove +251 prefix and try with 0 prefix
 	if strings.HasPrefix(phone, "+251") && len(phone) == 13 {
-		// Format: +251XXXXXXXXX -> 0XXXXXXXXX
-		withoutPlus := phone[4:] // Remove +251
+		withoutPlus := phone[4:]
 		withZero := "0" + withoutPlus
 
-		// Try with 0 prefix
 		err = r.collection.FindOne(ctx, bson.M{"phone": withZero}).Decode(&user)
 		if err == nil {
 			return &user, nil
 		}
 
-		// Try without prefix (just the 9 digits)
 		err = r.collection.FindOne(ctx, bson.M{"phone": withoutPlus}).Decode(&user)
 		if err == nil {
 			return &user, nil
 		}
 	}
 
-	// If starts with 0 and is 10 digits, try with +251
 	if strings.HasPrefix(phone, "0") && len(phone) == 10 {
 		withPlus := "+251" + phone[1:]
 		err = r.collection.FindOne(ctx, bson.M{"phone": withPlus}).Decode(&user)
@@ -108,7 +104,6 @@ func (r *userRepository) FindByPhone(ctx context.Context, phone string) (*models
 		}
 	}
 
-	// If starts with 9 and is 9 digits, try with +251
 	if strings.HasPrefix(phone, "9") && len(phone) == 9 {
 		withPlus := "+251" + phone
 		err = r.collection.FindOne(ctx, bson.M{"phone": withPlus}).Decode(&user)
@@ -116,7 +111,6 @@ func (r *userRepository) FindByPhone(ctx context.Context, phone string) (*models
 			return &user, nil
 		}
 
-		// Try with 0 prefix
 		withZero := "0" + phone
 		err = r.collection.FindOne(ctx, bson.M{"phone": withZero}).Decode(&user)
 		if err == nil {
@@ -139,6 +133,18 @@ func (r *userRepository) FindByEmail(ctx context.Context, email string) (*models
 	return &user, nil
 }
 
+func (r *userRepository) FindByUsername(ctx context.Context, username string) (*models.User, error) {
+	var user models.User
+	err := r.collection.FindOne(ctx, bson.M{"username": username}).Decode(&user)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, errors.New("user not found")
+		}
+		return nil, err
+	}
+	return &user, nil
+}
+
 func (r *userRepository) Update(ctx context.Context, id primitive.ObjectID, update interface{}) error {
 	updateDoc := bson.M{
 		"$set": bson.M{
@@ -146,7 +152,6 @@ func (r *userRepository) Update(ctx context.Context, id primitive.ObjectID, upda
 		},
 	}
 
-	// Merge update fields
 	if updateMap, ok := update.(bson.M); ok {
 		for k, v := range updateMap {
 			updateDoc["$set"].(bson.M)[k] = v
@@ -356,18 +361,4 @@ func (r *userRepository) UpdateLastLogin(ctx context.Context, userID primitive.O
 	}
 
 	return nil
-}
-
-// Add this method to UserRepository interface and implement it
-
-func (r *userRepository) FindByUsername(ctx context.Context, username string) (*models.User, error) {
-	var user models.User
-	err := r.collection.FindOne(ctx, bson.M{"username": username}).Decode(&user)
-	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return nil, errors.New("user not found")
-		}
-		return nil, err
-	}
-	return &user, nil
 }
