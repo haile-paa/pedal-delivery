@@ -14,10 +14,15 @@ type Config struct {
 	Redis    RedisConfig    `mapstructure:"redis"`
 	AWS      AWSConfig      `mapstructure:"aws"`
 	JWT      JWTConfig      `mapstructure:"jwt"`
-	SMS      SMSConfig      `mapstructure:"sms"` // Afromessage settings
+	Twilio   TwilioConfig   `mapstructure:"twilio"`
 	Shipday  ShipdayConfig  `mapstructure:"shipday"`
 }
 
+type TwilioConfig struct {
+	AccountSID  string `mapstructure:"account_sid"`
+	AuthToken   string `mapstructure:"auth_token"`
+	PhoneNumber string `mapstructure:"phone_number"`
+}
 type ShipdayConfig struct {
 	APIKey  string `mapstructure:"api_key"`
 	BaseURL string `mapstructure:"base_url"` // optional, default to production
@@ -55,14 +60,6 @@ type JWTConfig struct {
 	RefreshExpHours time.Duration `mapstructure:"refresh_exp_hours"`
 }
 
-// SMSConfig holds Afromessage API credentials
-type SMSConfig struct {
-	APIToken string `mapstructure:"api_token"` // Bearer token
-	From     string `mapstructure:"from"`      // identifier ID (optional)
-	Sender   string `mapstructure:"sender"`    // sender name (optional)
-	APIBase  string `mapstructure:"api_base"`  // optional, defaults to https://api.afromessage.com/api
-}
-
 var (
 	once     sync.Once
 	instance *Config
@@ -87,7 +84,6 @@ func Load() *Config {
 		viper.SetDefault("jwt.expire_hours", 24*time.Hour)
 		viper.SetDefault("jwt.refresh_exp_hours", 168*time.Hour)
 		viper.SetDefault("shipday.base_url", "https://api.shipday.com")
-		viper.SetDefault("sms.api_base", "https://api.afromessage.com/api")
 
 		if err := viper.ReadInConfig(); err != nil {
 			log.Printf("Error reading config file: %v", err)

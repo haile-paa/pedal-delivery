@@ -31,7 +31,9 @@ const RestaurantDetailScreen: React.FC = () => {
   const params = useLocalSearchParams();
   const restaurantId = params.id as string;
 
-  const { state, dispatch } = useAppState();
+  // 👇 Get actions from context as well
+  const { state, dispatch, actions } = useAppState();
+
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [loading, setLoading] = useState(true);
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
@@ -189,103 +191,47 @@ const RestaurantDetailScreen: React.FC = () => {
     setShowCheckout(true);
   };
 
-  // *** FIXED: now async and always returns a Promise<Order> ***
-  const handlePlaceOrder = async (paymentMethod: string): Promise<Order> => {
-    // Guard: restaurant must exist (should always be true when this is called)
+  // ✅ FIXED: now uses the real backend API via actions.createOrder
+  const handlePlaceOrder = async (
+    paymentMethod: string,
+    addressId: string,
+  ): Promise<Order> => {
     if (!restaurant) {
       throw new Error("Restaurant information is missing");
     }
 
     setShowCheckout(false);
 
-    const cartTotal = getCartTotal();
-    const deliveryFee = restaurant.delivery_fee || 0;
-    const serviceCharge = cartTotal * 0.1;
-    const grandTotal = cartTotal + deliveryFee + serviceCharge;
-
-    const getCoordinates = (coords: number[] | undefined): [number, number] => {
-      if (Array.isArray(coords) && coords.length >= 2) {
-        return [coords[0], coords[1]];
-      }
-      return [0, 0];
-    };
-
-    const order: Order = {
-      id: `order-${Date.now()}`,
-      order_number: `ORD-${Date.now()}`,
-      customer_id: state.auth.user?.id || "",
+    // Prepare the payload exactly as the backend expects
+    const orderData = {
       restaurant_id: restaurant.id,
       items: state.customer.cart.map((item) => ({
         menu_item_id: item.menu_item.id,
-        name: item.menu_item.name,
         quantity: item.quantity,
-        price: item.menu_item.price,
-        addons: item.selected_addons.map((addon) => ({
-          addon_id: addon.id,
-          name: addon.name,
-          price: addon.price,
-        })),
-        total: item.menu_item.price * item.quantity,
+        addons: item.selected_addons.map((a) => ({ addon_id: a.id })),
         notes: item.special_instructions || "",
       })),
-      status: "pending" as OrderStatus,
-      total_amount: {
-        subtotal: cartTotal,
-        delivery_fee: deliveryFee,
-        service_charge: serviceCharge,
-        discount: 0,
-        tax: cartTotal * 0.08,
-        total: grandTotal,
-      },
-      delivery_info: {
-        address: {
-          id: selectedAddress?.id || "temp-address",
-          label: selectedAddress?.label || "Delivery Address",
-          address: selectedAddress?.address || restaurant.address,
-          location: {
-            type: "Point" as const,
-            coordinates: selectedAddress?.location?.coordinates
-              ? getCoordinates(selectedAddress.location.coordinates)
-              : getCoordinates(restaurant.location?.coordinates),
-          },
-          is_default: false,
-          created_at: new Date().toISOString(),
-        },
-        notes: "",
-        contact_name: state.auth.user?.profile?.first_name || "Customer",
-        contact_phone: state.auth.user?.phone || "",
-        estimated_delivery: new Date(Date.now() + 45 * 60000).toISOString(),
-      },
-      timeline: [
-        {
-          status: "pending" as OrderStatus,
-          timestamp: new Date().toISOString(),
-          actor_id: state.auth.user?.id,
-          actor_type: "customer" as const,
-          notes: "Order placed",
-        },
-      ],
+      address_id: addressId,
       payment_method: paymentMethod,
-      payment_status: (paymentMethod === "cash" ? "pending" : "paid") as
-        | "pending"
-        | "paid",
-      is_scheduled: false,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      notes: "",
     };
 
-    dispatch({ type: "ADD_ORDER", payload: order });
+    // Call the real API through the context action
+    const createdOrder = await actions.createOrder(orderData);
+
+    // Clear cart (already done inside createOrder, but just in case)
     dispatch({ type: "CLEAR_CART" });
 
+    // Navigate to the tracking screen with the real order ID
     router.push({
-      pathname: "/(customer)/order-tracking" as any,
+      pathname: "/(customer)/order-traking",
       params: {
-        orderId: order.id,
+        orderId: createdOrder.id,
         restaurantName: restaurant.name,
       },
     });
 
-    return order; // now this returns a Promise<Order> because the function is async
+    return createdOrder;
   };
 
   const handleAddressChange = () => {
@@ -518,7 +464,7 @@ const RestaurantDetailScreen: React.FC = () => {
         deliveryFee={deliveryFee}
         serviceCharge={serviceCharge}
         grandTotal={grandTotal}
-        onPlaceOrder={handlePlaceOrder}
+        onPlaceOrder={handlePlaceOrder} // ✅ now expects (paymentMethod, addressId)
         address={selectedAddress}
         onAddressChange={handleAddressChange}
       />
@@ -526,6 +472,7 @@ const RestaurantDetailScreen: React.FC = () => {
   );
 };
 
+// ---- styles remain exactly as before ----
 const styles = StyleSheet.create({
   container: {
     flex: 1,

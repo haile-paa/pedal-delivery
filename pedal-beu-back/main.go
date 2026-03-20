@@ -138,18 +138,16 @@ func main() {
 	driverRepo := repositories.NewDriverRepository()
 
 	var smsClient *sms.Client
-	if cfg.SMS.APIToken != "" {
+	if cfg.Twilio.AccountSID != "" && cfg.Twilio.AuthToken != "" && cfg.Twilio.PhoneNumber != "" {
 		smsClient = sms.NewClient(
-			cfg.SMS.APIToken,
-			cfg.SMS.From,
-			cfg.SMS.Sender,
-			cfg.SMS.APIBase,
+			cfg.Twilio.AccountSID,
+			cfg.Twilio.AuthToken,
+			cfg.Twilio.PhoneNumber,
 		)
-		log.Println("✅ SMS client initialized (Afromessage)")
+		log.Println("✅ SMS client initialized (Twilio)")
 	} else {
-		log.Println("⚠️ SMS client not configured (missing API token)")
+		log.Println("⚠️ Twilio credentials not configured – SMS will fail")
 	}
-
 	// Initialize services
 	authService := services.NewAuthService(userRepo, adminRepo)
 	orderService := services.NewOrderService(orderRepo, restaurantRepo, userRepo)

@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import Animated, {
   useSharedValue,
@@ -14,11 +14,11 @@ import { Ionicons } from "@expo/vector-icons";
 interface OrderNotificationProps {
   order: {
     id: string;
-    restaurant: string;
+    restaurantName: string;
     amount: number;
     distance: string;
-    items: number;
-    eta: string;
+    itemsCount: number;
+    estimatedDeliveryTime: string;
   };
   onAccept: () => void;
   onReject: () => void;
@@ -34,39 +34,32 @@ const OrderNotification: React.FC<OrderNotificationProps> = ({
   const slideAnim = useSharedValue(-300);
   const scaleAnim = useSharedValue(0.9);
   const pulseAnim = useSharedValue(1);
+  const [timeLeft, setTimeLeft] = useState(30);
 
-  // Entrance animation with delay based on index
+  // Entrance animation
   useEffect(() => {
     const delay = index * 100;
-
     slideAnim.value = withDelay(
       delay,
-      withSpring(0, { damping: 15, stiffness: 100 })
+      withSpring(0, { damping: 15, stiffness: 100 }),
     );
-
     scaleAnim.value = withDelay(
       delay,
       withSequence(
         withSpring(1.05, { damping: 15 }),
-        withSpring(1, { damping: 15 })
-      )
+        withSpring(1, { damping: 15 }),
+      ),
     );
-
-    // Pulsing animation
     pulseAnim.value = withSequence(
       withDelay(delay + 500, withSpring(1.1, { damping: 2 })),
-      withSpring(1, { damping: 2 })
+      withSpring(1, { damping: 2 }),
     );
   }, []);
 
   // Timer countdown
-  const [timeLeft, setTimeLeft] = React.useState(30);
-
   useEffect(() => {
     if (timeLeft > 0) {
-      const timer = setTimeout(() => {
-        setTimeLeft(timeLeft - 1);
-      }, 1000);
+      const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
       return () => clearTimeout(timer);
     } else {
       onReject();
@@ -74,15 +67,11 @@ const OrderNotification: React.FC<OrderNotificationProps> = ({
   }, [timeLeft]);
 
   const handleAccept = () => {
-    slideAnim.value = withSpring(300, {}, () => {
-      runOnJS(onAccept)();
-    });
+    slideAnim.value = withSpring(300, {}, () => runOnJS(onAccept)());
   };
 
   const handleReject = () => {
-    slideAnim.value = withSpring(-300, {}, () => {
-      runOnJS(onReject)();
-    });
+    slideAnim.value = withSpring(-300, {}, () => runOnJS(onReject)());
   };
 
   const containerAnimatedStyle = useAnimatedStyle(() => ({
@@ -102,8 +91,8 @@ const OrderNotification: React.FC<OrderNotificationProps> = ({
 
       <View style={styles.content}>
         <View style={styles.header}>
-          <Text style={styles.restaurantName}>{order.restaurant}</Text>
-          <Text style={styles.amount}>${order.amount.toFixed(2)}</Text>
+          <Text style={styles.restaurantName}>{order.restaurantName}</Text>
+          <Text style={styles.amount}>{order.amount.toFixed(2)} Birr</Text>
         </View>
 
         <View style={styles.details}>
@@ -113,11 +102,13 @@ const OrderNotification: React.FC<OrderNotificationProps> = ({
           </View>
           <View style={styles.detailRow}>
             <Ionicons name='fast-food' size={16} color={colors.gray500} />
-            <Text style={styles.detailText}>{order.items} items</Text>
+            <Text style={styles.detailText}>{order.itemsCount} items</Text>
           </View>
           <View style={styles.detailRow}>
             <Ionicons name='time' size={16} color={colors.gray500} />
-            <Text style={styles.detailText}>ETA: {order.eta}</Text>
+            <Text style={styles.detailText}>
+              ETA: {order.estimatedDeliveryTime}
+            </Text>
           </View>
         </View>
 
@@ -151,10 +142,7 @@ const styles = StyleSheet.create({
     marginVertical: 8,
     padding: 16,
     shadowColor: colors.black,
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 8,
     elevation: 8,
@@ -171,14 +159,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     zIndex: 1,
   },
-  timerText: {
-    fontSize: 12,
-    fontWeight: "bold",
-    color: colors.white,
-  },
-  content: {
-    flex: 1,
-  },
+  timerText: { fontSize: 12, fontWeight: "bold", color: colors.white },
+  content: { flex: 1 },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -197,23 +179,10 @@ const styles = StyleSheet.create({
     color: colors.primary,
     marginLeft: 8,
   },
-  details: {
-    marginBottom: 16,
-  },
-  detailRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 4,
-  },
-  detailText: {
-    fontSize: 14,
-    color: colors.gray600,
-    marginLeft: 8,
-  },
-  actions: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
+  details: { marginBottom: 16 },
+  detailRow: { flexDirection: "row", alignItems: "center", marginBottom: 4 },
+  detailText: { fontSize: 14, color: colors.gray600, marginLeft: 8 },
+  actions: { flexDirection: "row", justifyContent: "space-between" },
   actionButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -225,25 +194,11 @@ const styles = StyleSheet.create({
     marginHorizontal: 4,
     borderWidth: 2,
   },
-  rejectButton: {
-    backgroundColor: colors.white,
-    borderColor: colors.error,
-  },
-  acceptButton: {
-    backgroundColor: colors.white,
-    borderColor: colors.success,
-  },
-  actionText: {
-    fontSize: 16,
-    fontWeight: "600",
-    marginLeft: 8,
-  },
-  rejectText: {
-    color: colors.error,
-  },
-  acceptText: {
-    color: colors.success,
-  },
+  rejectButton: { backgroundColor: colors.white, borderColor: colors.error },
+  acceptButton: { backgroundColor: colors.white, borderColor: colors.success },
+  actionText: { fontSize: 16, fontWeight: "600", marginLeft: 8 },
+  rejectText: { color: colors.error },
+  acceptText: { color: colors.success },
 });
 
 export default OrderNotification;

@@ -59,6 +59,27 @@ export default function DriverLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name='navigation'
+        options={{
+          href: null, // This hides it from the tab bar
+          headerShown: false,
+        }}
+      />
+      <Tabs.Screen
+        name='driver-phone-input'
+        options={{
+          href: null, // This hides it from the tab bar
+          headerShown: false,
+        }}
+      />
+      <Tabs.Screen
+        name='order-history'
+        options={{
+          href: null, // This hides it from the tab bar
+          headerShown: false,
+        }}
+      />
     </Tabs>
   );
 }

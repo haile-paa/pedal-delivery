@@ -25,6 +25,7 @@ import { useRouter } from "expo-router";
 import { colors } from "../../theme/colors";
 import AnimatedButton from "../../components/ui/AnimatedButton";
 import { LinearGradient } from "expo-linear-gradient";
+import * as Location from "expo-location"; // ✅ Import Location
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
 
@@ -34,7 +35,6 @@ const WelcomeScreen: React.FC = () => {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Stable function for phone number input
   const handlePhoneNumberChange = useCallback((text: string) => {
     const cleaned = text.replace(/[^0-9]/g, "");
     setPhoneNumber(cleaned);
@@ -81,6 +81,20 @@ const WelcomeScreen: React.FC = () => {
     return cleaned.length === 9;
   };
 
+  // ✅ Function to request location permission (runs in background)
+  const requestLocationPermission = async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === "granted") {
+        console.log("Location permission granted");
+      } else {
+        console.log("Location permission denied");
+      }
+    } catch (error) {
+      console.warn("Error requesting location permission:", error);
+    }
+  };
+
   const handleContinueAsCustomer = async () => {
     Keyboard.dismiss();
 
@@ -112,6 +126,9 @@ const WelcomeScreen: React.FC = () => {
       const data = await res.json();
 
       if (res.ok) {
+        // ✅ Request location permission in the background (doesn't block navigation)
+        requestLocationPermission();
+
         router.push({
           pathname: "/(auth)/phone-verification",
           params: {
@@ -259,7 +276,6 @@ const WelcomeScreen: React.FC = () => {
                   <Text style={styles.countryCodeText}>+251</Text>
                 </View>
 
-                {/* SIMPLE TextInput without complex handlers */}
                 <TextInput
                   style={styles.phoneInput}
                   placeholder='912345678'
@@ -353,6 +369,7 @@ const WelcomeScreen: React.FC = () => {
   );
 };
 
+// Styles remain exactly the same as before
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -433,7 +450,6 @@ const styles = StyleSheet.create({
     fontSize: 24,
     color: colors.gray800,
   },
-  // Driver Top Button Styles
   driverTopButtonContainer: {
     alignSelf: "center",
     marginTop: 20,
@@ -461,7 +477,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
   },
-  // Title styles
   titleContainer: {
     alignItems: "center",
     marginBottom: 40,
@@ -481,7 +496,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     maxWidth: 300,
   },
-  // Phone input styles - SIMPLIFIED
   phoneInputContainer: {
     alignItems: "center",
     marginBottom: 40,
@@ -524,7 +538,6 @@ const styles = StyleSheet.create({
     marginTop: 12,
     textAlign: "center",
   },
-  // Customer button styles
   nextButtonContainer: {
     alignItems: "center",
     marginTop: 40,

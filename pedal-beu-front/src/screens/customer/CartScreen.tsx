@@ -15,46 +15,33 @@ import SwipeableCard from "../../components/ui/SwipeableCard";
 import CartCounter from "../../components/customer/CartCounter";
 import AnimatedButton from "../../components/ui/AnimatedButton";
 import CheckoutBottomSheet from "../../components/customer/CheckoutBottomSheet";
-import { Restaurant } from "../../types";
+import { Restaurant, Order } from "../../types";
 
 const CartScreen: React.FC = () => {
   const router = useRouter();
-  const { state, dispatch } = useAppState();
+  const { state, dispatch, actions } = useAppState(); // 👈 added actions
 
-  // State for checkout
   const [showCheckout, setShowCheckout] = useState(false);
   const [currentRestaurant, setCurrentRestaurant] = useState<Restaurant | null>(
     null,
   );
   const [isLoadingRestaurant, setIsLoadingRestaurant] = useState(false);
 
-  // Try to find restaurant for cart items
   useEffect(() => {
     const findRestaurantForCart = () => {
       if (state.customer.cart.length === 0) {
         setCurrentRestaurant(null);
         return;
       }
-
-      // First priority: Use current restaurant from state (if user came from restaurant page)
       if (state.restaurants.currentRestaurant) {
         setCurrentRestaurant(state.restaurants.currentRestaurant);
         return;
       }
-
-      // Second priority: Try to find restaurant by checking which one has the menu items
-      // This assumes all items in cart are from the same restaurant
-      const firstItem = state.customer.cart[0];
-
-      // Check if menu item has a restaurant reference (some APIs include it)
-      // If not, we'll need to get restaurant info differently
       setCurrentRestaurant(null);
     };
-
     findRestaurantForCart();
   }, [state.customer.cart, state.restaurants.currentRestaurant]);
 
-  // Calculate totals with real-time data
   const calculateSubtotal = () => {
     return state.customer.cart.reduce((total, item) => {
       return total + item.menu_item.price * item.quantity;
@@ -62,23 +49,21 @@ const CartScreen: React.FC = () => {
   };
 
   const calculateDeliveryFee = () => {
-    // Use actual restaurant delivery fee or default to 50.00Birr
     if (currentRestaurant && currentRestaurant.delivery_fee !== undefined) {
       return currentRestaurant.delivery_fee;
     }
-    return 50.0; // Default based on your images
+    return 50.0;
   };
 
   const calculateServiceCharge = () => {
     const subtotal = calculateSubtotal();
-    return subtotal * 0.1; // 10% service charge
+    return subtotal * 0.1;
   };
 
   const calculateGrandTotal = () => {
     const subtotal = calculateSubtotal();
     const deliveryFee = calculateDeliveryFee();
     const serviceCharge = calculateServiceCharge();
-    // No tax calculation - matches CheckoutBottomSheet
     return subtotal + deliveryFee + serviceCharge;
   };
 
@@ -139,27 +124,20 @@ const CartScreen: React.FC = () => {
     );
   };
 
-  // Load restaurant data for checkout
   const loadRestaurantData = async () => {
     if (state.customer.cart.length === 0) {
       Alert.alert("Empty Cart", "Your cart is empty. Add some items first!");
       return;
     }
-
-    // If we already have current restaurant, show checkout
     if (currentRestaurant) {
       setShowCheckout(true);
       return;
     }
-
-    // Try to get restaurant from state or show error
     if (state.restaurants.currentRestaurant) {
       setCurrentRestaurant(state.restaurants.currentRestaurant);
       setShowCheckout(true);
       return;
     }
-
-    // If we can't find the restaurant, we need user to go back to restaurant page
     Alert.alert(
       "Restaurant Information Needed",
       "We need restaurant information to proceed with checkout. Please go back to the restaurant page and try again.",
@@ -184,60 +162,46 @@ const CartScreen: React.FC = () => {
     loadRestaurantData();
   };
 
-  const handlePlaceOrder = (paymentMethod: string) => {
-    // Calculate order totals
-    const subtotal = calculateSubtotal();
-    const deliveryFee = calculateDeliveryFee();
-    const serviceCharge = calculateServiceCharge();
-    const grandTotal = calculateGrandTotal();
+  // ✅ FIXED: now uses the real backend API via actions.createOrder
+  const handlePlaceOrder = async (
+    paymentMethod: string,
+    addressId: string,
+  ): Promise<Order> => {
+    if (!currentRestaurant) {
+      throw new Error("Restaurant information is missing");
+    }
 
-    // Prepare order data - NO TAX (matching CheckoutBottomSheet)
+    // Prepare payload exactly as backend expects
     const orderData = {
-      restaurant_id: currentRestaurant?.id || "",
+      restaurant_id: currentRestaurant.id,
       items: state.customer.cart.map((item) => ({
         menu_item_id: item.menu_item.id,
         quantity: item.quantity,
-        special_instructions: item.special_instructions || "",
-        price: item.menu_item.price,
-        selected_addons: item.selected_addons || [],
+        addons: item.selected_addons.map((a) => ({ addon_id: a.id })),
+        notes: item.special_instructions || "",
       })),
+      address_id: addressId,
       payment_method: paymentMethod,
-      subtotal: subtotal,
-      delivery_fee: deliveryFee,
-      service_charge: serviceCharge,
-      // No tax field
-      total_amount: grandTotal,
       notes: "",
-      contact_phone: "",
     };
 
-    // Here you would typically send the order to your backend
-    console.log("Placing order:", orderData);
+    // Call the real API through the context action
+    const createdOrder = await actions.createOrder(orderData);
 
-    // For demo purposes, simulate order placement
-    Alert.alert(
-      "Order Placed!",
-      `Your order has been placed using ${paymentMethod}. Total: ${grandTotal.toFixed(2)}Birr`,
-      [
-        {
-          text: "OK",
-          onPress: () => {
-            // Clear cart after successful order
-            dispatch({ type: "CLEAR_CART" });
-            setShowCheckout(false);
+    // Clear cart (already done inside createOrder, but safe to do again)
+    dispatch({ type: "CLEAR_CART" });
+    setShowCheckout(false);
 
-            // Navigate to order tracking
-            router.push({
-              pathname: "/(customer)/order-traking",
-              params: {
-                orderId: `order_${Date.now()}`,
-                restaurantName: currentRestaurant?.name || "Restaurant",
-              },
-            });
-          },
-        },
-      ],
-    );
+    // Navigate to the tracking screen with the real order ID
+    router.push({
+      pathname: "/(customer)/order-traking",
+      params: {
+        orderId: createdOrder.id,
+        restaurantName: currentRestaurant.name,
+      },
+    });
+
+    return createdOrder;
   };
 
   const renderLeftAction = () => (
@@ -253,13 +217,11 @@ const CartScreen: React.FC = () => {
           barStyle='dark-content'
           backgroundColor={colors.background}
         />
-
         <View style={styles.emptyContent}>
           <Text style={styles.emptyTitle}>Your cart is empty</Text>
           <Text style={styles.emptySubtitle}>
             Add delicious food from restaurants to get started!
           </Text>
-
           <AnimatedButton
             title='Browse Restaurants'
             onPress={() => router.back()}
@@ -270,7 +232,6 @@ const CartScreen: React.FC = () => {
     );
   }
 
-  // Calculate all totals
   const subtotal = calculateSubtotal();
   const deliveryFee = calculateDeliveryFee();
   const serviceCharge = calculateServiceCharge();
@@ -318,7 +279,6 @@ const CartScreen: React.FC = () => {
                     </Text>
                   )}
                 </View>
-
                 <CartCounter
                   count={item.quantity}
                   onIncrement={() =>
@@ -381,7 +341,6 @@ const CartScreen: React.FC = () => {
               : "items"}
           </Text>
         </View>
-
         <AnimatedButton
           title={isLoadingRestaurant ? "Loading..." : "Proceed to Checkout"}
           onPress={handleCheckout}
@@ -391,7 +350,6 @@ const CartScreen: React.FC = () => {
         />
       </View>
 
-      {/* Checkout Bottom Sheet */}
       {currentRestaurant && (
         <CheckoutBottomSheet
           visible={showCheckout}
@@ -402,14 +360,14 @@ const CartScreen: React.FC = () => {
           deliveryFee={deliveryFee}
           serviceCharge={serviceCharge}
           grandTotal={grandTotal}
-          onPlaceOrder={handlePlaceOrder}
+          onPlaceOrder={handlePlaceOrder} // ✅ now expects (paymentMethod, addressId)
         />
       )}
     </View>
   );
 };
 
-// Styles remain exactly the same
+// ---- styles remain exactly as before ----
 const styles = StyleSheet.create({
   container: {
     flex: 1,

@@ -39,11 +39,7 @@ const EarningsChart: React.FC<EarningsChartProps> = ({
   const chartData = {
     labels: labels,
     datasets: [
-      {
-        data: data,
-        color: (opacity = 1) => colors.primary,
-        strokeWidth: 3,
-      },
+      { data: data, color: (opacity = 1) => colors.primary, strokeWidth: 3 },
     ],
   };
 
@@ -54,14 +50,8 @@ const EarningsChart: React.FC<EarningsChartProps> = ({
     decimalPlaces: 0,
     color: (opacity = 1) => colors.primary,
     labelColor: (opacity = 1) => colors.gray600,
-    style: {
-      borderRadius: 16,
-    },
-    propsForDots: {
-      r: "6",
-      strokeWidth: "2",
-      stroke: colors.primary,
-    },
+    style: { borderRadius: 16 },
+    propsForDots: { r: "6", strokeWidth: "2", stroke: colors.primary },
     propsForBackgroundLines: {
       strokeDasharray: "",
       stroke: colors.gray200,
@@ -69,7 +59,6 @@ const EarningsChart: React.FC<EarningsChartProps> = ({
     },
   };
 
-  // Calculate statistics
   const total = data.reduce((sum, value) => sum + value, 0);
   const average = total / data.length;
   const max = Math.max(...data);
@@ -124,10 +113,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginVertical: 8,
     shadowColor: colors.black,
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 4,
@@ -138,20 +124,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 16,
   },
-  title: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: colors.gray800,
-  },
-  total: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: colors.primary,
-  },
-  chart: {
-    marginVertical: 8,
-    borderRadius: 16,
-  },
+  title: { fontSize: 18, fontWeight: "bold", color: colors.gray800 },
+  total: { fontSize: 20, fontWeight: "bold", color: colors.primary },
+  chart: { marginVertical: 8, borderRadius: 16 },
   statsContainer: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -160,19 +135,9 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.gray200,
   },
-  statItem: {
-    alignItems: "center",
-  },
-  statLabel: {
-    fontSize: 12,
-    color: colors.gray600,
-    marginBottom: 4,
-  },
-  statValue: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: colors.gray800,
-  },
+  statItem: { alignItems: "center" },
+  statLabel: { fontSize: 12, color: colors.gray600, marginBottom: 4 },
+  statValue: { fontSize: 16, fontWeight: "600", color: colors.gray800 },
 });
 
 export default EarningsChart;

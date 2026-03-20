@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -7,15 +7,83 @@ import {
   StatusBar,
   TouchableOpacity,
   FlatList,
+  ActivityIndicator,
 } from "react-native";
 import { useAppState } from "../../context/AppStateContext";
 import { colors } from "../../theme/colors";
 import OrderStatusBadge from "../../components/shared/OrderStatusBadge";
 import SwipeableCard from "../../components/ui/SwipeableCard";
+import { useRouter } from "expo-router";
+import WebSocketService from "../../services/websocket.service";
+import { Order } from "../../types";
 
 const OrderHistoryScreen: React.FC = () => {
-  const { state } = useAppState();
+  const router = useRouter();
+  const { state, dispatch, actions } = useAppState();
   const [selectedFilter, setSelectedFilter] = useState("all");
+  const [loading, setLoading] = useState(false);
+  const [restaurantNames, setRestaurantNames] = useState<
+    Record<string, string>
+  >({});
+
+  // Load restaurant names for orders
+  useEffect(() => {
+    const fetchRestaurantNames = async () => {
+      const orders = state.customer?.orders || [];
+      const names: Record<string, string> = {};
+      for (const order of orders) {
+        if (!order.restaurant_id) continue;
+        if (restaurantNames[order.restaurant_id]) {
+          names[order.restaurant_id] = restaurantNames[order.restaurant_id];
+        } else {
+          try {
+            const restaurant = await actions.loadRestaurantDetails(
+              order.restaurant_id,
+            );
+            if (restaurant) {
+              names[order.restaurant_id] = restaurant.name;
+            }
+          } catch (error) {
+            console.error("Failed to load restaurant name:", error);
+            names[order.restaurant_id] = "Restaurant";
+          }
+        }
+      }
+      setRestaurantNames((prev) => ({ ...prev, ...names }));
+    };
+    fetchRestaurantNames();
+  }, [state.customer?.orders]);
+
+  // Refresh orders on mount and setup WebSocket listeners
+  useEffect(() => {
+    loadOrders();
+
+    // Listen for order updates
+    const handleOrderUpdate = (data: any) => {
+      console.log("Order update received in history:", data);
+      // Refresh orders to get latest status
+      loadOrders();
+    };
+
+    WebSocketService.on("order:status_update", handleOrderUpdate);
+    WebSocketService.on("order_update", handleOrderUpdate); // raw event
+
+    return () => {
+      WebSocketService.off("order:status_update", handleOrderUpdate);
+      WebSocketService.off("order_update", handleOrderUpdate);
+    };
+  }, []);
+
+  const loadOrders = async () => {
+    setLoading(true);
+    try {
+      await actions.loadCustomerOrders();
+    } catch (error) {
+      console.error("Failed to load orders:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const filters = [
     { id: "all", label: "All Orders" },
@@ -24,17 +92,15 @@ const OrderHistoryScreen: React.FC = () => {
     { id: "cancelled", label: "Cancelled" },
   ];
 
-  // Safely access orders array
   const orders = state.customer?.orders || [];
 
   const filteredOrders = orders.filter((order) => {
     if (!order || !order.status) return false;
-
     if (selectedFilter === "all") return true;
     if (selectedFilter === "pending") {
       return [
         "pending",
-        "confirmed",
+        "accepted",
         "preparing",
         "ready",
         "picked_up",
@@ -43,14 +109,19 @@ const OrderHistoryScreen: React.FC = () => {
     return order.status === selectedFilter;
   });
 
-  const handleReorder = (order: any) => {
-    // Implement reorder logic
+  const handleReorder = (order: Order) => {
     console.log("Reorder:", order.id);
+    // Implement reorder logic (maybe navigate to restaurant with items pre-filled)
   };
 
-  const handleViewDetails = (order: any) => {
-    // Implement view details logic
-    console.log("View details:", order.id);
+  const handleViewDetails = (order: Order) => {
+    router.push({
+      pathname: "/(customer)/order-traking",
+      params: {
+        orderId: order.id,
+        restaurantName: restaurantNames[order.restaurant_id] || "Restaurant",
+      },
+    });
   };
 
   const renderRightAction = () => (
@@ -59,27 +130,28 @@ const OrderHistoryScreen: React.FC = () => {
     </View>
   );
 
-  const renderOrderItem = ({ item }: { item: any }) => {
-    // Format date safely
-    const formatDate = (date: any) => {
-      if (!date) return "Unknown date";
+  const renderOrderItem = ({ item }: { item: Order }) => {
+    const formatDate = (dateStr?: string) => {
+      if (!dateStr) return "Unknown date";
       try {
-        const d = new Date(date);
+        const d = new Date(dateStr);
         return d.toLocaleDateString();
       } catch {
         return "Invalid date";
       }
     };
 
-    const formatTime = (date: any) => {
-      if (!date) return "";
+    const formatTime = (dateStr?: string) => {
+      if (!dateStr) return "";
       try {
-        const d = new Date(date);
+        const d = new Date(dateStr);
         return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
       } catch {
         return "";
       }
     };
+
+    const totalAmount = item.total_amount?.total || 0;
 
     return (
       <SwipeableCard
@@ -93,28 +165,26 @@ const OrderHistoryScreen: React.FC = () => {
         >
           <View style={styles.orderHeader}>
             <Text style={styles.restaurantName}>
-              {item.restaurantName || "Restaurant"}
+              {restaurantNames[item.restaurant_id] || "Restaurant"}
             </Text>
-            <OrderStatusBadge status={item.status || "pending"} />
+            <OrderStatusBadge status={item.status} />
           </View>
 
           <View style={styles.orderDetails}>
             <Text style={styles.orderId}>
-              Order #{item.id ? item.id.substring(0, 8) : "N/A"}
+              Order #{item.order_number || item.id.substring(0, 8)}
             </Text>
             <Text style={styles.orderDate}>
-              {formatDate(item.createdAt)} • {formatTime(item.createdAt)}
+              {formatDate(item.created_at)} • {formatTime(item.created_at)}
             </Text>
           </View>
 
           <View style={styles.orderItems}>
-            {(item.items || [])
-              .slice(0, 2)
-              .map((orderItem: any, index: number) => (
-                <Text key={index} style={styles.itemText}>
-                  {orderItem?.quantity || 0}x {orderItem?.name || "Item"}
-                </Text>
-              ))}
+            {(item.items || []).slice(0, 2).map((orderItem, index) => (
+              <Text key={index} style={styles.itemText}>
+                {orderItem.quantity}x {orderItem.name}
+              </Text>
+            ))}
             {(item.items || []).length > 2 && (
               <Text style={styles.moreItems}>
                 +{(item.items || []).length - 2} more items
@@ -124,7 +194,7 @@ const OrderHistoryScreen: React.FC = () => {
 
           <View style={styles.orderFooter}>
             <Text style={styles.totalAmount}>
-              ${item.total?.toFixed(2) || "0.00"}
+              {totalAmount.toFixed(2)} Birr
             </Text>
             <TouchableOpacity
               style={styles.detailsButton}
@@ -137,6 +207,19 @@ const OrderHistoryScreen: React.FC = () => {
       </SwipeableCard>
     );
   };
+
+  if (loading && orders.length === 0) {
+    return (
+      <View style={styles.loadingContainer}>
+        <StatusBar
+          barStyle='dark-content'
+          backgroundColor={colors.background}
+        />
+        <ActivityIndicator size='large' color={colors.primary} />
+        <Text style={styles.loadingText}>Loading your orders...</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -188,7 +271,10 @@ const OrderHistoryScreen: React.FC = () => {
                 ? "You haven't placed any orders yet"
                 : `You don't have any ${selectedFilter} orders`}
             </Text>
-            <TouchableOpacity style={styles.browseButton}>
+            <TouchableOpacity
+              style={styles.browseButton}
+              onPress={() => router.push("/(customer)/home")}
+            >
               <Text style={styles.browseButtonText}>Browse Restaurants</Text>
             </TouchableOpacity>
           </View>
@@ -196,7 +282,7 @@ const OrderHistoryScreen: React.FC = () => {
           <FlatList
             data={filteredOrders}
             renderItem={renderOrderItem}
-            keyExtractor={(item) => item.id || Math.random().toString()}
+            keyExtractor={(item) => item.id}
             scrollEnabled={false}
             contentContainerStyle={styles.ordersList}
           />
@@ -210,6 +296,17 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: colors.background,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: colors.gray600,
   },
   scrollView: {
     flex: 1,

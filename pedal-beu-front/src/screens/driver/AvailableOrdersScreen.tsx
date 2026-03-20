@@ -123,7 +123,7 @@ const mapBackendOrder = (backendOrder: BackendOrder): Order => {
       }
     : { latitude: 0, longitude: 0 };
 
-  const customerLocation = backendOrder.delivery_info.address.location
+  const customerLocation = backendOrder.delivery_info?.address?.location
     ?.coordinates
     ? {
         latitude: backendOrder.delivery_info.address.location.coordinates[1],
@@ -132,42 +132,42 @@ const mapBackendOrder = (backendOrder: BackendOrder): Order => {
     : { latitude: 0, longitude: 0 };
 
   return {
-    id: backendOrder.id,
-    orderId: backendOrder.order_number || backendOrder.id,
+    id: backendOrder.id || "",
+    orderId: backendOrder.order_number || backendOrder.id || "",
     restaurant: {
-      id: backendOrder.restaurant_id,
+      id: backendOrder.restaurant_id || "",
       name: backendOrder.restaurant?.name || "Restaurant",
       address: backendOrder.restaurant?.address || "",
       image: backendOrder.restaurant?.image,
       rating: backendOrder.restaurant?.rating || 0,
     },
     customer: {
-      id: backendOrder.customer_id,
-      name: backendOrder.delivery_info.contact_name,
-      phone: backendOrder.delivery_info.contact_phone,
+      id: backendOrder.customer_id || "",
+      name: backendOrder.delivery_info?.contact_name || "Customer",
+      phone: backendOrder.delivery_info?.contact_phone || "",
       location: customerLocation,
     },
-    amount: backendOrder.total_amount.total,
-    distance: "N/A", // will be calculated later if driver location available
-    items: backendOrder.items.map((item) => ({
-      name: item.name,
-      quantity: item.quantity,
+    amount: backendOrder.total_amount?.total || 0,
+    distance: "N/A",
+    items: (backendOrder.items || []).map((item) => ({
+      name: item.name || "Item",
+      quantity: item.quantity || 0,
     })),
-    itemsCount: backendOrder.items.reduce(
-      (sum, item) => sum + item.quantity,
+    itemsCount: (backendOrder.items || []).reduce(
+      (sum, item) => sum + (item.quantity || 0),
       0,
     ),
-    estimatedPreparationTime: 15, // placeholder, could come from backend
-    estimatedDeliveryTime: backendOrder.delivery_info.estimated_delivery
+    estimatedPreparationTime: 15,
+    estimatedDeliveryTime: backendOrder.delivery_info?.estimated_delivery
       ? new Date(
           backendOrder.delivery_info.estimated_delivery,
         ).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
       : "30 min",
     specialInstructions: backendOrder.special_instructions,
-    createdAt: backendOrder.created_at,
+    createdAt: backendOrder.created_at || new Date().toISOString(),
     restaurantLocation,
     customerLocation,
-    paymentMethod: backendOrder.payment_method,
+    paymentMethod: backendOrder.payment_method || "cash",
   };
 };
 
@@ -195,7 +195,7 @@ const AvailableOrdersScreen: React.FC = () => {
   });
   const [loading, setLoading] = useState(true);
   const appState = useRef(AppState.currentState);
-  const locationInterval = useRef<ReturnType<typeof setInterval> | null>(null); // ✅ React Native interval type
+  const locationInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     initializeDriver();
@@ -250,7 +250,7 @@ const AvailableOrdersScreen: React.FC = () => {
             const { latitude, longitude } = position.coords;
             setDriverLocation({ latitude, longitude });
 
-            // Send initial location via WebSocket – ✅ convert to lat/lng format
+            // Send initial location via WebSocket
             if (isOnline) {
               WebSocketService.updateDriverLocation({
                 lat: latitude,
@@ -285,7 +285,7 @@ const AvailableOrdersScreen: React.FC = () => {
 
   const connectWebSocket = async () => {
     try {
-      const token = await AsyncStorage.getItem("accessToken"); // unified token
+      const token = await AsyncStorage.getItem("accessToken");
       if (!token) {
         Alert.alert("Error", "You are not logged in");
         router.replace("/login");
@@ -395,15 +395,18 @@ const AvailableOrdersScreen: React.FC = () => {
   const fetchAvailableOrders = async () => {
     try {
       const token = await AsyncStorage.getItem("accessToken");
-      const response = await fetch(
-        "https://pedal-delivery-back.onrender.com/api/v1/driver/orders/available",
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
+      if (!driverLocation) {
+        console.warn("Driver location not available yet");
+        return;
+      }
+      const { latitude, longitude } = driverLocation;
+      const url = `https://pedal-delivery-back.onrender.com/api/v1/driver/orders/available?lat=${latitude}&lng=${longitude}&radius=5000`;
+      const response = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
         },
-      );
+      });
 
       const data = await response.json();
 
@@ -444,13 +447,41 @@ const AvailableOrdersScreen: React.FC = () => {
         },
       );
 
-      const data = await response.json();
+      if (!response.ok) {
+        // Fallback to default stats
+        setDriverStats({
+          totalDeliveries: 0,
+          averageRating: 0,
+          averageEarnings: 0,
+          averageTime: 0,
+          acceptanceRate: 0,
+        });
+        return;
+      }
 
-      if (response.ok) {
+      const text = await response.text();
+      try {
+        const data = JSON.parse(text);
         setDriverStats(data);
+      } catch (e) {
+        console.error("Invalid JSON from stats endpoint:", text);
+        setDriverStats({
+          totalDeliveries: 0,
+          averageRating: 0,
+          averageEarnings: 0,
+          averageTime: 0,
+          acceptanceRate: 0,
+        });
       }
     } catch (error) {
       console.error("Fetch stats error:", error);
+      setDriverStats({
+        totalDeliveries: 0,
+        averageRating: 0,
+        averageEarnings: 0,
+        averageTime: 0,
+        acceptanceRate: 0,
+      });
     }
   };
 
@@ -521,9 +552,9 @@ const AvailableOrdersScreen: React.FC = () => {
           },
         });
 
-        // Navigate to order details – ✅ use correct path with type assertion if needed
+        // Navigate to order details
         router.push({
-          pathname: "/(driver)/order-detail" as any, // temporary type assertion to bypass strict check
+          pathname: "/(driver)/order-detail" as any,
           params: { orderId },
         });
 

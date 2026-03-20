@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -6,156 +6,166 @@ import {
   ScrollView,
   StatusBar,
   TouchableOpacity,
-  Dimensions,
+  Alert,
+  ActivityIndicator,
 } from "react-native";
 import { colors } from "../../theme/colors";
 import EarningsChart from "../../components/driver/EarningsChart";
 import { useRouter } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
+interface EarningsSummary {
+  today: number;
+  thisWeek: number;
+  thisMonth: number;
+  total: number;
+  completedOrders: number;
+  avgPerOrder: number;
+  rating: number;
+}
+
+interface Transaction {
+  id: string;
+  date: string;
+  amount: number;
+  orderId: string;
+  status: "completed" | "pending" | "failed";
+}
 
 const EarningsScreen: React.FC = () => {
   const router = useRouter();
   const [timeRange, setTimeRange] = useState<"week" | "month" | "year">("week");
+  const [loading, setLoading] = useState(true);
+  const [summary, setSummary] = useState<EarningsSummary>({
+    today: 0,
+    thisWeek: 0,
+    thisMonth: 0,
+    total: 0,
+    completedOrders: 0,
+    avgPerOrder: 0,
+    rating: 5.0,
+  });
+  const [chartData, setChartData] = useState<{
+    data: number[];
+    labels: string[];
+  }>({
+    data: [],
+    labels: [],
+  });
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [chartError, setChartError] = useState(false);
 
-  // Sample data
-  const weeklyData = [120, 140, 160, 180, 200, 220, 240];
-  const weeklyLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  useEffect(() => {
+    fetchEarningsData();
+  }, [timeRange]);
 
-  const monthlyData = [
-    850, 920, 780, 1100, 950, 1200, 1050, 980, 1150, 1250, 1300, 1400,
-  ];
-  const monthlyLabels = [
-    "Jan",
-    "Feb",
-    "Mar",
-    "Apr",
-    "May",
-    "Jun",
-    "Jul",
-    "Aug",
-    "Sep",
-    "Oct",
-    "Nov",
-    "Dec",
-  ];
+  const fetchEarningsData = async () => {
+    setLoading(true);
+    setChartError(false);
+    try {
+      const token = await AsyncStorage.getItem("accessToken");
 
-  const yearlyData = [12000, 13500, 12800, 14200, 15000, 16500];
-  const yearlyLabels = ["2019", "2020", "2021", "2022", "2023", "2024"];
+      const summaryRes = await fetch(
+        "https://pedal-delivery-back.onrender.com/api/v1/driver/earnings/summary",
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      if (summaryRes.ok) {
+        const data = await summaryRes.json();
+        setSummary(data);
+      }
 
-  const earningsData = {
-    week: { data: weeklyData, labels: weeklyLabels },
-    month: { data: monthlyData, labels: monthlyLabels },
-    year: { data: yearlyData, labels: yearlyLabels },
+      const chartRes = await fetch(
+        `https://pedal-delivery-back.onrender.com/api/v1/driver/earnings/chart?range=${timeRange}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      if (chartRes.ok) {
+        const data = await chartRes.json();
+        setChartData({
+          data: data.data || [],
+          labels: data.labels || [],
+        });
+      } else {
+        setChartError(true);
+      }
+
+      const txRes = await fetch(
+        "https://pedal-delivery-back.onrender.com/api/v1/driver/earnings/transactions?limit=5",
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      if (txRes.ok) {
+        const data = await txRes.json();
+        setTransactions(data);
+      }
+    } catch (error) {
+      console.error("Fetch earnings error:", error);
+    } finally {
+      setLoading(false);
+    }
   };
-
-  const earningsSummary = {
-    today: 45.5,
-    thisWeek: 320.0,
-    thisMonth: 1250.0,
-    total: 8560.0,
-    completedOrders: 150,
-    avgPerOrder: 15.5,
-    rating: 4.8,
-  };
-
-  const recentTransactions = [
-    {
-      id: "1",
-      date: "Today",
-      amount: 18.5,
-      orderId: "ORD001",
-      status: "completed",
-    },
-    {
-      id: "2",
-      date: "Today",
-      amount: 22.0,
-      orderId: "ORD002",
-      status: "completed",
-    },
-    {
-      id: "3",
-      date: "Yesterday",
-      amount: 15.75,
-      orderId: "ORD003",
-      status: "completed",
-    },
-    {
-      id: "4",
-      date: "2 days ago",
-      amount: 28.25,
-      orderId: "ORD004",
-      status: "completed",
-    },
-    {
-      id: "5",
-      date: "3 days ago",
-      amount: 12.5,
-      orderId: "ORD005",
-      status: "pending",
-    },
-  ];
 
   const handleWithdraw = () => {
     Alert.alert("Withdraw Earnings", "How much would you like to withdraw?", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Withdraw All",
-        onPress: () => Alert.alert("Success", "Withdrawal request submitted!"),
+        onPress: () =>
+          Alert.alert("Success", "Withdrawal request submitted! (Demo)"),
       },
       {
         text: "Custom Amount",
         onPress: () =>
           Alert.alert(
             "Custom Amount",
-            "Enter withdrawal amount feature coming soon!"
+            "Enter withdrawal amount feature coming soon!",
           ),
       },
     ]);
   };
 
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size='large' color={colors.primary} />
+        <Text style={styles.loadingText}>Loading earnings...</Text>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle='dark-content' backgroundColor={colors.background} />
-
       <ScrollView style={styles.scrollView}>
-        {/* Header */}
         <View style={styles.header}>
           <Text style={styles.title}>Earnings</Text>
           <Text style={styles.totalEarnings}>
-            ${earningsSummary.total.toFixed(2)}
+            {summary.total.toFixed(2)} Birr
           </Text>
           <Text style={styles.subtitle}>Total earnings to date</Text>
         </View>
 
-        {/* Quick Stats */}
         <View style={styles.quickStats}>
           <View style={styles.statCard}>
             <Text style={styles.statValue}>
-              ${earningsSummary.today.toFixed(2)}
+              {summary.today.toFixed(2)} Birr
             </Text>
             <Text style={styles.statLabel}>Today</Text>
           </View>
           <View style={styles.statCard}>
             <Text style={styles.statValue}>
-              ${earningsSummary.thisWeek.toFixed(2)}
+              {summary.thisWeek.toFixed(2)} Birr
             </Text>
             <Text style={styles.statLabel}>This Week</Text>
           </View>
           <View style={styles.statCard}>
-            <Text style={styles.statValue}>
-              {earningsSummary.completedOrders}
-            </Text>
+            <Text style={styles.statValue}>{summary.completedOrders}</Text>
             <Text style={styles.statLabel}>Orders</Text>
           </View>
           <View style={styles.statCard}>
-            <Text style={styles.statValue}>{earningsSummary.rating}</Text>
+            <Text style={styles.statValue}>{summary.rating.toFixed(1)}</Text>
             <Text style={styles.statLabel}>Rating</Text>
           </View>
         </View>
 
-        {/* Time Range Selector */}
         <View style={styles.timeRangeContainer}>
           <TouchableOpacity
             style={[
@@ -207,67 +217,84 @@ const EarningsScreen: React.FC = () => {
           </TouchableOpacity>
         </View>
 
-        {/* Earnings Chart */}
-        <EarningsChart
-          data={earningsData[timeRange].data}
-          labels={earningsData[timeRange].labels}
-          title={`${
-            timeRange.charAt(0).toUpperCase() + timeRange.slice(1)
-          }ly Earnings`}
-          showGrid={true}
-        />
+        {chartError ? (
+          <View style={styles.chartErrorContainer}>
+            <Text style={styles.chartErrorText}>
+              Chart data currently unavailable
+            </Text>
+          </View>
+        ) : chartData.data.length > 0 ? (
+          <EarningsChart
+            data={chartData.data}
+            labels={chartData.labels}
+            title={`${timeRange.charAt(0).toUpperCase() + timeRange.slice(1)}ly Earnings`}
+            showGrid={true}
+          />
+        ) : (
+          <View style={styles.chartErrorContainer}>
+            <Text style={styles.chartErrorText}>
+              No earnings data for this period
+            </Text>
+          </View>
+        )}
 
-        {/* Recent Transactions */}
         <View style={styles.transactionsSection}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Recent Transactions</Text>
             <TouchableOpacity
-              onPress={() => router.push("/(driver)/documents")}
+              onPress={() => router.push("/(driver)/documents" as any)}
             >
               <Text style={styles.seeAllButton}>See All</Text>
             </TouchableOpacity>
           </View>
 
-          <View style={styles.transactionsList}>
-            {recentTransactions.map((transaction) => (
-              <View key={transaction.id} style={styles.transactionItem}>
-                <View style={styles.transactionInfo}>
-                  <Text style={styles.transactionDate}>{transaction.date}</Text>
-                  <Text style={styles.transactionId}>
-                    Order #{transaction.orderId}
-                  </Text>
+          {transactions.length === 0 ? (
+            <View style={styles.emptyTransactions}>
+              <Text style={styles.emptyText}>No transactions yet</Text>
+            </View>
+          ) : (
+            <View style={styles.transactionsList}>
+              {transactions.map((tx) => (
+                <View key={tx.id} style={styles.transactionItem}>
+                  <View style={styles.transactionInfo}>
+                    <Text style={styles.transactionDate}>{tx.date}</Text>
+                    <Text style={styles.transactionId}>
+                      Order #{tx.orderId}
+                    </Text>
+                  </View>
+                  <View style={styles.transactionAmount}>
+                    <Text
+                      style={[
+                        styles.amount,
+                        tx.status === "pending" && styles.amountPending,
+                      ]}
+                    >
+                      {tx.amount.toFixed(2)} Birr
+                    </Text>
+                    <Text
+                      style={[
+                        styles.status,
+                        tx.status === "completed"
+                          ? styles.statusCompleted
+                          : tx.status === "pending"
+                            ? styles.statusPending
+                            : styles.statusFailed,
+                      ]}
+                    >
+                      {tx.status}
+                    </Text>
+                  </View>
                 </View>
-                <View style={styles.transactionAmount}>
-                  <Text
-                    style={[
-                      styles.amount,
-                      transaction.status === "pending" && styles.amountPending,
-                    ]}
-                  >
-                    ${transaction.amount.toFixed(2)}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.status,
-                      transaction.status === "completed"
-                        ? styles.statusCompleted
-                        : styles.statusPending,
-                    ]}
-                  >
-                    {transaction.status}
-                  </Text>
-                </View>
-              </View>
-            ))}
-          </View>
+              ))}
+            </View>
+          )}
         </View>
 
-        {/* Withdrawal Section */}
         <View style={styles.withdrawalSection}>
           <View style={styles.withdrawalCard}>
             <Text style={styles.withdrawalTitle}>Available for Withdrawal</Text>
             <Text style={styles.withdrawalAmount}>
-              ${earningsSummary.thisMonth.toFixed(2)}
+              {summary.thisMonth.toFixed(2)} Birr
             </Text>
             <Text style={styles.withdrawalNote}>
               Funds are available for withdrawal 24 hours after delivery
@@ -287,13 +314,10 @@ const EarningsScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  scrollView: {
-    flex: 1,
-  },
+  container: { flex: 1, backgroundColor: colors.background },
+  scrollView: { flex: 1 },
+  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
+  loadingText: { marginTop: 12, fontSize: 16, color: colors.gray600 },
   header: {
     paddingHorizontal: 20,
     paddingTop: 60,
@@ -315,10 +339,7 @@ const styles = StyleSheet.create({
     color: colors.white,
     marginBottom: 4,
   },
-  subtitle: {
-    fontSize: 16,
-    color: colors.white + "90",
-  },
+  subtitle: { fontSize: 16, color: colors.white + "90" },
   quickStats: {
     flexDirection: "row",
     backgroundColor: colors.white,
@@ -327,28 +348,19 @@ const styles = StyleSheet.create({
     padding: 20,
     borderRadius: 20,
     shadowColor: colors.black,
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 12,
     elevation: 8,
   },
-  statCard: {
-    flex: 1,
-    alignItems: "center",
-  },
+  statCard: { flex: 1, alignItems: "center" },
   statValue: {
     fontSize: 20,
     fontWeight: "bold",
     color: colors.primary,
     marginBottom: 4,
   },
-  statLabel: {
-    fontSize: 12,
-    color: colors.gray600,
-  },
+  statLabel: { fontSize: 12, color: colors.gray600 },
   timeRangeContainer: {
     flexDirection: "row",
     justifyContent: "center",
@@ -368,43 +380,34 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderColor: colors.primary,
   },
-  timeRangeText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: colors.gray600,
+  timeRangeText: { fontSize: 14, fontWeight: "600", color: colors.gray600 },
+  timeRangeTextActive: { color: colors.white },
+  chartErrorContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 40,
+    marginHorizontal: 20,
+    backgroundColor: colors.gray100,
+    borderRadius: 16,
   },
-  timeRangeTextActive: {
-    color: colors.white,
-  },
-  transactionsSection: {
-    paddingHorizontal: 20,
-    marginTop: 24,
-  },
+  chartErrorText: { fontSize: 16, color: colors.gray600 },
+  transactionsSection: { paddingHorizontal: 20, marginTop: 24 },
   sectionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 16,
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: colors.gray900,
-  },
-  seeAllButton: {
-    fontSize: 14,
-    color: colors.primary,
-    fontWeight: "600",
-  },
+  sectionTitle: { fontSize: 18, fontWeight: "bold", color: colors.gray900 },
+  seeAllButton: { fontSize: 14, color: colors.primary, fontWeight: "600" },
+  emptyTransactions: { alignItems: "center", paddingVertical: 20 },
+  emptyText: { fontSize: 14, color: colors.gray500 },
   transactionsList: {
     backgroundColor: colors.white,
     borderRadius: 16,
     padding: 20,
     shadowColor: colors.black,
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 4,
@@ -417,31 +420,22 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.gray100,
   },
-  transactionInfo: {
-    flex: 1,
-  },
+  transactionInfo: { flex: 1 },
   transactionDate: {
     fontSize: 14,
     fontWeight: "600",
     color: colors.gray800,
     marginBottom: 2,
   },
-  transactionId: {
-    fontSize: 12,
-    color: colors.gray500,
-  },
-  transactionAmount: {
-    alignItems: "flex-end",
-  },
+  transactionId: { fontSize: 12, color: colors.gray500 },
+  transactionAmount: { alignItems: "flex-end" },
   amount: {
     fontSize: 16,
     fontWeight: "bold",
     color: colors.success,
     marginBottom: 2,
   },
-  amountPending: {
-    color: colors.warning,
-  },
+  amountPending: { color: colors.warning },
   status: {
     fontSize: 12,
     fontWeight: "600",
@@ -458,21 +452,15 @@ const styles = StyleSheet.create({
     backgroundColor: colors.warning + "20",
     color: colors.warning,
   },
-  withdrawalSection: {
-    paddingHorizontal: 20,
-    marginTop: 24,
-    marginBottom: 40,
-  },
+  statusFailed: { backgroundColor: colors.error + "20", color: colors.error },
+  withdrawalSection: { paddingHorizontal: 20, marginTop: 24, marginBottom: 40 },
   withdrawalCard: {
     backgroundColor: colors.white,
     borderRadius: 20,
     padding: 24,
     alignItems: "center",
     shadowColor: colors.black,
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 12,
     elevation: 8,
@@ -504,11 +492,7 @@ const styles = StyleSheet.create({
     width: "100%",
     alignItems: "center",
   },
-  withdrawButtonText: {
-    fontSize: 16,
-    fontWeight: "bold",
-    color: colors.white,
-  },
+  withdrawButtonText: { fontSize: 16, fontWeight: "bold", color: colors.white },
 });
 
 export default EarningsScreen;
