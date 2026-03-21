@@ -7,13 +7,11 @@ import (
 	api "github.com/twilio/twilio-go/rest/api/v2010"
 )
 
-// Client holds Twilio credentials and client
 type Client struct {
 	client    *twilio.RestClient
 	fromPhone string
 }
 
-// SendSMSResponse matches the old response format for compatibility
 type SendSMSResponse struct {
 	Acknowledge string `json:"acknowledge"`
 	Response    struct {
@@ -24,7 +22,6 @@ type SendSMSResponse struct {
 	} `json:"response"`
 }
 
-// NewClient creates a new Twilio SMS client
 func NewClient(accountSID, authToken, fromPhone string) *Client {
 	client := twilio.NewRestClientWithParams(twilio.ClientParams{
 		Username: accountSID,
@@ -36,7 +33,6 @@ func NewClient(accountSID, authToken, fromPhone string) *Client {
 	}
 }
 
-// SendSMS sends an SMS via Twilio and returns a response compatible with the old struct
 func (c *Client) SendSMS(to, message string) (*SendSMSResponse, error) {
 	params := &api.CreateMessageParams{}
 	params.SetTo(to)
@@ -48,7 +44,6 @@ func (c *Client) SendSMS(to, message string) (*SendSMSResponse, error) {
 		return nil, fmt.Errorf("twilio error: %w", err)
 	}
 
-	// Map Twilio response to the old format
 	result := &SendSMSResponse{
 		Acknowledge: "success",
 	}

@@ -23,9 +23,10 @@ type TwilioConfig struct {
 	AuthToken   string `mapstructure:"auth_token"`
 	PhoneNumber string `mapstructure:"phone_number"`
 }
+
 type ShipdayConfig struct {
 	APIKey  string `mapstructure:"api_key"`
-	BaseURL string `mapstructure:"base_url"` // optional, default to production
+	BaseURL string `mapstructure:"base_url"`
 }
 
 type ServerConfig struct {
@@ -71,9 +72,27 @@ func Load() *Config {
 		viper.SetConfigType("env")
 		viper.AddConfigPath(".")
 		viper.AddConfigPath("./config")
-		viper.AddConfigPath("/etc/delivery/")
+		viper.AddConfigPath("/etc/delivery")
+		viper.AddConfigPath("/etc/secrets") // for Render secret file
 
 		viper.AutomaticEnv()
+
+		// Explicitly bind environment variables to config keys
+		_ = viper.BindEnv("database.uri", "DATABASE_URI")
+		_ = viper.BindEnv("database.database", "DATABASE_DATABASE")
+		_ = viper.BindEnv("server.port", "SERVER_PORT")
+		_ = viper.BindEnv("server.environment", "SERVER_ENVIRONMENT")
+		_ = viper.BindEnv("redis.url", "REDIS_URL")
+		_ = viper.BindEnv("redis.password", "REDIS_PASSWORD")
+		_ = viper.BindEnv("redis.db", "REDIS_DB")
+		_ = viper.BindEnv("twilio.account_sid", "TWILIO_ACCOUNT_SID")
+		_ = viper.BindEnv("twilio.auth_token", "TWILIO_AUTH_TOKEN")
+		_ = viper.BindEnv("twilio.phone_number", "TWILIO_PHONE_NUMBER")
+		_ = viper.BindEnv("cloudinary.cloud_name", "CLOUDINARY_CLOUD_NAME")
+		_ = viper.BindEnv("cloudinary.api_key", "CLOUDINARY_API_KEY")
+		_ = viper.BindEnv("cloudinary.api_secret", "CLOUDINARY_API_SECRET")
+		_ = viper.BindEnv("shipday.api_key", "SHIPDAY_API_KEY")
+		_ = viper.BindEnv("shipday.base_url", "SHIPDAY_BASE_URL")
 
 		// Set defaults
 		viper.SetDefault("server.port", "8080")

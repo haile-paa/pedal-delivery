@@ -96,6 +96,26 @@ func getImageURL(cfg *config.Config, fileType, filename string) string {
 func main() {
 	cfg := config.Load()
 
+	// ========== DEBUG: Print environment variables and config values ==========
+	log.Println("=== DEBUG: Environment Variables ===")
+	log.Printf("DATABASE_URI = %s", os.Getenv("DATABASE_URI"))
+	log.Printf("DATABASE_DATABASE = %s", os.Getenv("DATABASE_DATABASE"))
+	log.Printf("TWILIO_ACCOUNT_SID = %s", os.Getenv("TWILIO_ACCOUNT_SID"))
+	log.Printf("TWILIO_AUTH_TOKEN = %s", os.Getenv("TWILIO_AUTH_TOKEN"))
+	log.Printf("TWILIO_PHONE_NUMBER = %s", os.Getenv("TWILIO_PHONE_NUMBER"))
+	log.Printf("CLOUDINARY_CLOUD_NAME = %s", os.Getenv("CLOUDINARY_CLOUD_NAME"))
+	log.Printf("CLOUDINARY_API_KEY = %s", os.Getenv("CLOUDINARY_API_KEY"))
+	log.Printf("CLOUDINARY_API_SECRET = %s", os.Getenv("CLOUDINARY_API_SECRET"))
+	log.Println("=== DEBUG: Config Values ===")
+	log.Printf("cfg.Database.URI = %s", cfg.Database.URI)
+	log.Printf("cfg.Database.Database = %s", cfg.Database.Database)
+	log.Printf("cfg.Twilio.AccountSID = %s", cfg.Twilio.AccountSID)
+	log.Printf("cfg.Twilio.AuthToken = %s", cfg.Twilio.AuthToken)
+	log.Printf("cfg.Twilio.PhoneNumber = %s", cfg.Twilio.PhoneNumber)
+	log.Printf("cfg.Server.Port = %s", cfg.Server.Port)
+	log.Printf("cfg.Server.Environment = %s", cfg.Server.Environment)
+	// ========================================================================
+
 	if cfg.Server.Environment == "production" {
 		gin.SetMode(gin.ReleaseMode)
 	} else {
@@ -148,6 +168,7 @@ func main() {
 	} else {
 		log.Println("⚠️ Twilio credentials not configured – SMS will fail")
 	}
+
 	// Initialize services
 	authService := services.NewAuthService(userRepo, adminRepo)
 	orderService := services.NewOrderService(orderRepo, restaurantRepo, userRepo)
@@ -157,12 +178,10 @@ func main() {
 	authHandler := handlers.NewAuthHandler(authService, smsClient)
 	orderHandler := handlers.NewOrderHandler(orderService)
 	restaurantHandler := handlers.NewRestaurantHandler(restaurantService)
-	// Pass adminRepo to AdminHandler
 	adminHandler := handlers.NewAdminHandler(orderRepo, restaurantRepo, driverRepo, adminRepo)
 
 	handlers.SetUserRepository(userRepo)
 	handlers.SetAdminRepository(adminRepo)
-	// Add this after existing handler initializations
 	userHandler := handlers.NewUserHandler(userRepo)
 
 	router := gin.New()
@@ -394,8 +413,8 @@ func main() {
 			admin.Use(middleware.AdminOnly())
 			{
 				admin.GET("/dashboard/stats", adminHandler.GetDashboardStats)
-				admin.GET("/profile", adminHandler.GetProfile)    // new
-				admin.PUT("/profile", adminHandler.UpdateProfile) // new
+				admin.GET("/profile", adminHandler.GetProfile)
+				admin.PUT("/profile", adminHandler.UpdateProfile)
 				admin.GET("/orders", orderHandler.GetAllOrders)
 			}
 
@@ -405,7 +424,6 @@ func main() {
 				user.PUT("/profile", authHandler.UpdateProfile)
 				user.POST("/logout", authHandler.Logout)
 
-				// Address management endpoints
 				user.POST("/addresses", userHandler.AddAddress)
 				user.GET("/addresses", userHandler.GetAddresses)
 				user.DELETE("/addresses/:addressId", userHandler.DeleteAddress)
