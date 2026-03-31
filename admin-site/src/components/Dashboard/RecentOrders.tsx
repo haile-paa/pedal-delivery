@@ -3,13 +3,19 @@ import React from "react";
 interface Order {
   id: string;
   customer: string;
-  amount: number;
+  amount: number | string; // allow both number and string to match actual data
   status: "delivered" | "preparing" | "pending" | "picked_up" | "cancelled";
 }
 
 interface RecentOrdersProps {
   orders: Order[];
 }
+
+// Helper function to safely format amount to two decimal places
+const formatAmount = (amount: number | string): string => {
+  const num = typeof amount === "number" ? amount : parseFloat(amount);
+  return isNaN(num) ? "0.00" : num.toFixed(2);
+};
 
 const RecentOrders: React.FC<RecentOrdersProps> = ({ orders }) => {
   const statusColors: Record<string, string> = {
@@ -63,7 +69,7 @@ const RecentOrders: React.FC<RecentOrdersProps> = ({ orders }) => {
                 </td>
                 <td className='py-3 text-sm text-gray-600'>{order.customer}</td>
                 <td className='py-3 text-sm text-gray-600'>
-                  ETB {order.amount.toFixed(2)}
+                  ETB {formatAmount(order.amount)}
                 </td>
                 <td className='py-3'>
                   <span

@@ -8,10 +8,16 @@ interface Order {
   order_number: string;
   customer_name: string;
   restaurant_name: string;
-  total_amount: number;
+  total_amount: number | string; // allow both types to match API response
   status: string;
   created_at: string;
 }
+
+// Helper function to safely format amount to two decimal places
+const formatAmount = (amount: number | string): string => {
+  const num = typeof amount === "number" ? amount : parseFloat(amount);
+  return isNaN(num) ? "0.00" : num.toFixed(2);
+};
 
 const Orders: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -162,7 +168,7 @@ const Orders: React.FC = () => {
                         <td className='px-6 py-4'>{order.customer_name}</td>
                         <td className='px-6 py-4'>{order.restaurant_name}</td>
                         <td className='px-6 py-4'>
-                          ETB {order.total_amount.toFixed(2)}
+                          ETB {formatAmount(order.total_amount)}
                         </td>
                         <td className='px-6 py-4'>
                           <span
