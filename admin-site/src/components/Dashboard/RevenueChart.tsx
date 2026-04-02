@@ -43,7 +43,9 @@ const RevenueChart: React.FC<RevenueChartProps> = ({ data }) => {
           <CartesianGrid strokeDasharray='3 3' />
           <XAxis
             dataKey='date'
-            tickFormatter={(tick) => new Date(tick).toLocaleDateString()}
+            tickFormatter={(tick: string | number) =>
+              new Date(tick).toLocaleDateString()
+            }
           />
           <YAxis />
           <Tooltip

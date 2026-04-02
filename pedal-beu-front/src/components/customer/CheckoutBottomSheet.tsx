@@ -11,13 +11,14 @@ import {
   Image,
   Alert,
   ActivityIndicator,
+  TextInput,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { colors } from "../../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { Restaurant, CartItem, Order } from "../../types";
 import * as Location from "expo-location";
-import { addressAPI } from "../../../lib/api";
+import { addressAPI, orderAPI } from "../../../lib/api";
 
 interface CheckoutBottomSheetProps {
   visible: boolean;
@@ -69,6 +70,7 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
     null,
   );
   const [isSavingAddress, setIsSavingAddress] = useState(false);
+  const [transactionReference, setTransactionReference] = useState("");
 
   const panResponder = PanResponder.create({
     onStartShouldSetPanResponder: () => true,
@@ -92,6 +94,7 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
   useEffect(() => {
     if (visible) {
       setResolvedAddressId(address?.id || null);
+      setTransactionReference("");
       getUserLocation();
     }
   }, [visible]);
@@ -242,10 +245,14 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
       return;
     }
     if (
-      selectedPaymentMethod === "telebirr" ||
-      selectedPaymentMethod === "cbe"
+      (selectedPaymentMethod === "telebirr" ||
+        selectedPaymentMethod === "cbe") &&
+      !transactionReference.trim()
     ) {
-      Alert.alert("Coming Soon", "This payment method is coming soon.");
+      Alert.alert(
+        "Transaction Reference Required",
+        "Enter the transfer reference so we can verify your payment.",
+      );
       return;
     }
 
@@ -282,6 +289,54 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
       if (!createdOrder) {
         throw new Error("No order returned from server");
       }
+
+      if (selectedPaymentMethod === "telebirr" || selectedPaymentMethod === "cbe") {
+        const verificationMethod =
+          selectedPaymentMethod === "cbe" ? "cbe_transfer" : "telebirr_transfer";
+        const verificationAmount =
+          createdOrder.total_amount?.total || grandTotal;
+
+        try {
+          const verificationResponse = await orderAPI.verifyPayment(createdOrder.id, {
+            method: verificationMethod,
+            transaction_reference: transactionReference.trim().toUpperCase(),
+            amount: verificationAmount,
+          });
+
+          const verifiedOrder = verificationResponse.order || createdOrder;
+          router.push({
+            pathname: "/(customer)/order-traking",
+            params: {
+              orderId: verifiedOrder.id,
+              restaurantName: restaurant.name,
+              restaurantId: restaurant.id,
+            },
+          });
+          handleClose();
+          Alert.alert(
+            "Payment Verified",
+            `Your ${selectedPaymentMethod === "cbe" ? "CBE" : "Telebirr"} transfer was verified and your order is confirmed.`,
+          );
+          return;
+        } catch (verificationError: any) {
+          router.push({
+            pathname: "/(customer)/order-traking",
+            params: {
+              orderId: createdOrder.id,
+              restaurantName: restaurant.name,
+              restaurantId: restaurant.id,
+            },
+          });
+          handleClose();
+          Alert.alert(
+            "Order Created, Payment Still Pending",
+            verificationError.message ||
+              "We created the order, but we could not verify this payment reference yet.",
+          );
+          return;
+        }
+      }
+
       router.push({
         pathname: "/(customer)/order-traking",
         params: {
@@ -304,11 +359,7 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
   };
 
   const handlePaymentMethodSelect = (method: string) => {
-    if (method === "telebirr" || method === "cbe") {
-      Alert.alert("Coming Soon", "This payment method is coming soon.");
-    } else {
-      setSelectedPaymentMethod(method);
-    }
+    setSelectedPaymentMethod(method);
   };
 
   const isBelowMinOrder =
@@ -363,8 +414,9 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
                         : colors.warning
                     }
                   />
+                  {/* Existing copy uses a literal apostrophe here; keep text and silence RN JSX lint. */}
                   <Text style={styles.distanceText}>
-                    You're {distanceToRestaurant}km away •{" "}
+                    You are {distanceToRestaurant}km away •{" "}
                     {distanceToRestaurant <= 5
                       ? "Within delivery range"
                       : "Outside delivery range (max 5km)"}
@@ -486,7 +538,9 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
                       <Text style={styles.paymentDescription}>
                         {method === "cash"
                           ? "Pay when you receive"
-                          : "Coming Soon"}
+                          : method === "telebirr"
+                            ? "Transfer first, then verify with your receipt code"
+                            : "Transfer first, then verify with your CBE reference"}
                       </Text>
                     </View>
                   </View>
@@ -505,6 +559,33 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
                   />
                 </TouchableOpacity>
               ))}
+
+              {(selectedPaymentMethod === "telebirr" ||
+                selectedPaymentMethod === "cbe") && (
+                <View style={styles.verificationCard}>
+                  <Text style={styles.verificationTitle}>
+                    {selectedPaymentMethod === "cbe"
+                      ? "Pay to CBE account 1000325579904"
+                      : "Pay to Telebirr merchant shegaw misene (2519****7666)"}
+                  </Text>
+                  <Text style={styles.verificationText}>
+                    After sending {grandTotal.toFixed(2)} Birr, paste the transaction
+                    reference below and we will verify it automatically.
+                  </Text>
+                  <TextInput
+                    style={styles.referenceInput}
+                    value={transactionReference}
+                    onChangeText={setTransactionReference}
+                    autoCapitalize='characters'
+                    placeholder={
+                      selectedPaymentMethod === "cbe"
+                        ? "Enter CBE transfer reference"
+                        : "Enter Telebirr transaction number"
+                    }
+                    placeholderTextColor={colors.gray500}
+                  />
+                </View>
+              )}
             </View>
 
             {/* Order Total */}
@@ -822,6 +903,35 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.gray600,
   },
+  verificationCard: {
+    backgroundColor: colors.gray50,
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: colors.gray200,
+  },
+  verificationTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: colors.gray900,
+    marginBottom: 6,
+  },
+  verificationText: {
+    fontSize: 13,
+    color: colors.gray700,
+    lineHeight: 18,
+    marginBottom: 12,
+  },
+  referenceInput: {
+    borderWidth: 1,
+    borderColor: colors.gray300,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: colors.gray900,
+    backgroundColor: colors.white,
+  },
   radioContainer: {
     marginLeft: 12,
   },
@@ -939,3 +1049,4 @@ const styles = StyleSheet.create({
 });
 
 export default CheckoutBottomSheet;
+

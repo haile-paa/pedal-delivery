@@ -12,6 +12,11 @@ interface OrderStatusChartProps {
   data: Record<string, number>;
 }
 
+interface PieLabelPayload {
+  name: string;
+  percent?: number;
+}
+
 const COLORS: Record<string, string> = {
   pending: "#60a5fa",
   preparing: "#fbbf24",
@@ -68,7 +73,7 @@ const OrderStatusChart: React.FC<OrderStatusChartProps> = ({ data }) => {
             cx='50%'
             cy='50%'
             labelLine={false}
-            label={({ name, percent = 0 }) =>
+            label={({ name, percent = 0 }: PieLabelPayload) =>
               `${name}: ${(percent * 100).toFixed(0)}%`
             }
             outerRadius={80}

@@ -19,6 +19,7 @@ type OrderRepository interface {
 	Create(ctx context.Context, order *models.Order) error
 	FindByID(ctx context.Context, id primitive.ObjectID) (*models.Order, error)
 	FindByOrderNumber(ctx context.Context, orderNumber string) (*models.Order, error)
+	FindByTransactionReference(ctx context.Context, transactionReference string) (*models.Order, error)
 	FindByCustomerID(ctx context.Context, customerID primitive.ObjectID, pagination Pagination) ([]models.Order, int64, error)
 	FindByDriverID(ctx context.Context, driverID primitive.ObjectID, pagination Pagination) ([]models.Order, int64, error)
 	FindByRestaurantID(ctx context.Context, restaurantID primitive.ObjectID, pagination Pagination) ([]models.Order, int64, error)
@@ -28,6 +29,7 @@ type OrderRepository interface {
 	UpdateTimeline(ctx context.Context, orderID primitive.ObjectID, event models.OrderEvent) error
 	AddRating(ctx context.Context, orderID primitive.ObjectID, rating models.OrderRating) error
 	UpdatePaymentStatus(ctx context.Context, orderID primitive.ObjectID, status string) error
+	UpdatePaymentVerification(ctx context.Context, orderID primitive.ObjectID, paymentStatus string, verification *models.PaymentVerification) error
 	CancelOrder(ctx context.Context, orderID primitive.ObjectID, cancellation models.CancellationInfo) error
 	FindActiveOrders(ctx context.Context) ([]models.Order, error)
 
@@ -104,6 +106,20 @@ func (r *orderRepository) FindByID(ctx context.Context, id primitive.ObjectID) (
 func (r *orderRepository) FindByOrderNumber(ctx context.Context, orderNumber string) (*models.Order, error) {
 	var order models.Order
 	err := r.collection.FindOne(ctx, bson.M{"order_number": orderNumber}).Decode(&order)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, errors.New("order not found")
+		}
+		return nil, err
+	}
+	return &order, nil
+}
+
+func (r *orderRepository) FindByTransactionReference(ctx context.Context, transactionReference string) (*models.Order, error) {
+	var order models.Order
+	err := r.collection.FindOne(ctx, bson.M{
+		"payment_verification.transaction_reference": transactionReference,
+	}).Decode(&order)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return nil, errors.New("order not found")
@@ -290,6 +306,25 @@ func (r *orderRepository) UpdatePaymentStatus(ctx context.Context, orderID primi
 	update := bson.M{
 		"$set": bson.M{"payment_status": status, "updated_at": time.Now()},
 	}
+	result, err := r.collection.UpdateOne(ctx, bson.M{"_id": orderID}, update)
+	if err != nil {
+		return err
+	}
+	if result.MatchedCount == 0 {
+		return errors.New("order not found")
+	}
+	return nil
+}
+
+func (r *orderRepository) UpdatePaymentVerification(ctx context.Context, orderID primitive.ObjectID, paymentStatus string, verification *models.PaymentVerification) error {
+	update := bson.M{
+		"$set": bson.M{
+			"payment_status":       paymentStatus,
+			"payment_verification": verification,
+			"updated_at":           time.Now(),
+		},
+	}
+
 	result, err := r.collection.UpdateOne(ctx, bson.M{"_id": orderID}, update)
 	if err != nil {
 		return err

@@ -494,7 +494,9 @@ func main() {
 			{
 				orders.POST("", orderHandler.CreateOrder)
 				orders.GET("", orderHandler.GetCustomerOrders)
+				orders.GET("/health/payment-verification", orderHandler.GetPaymentVerificationHealth)
 				orders.GET("/:id", orderHandler.GetOrderByID)
+				orders.POST("/:id/verify-payment", orderHandler.VerifyOrderPayment)
 				orders.POST("/:id/cancel", orderHandler.CancelOrder)
 				orders.POST("/:id/rate", orderHandler.RateOrder)
 				orders.PUT("/:id/status", orderHandler.UpdateOrderStatus)

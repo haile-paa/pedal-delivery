@@ -365,6 +365,32 @@ export const orderAPI = {
     }
   },
 
+  verifyPayment: async (
+    orderId: string,
+    paymentData: {
+      method: "cbe_transfer" | "telebirr_transfer";
+      transaction_reference: string;
+      amount: number;
+    },
+  ): Promise<any> => {
+    try {
+      const response = await api.post(
+        `/orders/${orderId}/verify-payment`,
+        paymentData,
+        { timeout: 60000 },
+      );
+      return response.data;
+    } catch (error: any) {
+      console.error(
+        "Payment verification error:",
+        error.response?.data || error.message,
+      );
+      throw new Error(
+        error.response?.data?.error || "Failed to verify payment",
+      );
+    }
+  },
+
   getOrderById: async (orderId: string): Promise<any> => {
     const response = await api.get(`/orders/${orderId}`, { timeout: 60000 });
     return response.data;

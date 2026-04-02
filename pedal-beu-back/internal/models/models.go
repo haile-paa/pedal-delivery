@@ -263,24 +263,39 @@ type OrderEvent struct {
 }
 
 type Order struct {
-	ID            primitive.ObjectID  `bson:"_id,omitempty" json:"id"`
-	OrderNumber   string              `bson:"order_number" json:"order_number"`
-	CustomerID    primitive.ObjectID  `bson:"customer_id" json:"customer_id"`
-	DriverID      *primitive.ObjectID `bson:"driver_id,omitempty" json:"driver_id,omitempty"`
-	RestaurantID  primitive.ObjectID  `bson:"restaurant_id" json:"restaurant_id"`
-	Items         []OrderItem         `bson:"items" json:"items"`
-	Status        OrderStatus         `bson:"status" json:"status"`
-	TotalAmount   OrderAmount         `bson:"total_amount" json:"total_amount"`
-	DeliveryInfo  DeliveryInfo        `bson:"delivery_info" json:"delivery_info"`
-	Timeline      []OrderEvent        `bson:"timeline" json:"timeline"`
-	PaymentMethod string              `bson:"payment_method" json:"payment_method"`
-	PaymentStatus string              `bson:"payment_status" json:"payment_status"` // "pending", "paid", "failed", "refunded"
-	Rating        *OrderRating        `bson:"rating,omitempty" json:"rating,omitempty"`
-	IsScheduled   bool                `bson:"is_scheduled" json:"is_scheduled"`
-	ScheduledFor  *time.Time          `bson:"scheduled_for,omitempty" json:"scheduled_for,omitempty"`
-	Cancellation  *CancellationInfo   `bson:"cancellation,omitempty" json:"cancellation,omitempty"`
-	CreatedAt     time.Time           `bson:"created_at" json:"created_at"`
-	UpdatedAt     time.Time           `bson:"updated_at" json:"updated_at"`
+	ID                  primitive.ObjectID   `bson:"_id,omitempty" json:"id"`
+	OrderNumber         string               `bson:"order_number" json:"order_number"`
+	CustomerID          primitive.ObjectID   `bson:"customer_id" json:"customer_id"`
+	DriverID            *primitive.ObjectID  `bson:"driver_id,omitempty" json:"driver_id,omitempty"`
+	RestaurantID        primitive.ObjectID   `bson:"restaurant_id" json:"restaurant_id"`
+	Items               []OrderItem          `bson:"items" json:"items"`
+	Status              OrderStatus          `bson:"status" json:"status"`
+	TotalAmount         OrderAmount          `bson:"total_amount" json:"total_amount"`
+	DeliveryInfo        DeliveryInfo         `bson:"delivery_info" json:"delivery_info"`
+	Timeline            []OrderEvent         `bson:"timeline" json:"timeline"`
+	PaymentMethod       string               `bson:"payment_method" json:"payment_method"`
+	PaymentStatus       string               `bson:"payment_status" json:"payment_status"` // "pending", "paid", "failed", "refunded"
+	PaymentVerification *PaymentVerification `bson:"payment_verification,omitempty" json:"payment_verification,omitempty"`
+	Rating              *OrderRating         `bson:"rating,omitempty" json:"rating,omitempty"`
+	IsScheduled         bool                 `bson:"is_scheduled" json:"is_scheduled"`
+	ScheduledFor        *time.Time           `bson:"scheduled_for,omitempty" json:"scheduled_for,omitempty"`
+	Cancellation        *CancellationInfo    `bson:"cancellation,omitempty" json:"cancellation,omitempty"`
+	CreatedAt           time.Time            `bson:"created_at" json:"created_at"`
+	UpdatedAt           time.Time            `bson:"updated_at" json:"updated_at"`
+}
+
+type PaymentVerification struct {
+	Method               string                 `bson:"method" json:"method"`
+	Status               string                 `bson:"status" json:"status"` // "pending", "verified", "failed"
+	TransactionReference string                 `bson:"transaction_reference,omitempty" json:"transaction_reference,omitempty"`
+	VerificationURL      string                 `bson:"verification_url,omitempty" json:"verification_url,omitempty"`
+	ProviderStatus       string                 `bson:"provider_status,omitempty" json:"provider_status,omitempty"`
+	ReceiverText         string                 `bson:"receiver_text,omitempty" json:"receiver_text,omitempty"`
+	ReceiverDigits       string                 `bson:"receiver_digits,omitempty" json:"receiver_digits,omitempty"`
+	FailureReason        string                 `bson:"failure_reason,omitempty" json:"failure_reason,omitempty"`
+	VerifiedAt           *time.Time             `bson:"verified_at,omitempty" json:"verified_at,omitempty"`
+	CheckedAt            *time.Time             `bson:"checked_at,omitempty" json:"checked_at,omitempty"`
+	RawResponse          map[string]interface{} `bson:"raw_response,omitempty" json:"raw_response,omitempty"`
 }
 
 type OrderRating struct {
@@ -358,6 +373,12 @@ type CreateOrderRequest struct {
 	AddressID     string             `json:"address_id" binding:"required"`
 	Notes         string             `json:"notes"`
 	PaymentMethod string             `json:"payment_method" binding:"required"`
+}
+
+type VerifyOrderPaymentRequest struct {
+	Method               string  `json:"method" binding:"required,oneof=cbe_transfer telebirr_transfer"`
+	TransactionReference string  `json:"transaction_reference" binding:"required"`
+	Amount               float64 `json:"amount" binding:"required,gt=0"`
 }
 
 type OrderItemRequest struct {

@@ -222,15 +222,6 @@ const RestaurantDetailScreen: React.FC = () => {
     // Clear cart (already done inside createOrder, but just in case)
     dispatch({ type: "CLEAR_CART" });
 
-    // Navigate to the tracking screen with the real order ID
-    router.push({
-      pathname: "/(customer)/order-traking",
-      params: {
-        orderId: createdOrder.id,
-        restaurantName: restaurant.name,
-      },
-    });
-
     return createdOrder;
   };
 
