@@ -186,12 +186,27 @@ export interface Order {
   timeline: OrderEvent[];
   payment_method: string;
   payment_status: "pending" | "paid" | "failed" | "refunded";
+  payment_verification?: PaymentVerification;
   rating?: OrderRating;
   is_scheduled: boolean;
   scheduled_for?: string;
   cancellation?: CancellationInfo;
   created_at: string;
   updated_at: string;
+}
+
+export interface PaymentVerification {
+  method: string;
+  status: "pending" | "verified" | "failed";
+  transaction_reference?: string;
+  verification_url?: string;
+  provider_status?: string;
+  receiver_text?: string;
+  receiver_digits?: string;
+  failure_reason?: string;
+  verified_at?: string;
+  checked_at?: string;
+  raw_response?: Record<string, any>;
 }
 
 export interface OrderItem {

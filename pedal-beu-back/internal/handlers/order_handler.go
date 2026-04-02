@@ -100,6 +100,43 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
 	c.JSON(http.StatusCreated, order)
 }
 
+func (h *OrderHandler) VerifyOrderPayment(c *gin.Context) {
+	userID := c.MustGet("userID").(primitive.ObjectID)
+	userRole := c.MustGet("userRole").(string)
+
+	if userRole != "customer" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Only customers can verify payments"})
+		return
+	}
+
+	orderID, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid order ID"})
+		return
+	}
+
+	var req models.VerifyOrderPaymentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	order, err := h.orderService.VerifyOrderPayment(c.Request.Context(), orderID, userID, &req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Payment verified successfully",
+		"order":   order,
+	})
+}
+
+func (h *OrderHandler) GetPaymentVerificationHealth(c *gin.Context) {
+	c.JSON(http.StatusOK, h.orderService.GetPaymentVerificationHealth(c.Request.Context()))
+}
+
 // @Summary Get order by ID
 // @Description Get order details by order ID
 // @Tags orders

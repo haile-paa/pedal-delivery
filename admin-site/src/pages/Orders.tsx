@@ -8,14 +8,28 @@ interface Order {
   order_number: string;
   customer_name: string;
   restaurant_name: string;
-  total_amount: number | string; // allow both types to match API response
+  total_amount: number | string | { total?: number | string };
   status: string;
+  payment_method?: string;
+  payment_status?: string;
+  payment_verification?: {
+    status?: string;
+    transaction_reference?: string;
+    provider_status?: string;
+  };
   created_at: string;
 }
 
 // Helper function to safely format amount to two decimal places
-const formatAmount = (amount: number | string): string => {
-  const num = typeof amount === "number" ? amount : parseFloat(amount);
+const formatAmount = (
+  amount: number | string | { total?: number | string },
+): string => {
+  const normalized =
+    typeof amount === "object" && amount !== null ? amount.total : amount;
+  const num =
+    typeof normalized === "number"
+      ? normalized
+      : parseFloat(String(normalized ?? 0));
   return isNaN(num) ? "0.00" : num.toFixed(2);
 };
 
@@ -155,6 +169,7 @@ const Orders: React.FC = () => {
                       <th className='px-6 py-3'>Restaurant</th>
                       <th className='px-6 py-3'>Amount</th>
                       <th className='px-6 py-3'>Status</th>
+                      <th className='px-6 py-3'>Payment</th>
                       <th className='px-6 py-3'>Time</th>
                       <th className='px-6 py-3'></th>
                     </tr>
@@ -178,6 +193,21 @@ const Orders: React.FC = () => {
                           >
                             {order.status.replace(/_/g, " ")}
                           </span>
+                        </td>
+                        <td className='px-6 py-4'>
+                          <div className='flex flex-col gap-1 text-sm'>
+                            <span className='font-medium text-gray-700'>
+                              {(order.payment_method || "cash").replace(/_/g, " ")}
+                            </span>
+                            <span className='text-gray-500'>
+                              {order.payment_status || "pending"}
+                            </span>
+                            {order.payment_verification?.transaction_reference && (
+                              <span className='text-xs text-gray-400'>
+                                Ref: {order.payment_verification.transaction_reference}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className='px-6 py-4 text-gray-500'>
                           {new Date(order.created_at).toLocaleTimeString()}

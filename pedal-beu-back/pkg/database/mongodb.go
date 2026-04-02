@@ -156,6 +156,20 @@ func createIndexes(ctx context.Context) {
 			"customer_id": 1,
 		},
 	})
+
+	collections.Orders.Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys: map[string]interface{}{
+			"payment_verification.transaction_reference": 1,
+		},
+		Options: options.Index().
+			SetUnique(true).
+			SetPartialFilterExpression(map[string]interface{}{
+				"payment_verification.transaction_reference": map[string]interface{}{
+					"$exists": true,
+					"$type":   "string",
+				},
+			}),
+	})
 }
 
 func GetClient() *mongo.Client {
