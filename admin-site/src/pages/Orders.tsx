@@ -16,6 +16,7 @@ interface Order {
     status?: string;
     transaction_reference?: string;
     provider_status?: string;
+    payer_phone?: string;
   };
   created_at: string;
 }
@@ -205,6 +206,11 @@ const Orders: React.FC = () => {
                             {order.payment_verification?.transaction_reference && (
                               <span className='text-xs text-gray-400'>
                                 Ref: {order.payment_verification.transaction_reference}
+                              </span>
+                            )}
+                            {order.payment_verification?.payer_phone && (
+                              <span className='text-xs text-gray-400'>
+                                Phone: {order.payment_verification.payer_phone}
                               </span>
                             )}
                           </div>

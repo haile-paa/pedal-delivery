@@ -203,6 +203,7 @@ export interface PaymentVerification {
   provider_status?: string;
   receiver_text?: string;
   receiver_digits?: string;
+  payer_phone?: string;
   failure_reason?: string;
   verified_at?: string;
   checked_at?: string;

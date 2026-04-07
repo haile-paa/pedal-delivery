@@ -371,6 +371,7 @@ export const orderAPI = {
       method: "cbe_transfer" | "telebirr_transfer";
       transaction_reference: string;
       amount: number;
+      payer_phone?: string;
     },
   ): Promise<any> => {
     try {

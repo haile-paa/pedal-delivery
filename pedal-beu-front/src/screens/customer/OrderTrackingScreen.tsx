@@ -55,6 +55,13 @@ interface OrderDetails {
     price: number;
   }>;
   total_amount: number;
+  payment_method?: string;
+  payment_status?: string;
+  payment_verification?: {
+    transaction_reference?: string;
+    status?: string;
+    payer_phone?: string;
+  };
   delivery_address: string;
   estimated_delivery_time: string;
   created_at: string;
@@ -245,6 +252,9 @@ const OrderTrackingScreen: React.FC = () => {
           price: item.price,
         })),
         total_amount: orderData.total_amount?.total || 0,
+        payment_method: orderData.payment_method,
+        payment_status: orderData.payment_status,
+        payment_verification: orderData.payment_verification,
         delivery_address: orderData.delivery_info?.address?.address || "",
         estimated_delivery_time:
           orderData.delivery_info?.estimated_delivery || "",
@@ -827,6 +837,39 @@ const OrderTrackingScreen: React.FC = () => {
                 {new Date(orderDetails.created_at).toLocaleTimeString()}
               </Text>
             </View>
+            <View style={styles.orderInfoRow}>
+              <Ionicons
+                name={
+                  orderDetails.payment_status === "paid"
+                    ? "checkmark-circle"
+                    : "time-outline"
+                }
+                size={20}
+                color={
+                  orderDetails.payment_status === "paid"
+                    ? colors.success
+                    : colors.warning
+                }
+              />
+              <Text style={styles.orderInfoText}>
+                Payment: {orderDetails.payment_status || "pending"}
+                {orderDetails.payment_method
+                  ? ` via ${orderDetails.payment_method.replace("_", " ")}`
+                  : ""}
+              </Text>
+            </View>
+            {orderDetails.payment_verification?.transaction_reference && (
+              <View style={styles.orderInfoRow}>
+                <Ionicons
+                  name='receipt-outline'
+                  size={20}
+                  color={colors.gray600}
+                />
+                <Text style={styles.orderInfoText}>
+                  Ref: {orderDetails.payment_verification.transaction_reference}
+                </Text>
+              </View>
+            )}
             <TouchableOpacity
               style={styles.viewOrderButton}
               onPress={handleViewOrderDetails}

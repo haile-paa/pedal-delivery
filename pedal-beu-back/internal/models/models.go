@@ -292,6 +292,7 @@ type PaymentVerification struct {
 	ProviderStatus       string                 `bson:"provider_status,omitempty" json:"provider_status,omitempty"`
 	ReceiverText         string                 `bson:"receiver_text,omitempty" json:"receiver_text,omitempty"`
 	ReceiverDigits       string                 `bson:"receiver_digits,omitempty" json:"receiver_digits,omitempty"`
+	PayerPhone           string                 `bson:"payer_phone,omitempty" json:"payer_phone,omitempty"`
 	FailureReason        string                 `bson:"failure_reason,omitempty" json:"failure_reason,omitempty"`
 	VerifiedAt           *time.Time             `bson:"verified_at,omitempty" json:"verified_at,omitempty"`
 	CheckedAt            *time.Time             `bson:"checked_at,omitempty" json:"checked_at,omitempty"`
@@ -379,6 +380,7 @@ type VerifyOrderPaymentRequest struct {
 	Method               string  `json:"method" binding:"required,oneof=cbe_transfer telebirr_transfer"`
 	TransactionReference string  `json:"transaction_reference" binding:"required"`
 	Amount               float64 `json:"amount" binding:"required,gt=0"`
+	PayerPhone           string  `json:"payer_phone"`
 }
 
 type OrderItemRequest struct {

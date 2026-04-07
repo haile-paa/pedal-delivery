@@ -53,6 +53,13 @@ func (s *orderService) VerifyOrderPayment(ctx context.Context, orderID primitive
 		return nil, errors.New("this transaction reference has already been used")
 	}
 
+	payerPhone := strings.TrimSpace(req.PayerPhone)
+	if payerPhone == "" {
+		if customer, err := s.userRepo.FindByID(ctx, customerID); err == nil {
+			payerPhone = customer.Phone
+		}
+	}
+
 	result, verificationErr := verifyTransferWithProvider(ctx, req.Method, transactionReference)
 	if verificationMode() == "mock" {
 		result.Amount = req.Amount
@@ -73,6 +80,7 @@ func (s *orderService) VerifyOrderPayment(ctx context.Context, orderID primitive
 		ProviderStatus:       result.ProviderStatus,
 		ReceiverText:         result.ReceiverText,
 		ReceiverDigits:       result.ReceiverDigits,
+		PayerPhone:           payerPhone,
 		RawResponse:          result.RawResponse,
 	}
 	now := time.Now()

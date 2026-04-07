@@ -28,8 +28,10 @@ interface CheckoutBottomSheetProps {
   cartTotal: number;
   deliveryFee: number;
   serviceCharge: number;
+  tax?: number;
   grandTotal: number;
   onPlaceOrder: (paymentMethod: string, addressId: string) => Promise<Order>;
+  customerPhone?: string;
   address?: {
     id?: string;
     label: string;
@@ -52,8 +54,10 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
   cartTotal,
   deliveryFee,
   serviceCharge,
+  tax = 0,
   grandTotal,
   onPlaceOrder,
+  customerPhone,
   address,
   onAddressChange,
 }) => {
@@ -71,6 +75,7 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
   );
   const [isSavingAddress, setIsSavingAddress] = useState(false);
   const [transactionReference, setTransactionReference] = useState("");
+  const [payerPhone, setPayerPhone] = useState("");
 
   const panResponder = PanResponder.create({
     onStartShouldSetPanResponder: () => true,
@@ -95,6 +100,7 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
     if (visible) {
       setResolvedAddressId(address?.id || null);
       setTransactionReference("");
+      setPayerPhone(customerPhone || "");
       getUserLocation();
     }
   }, [visible]);
@@ -301,6 +307,7 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
             method: verificationMethod,
             transaction_reference: transactionReference.trim().toUpperCase(),
             amount: verificationAmount,
+            payer_phone: payerPhone.trim(),
           });
 
           const verifiedOrder = verificationResponse.order || createdOrder;
@@ -414,7 +421,6 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
                         : colors.warning
                     }
                   />
-                  {/* Existing copy uses a literal apostrophe here; keep text and silence RN JSX lint. */}
                   <Text style={styles.distanceText}>
                     You are {distanceToRestaurant}km away •{" "}
                     {distanceToRestaurant <= 5
@@ -569,11 +575,22 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
                       : "Pay to Telebirr merchant shegaw misene (2519****7666)"}
                   </Text>
                   <Text style={styles.verificationText}>
-                    After sending {grandTotal.toFixed(2)} Birr, paste the transaction
-                    reference below and we will verify it automatically.
+                    After sending the order total, paste the transaction reference
+                    below. The backend order total will be used for verification.
+                  </Text>
+                  <Text style={styles.estimatedAmountText}>
+                    Estimated total shown here: {grandTotal.toFixed(2)} Birr
                   </Text>
                   <TextInput
                     style={styles.referenceInput}
+                    value={payerPhone}
+                    onChangeText={setPayerPhone}
+                    keyboardType='phone-pad'
+                    placeholder='Payer phone number'
+                    placeholderTextColor={colors.gray500}
+                  />
+                  <TextInput
+                    style={[styles.referenceInput, styles.referenceInputSpacing]}
                     value={transactionReference}
                     onChangeText={setTransactionReference}
                     autoCapitalize='characters'
@@ -605,10 +622,14 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
                   </Text>
                 </View>
                 <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>Service Charge</Text>
+                  <Text style={styles.summaryLabel}>Service Charge (5%)</Text>
                   <Text style={styles.summaryValue}>
                     {serviceCharge.toFixed(2)} Birr
                   </Text>
+                </View>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Tax (10%)</Text>
+                  <Text style={styles.summaryValue}>{tax.toFixed(2)} Birr</Text>
                 </View>
                 <View style={styles.divider} />
                 <View style={styles.summaryRow}>
@@ -922,6 +943,11 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     marginBottom: 12,
   },
+  estimatedAmountText: {
+    fontSize: 12,
+    color: colors.gray600,
+    marginBottom: 10,
+  },
   referenceInput: {
     borderWidth: 1,
     borderColor: colors.gray300,
@@ -931,6 +957,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.gray900,
     backgroundColor: colors.white,
+  },
+  referenceInputSpacing: {
+    marginTop: 10,
   },
   radioContainer: {
     marginLeft: 12,

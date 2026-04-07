@@ -265,8 +265,9 @@ const RestaurantDetailScreen: React.FC = () => {
   const cartCount = getCartCount();
   const cartTotal = getCartTotal();
   const deliveryFee = restaurant.delivery_fee || 0;
-  const serviceCharge = cartTotal * 0.1;
-  const grandTotal = cartTotal + deliveryFee + serviceCharge;
+  const serviceCharge = cartTotal * 0.05;
+  const tax = cartTotal * 0.1;
+  const grandTotal = cartTotal + deliveryFee + serviceCharge + tax;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -454,7 +455,9 @@ const RestaurantDetailScreen: React.FC = () => {
         cartTotal={cartTotal}
         deliveryFee={deliveryFee}
         serviceCharge={serviceCharge}
+        tax={tax}
         grandTotal={grandTotal}
+        customerPhone={state.auth.user?.phone}
         onPlaceOrder={handlePlaceOrder} // ✅ now expects (paymentMethod, addressId)
         address={selectedAddress}
         onAddressChange={handleAddressChange}
