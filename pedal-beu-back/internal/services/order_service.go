@@ -28,6 +28,8 @@ type OrderService interface {
 	GetOrderStatistics(ctx context.Context, restaurantID primitive.ObjectID) (map[string]interface{}, error)
 	GetAllOrders(ctx context.Context, page, limit int64) ([]models.Order, int64, error)
 	VerifyOrderPayment(ctx context.Context, orderID primitive.ObjectID, customerID primitive.ObjectID, req *models.VerifyOrderPaymentRequest) (*models.Order, error)
+	SubmitPaymentProof(ctx context.Context, orderID primitive.ObjectID, customerID primitive.ObjectID, req *models.SubmitPaymentProofRequest) (*models.Order, error)
+	ReviewPaymentProof(ctx context.Context, orderID primitive.ObjectID, adminID primitive.ObjectID, req *models.ReviewPaymentProofRequest) (*models.Order, error)
 	GetPaymentVerificationHealth(ctx context.Context) map[string]interface{}
 }
 

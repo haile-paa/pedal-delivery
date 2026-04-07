@@ -17,6 +17,7 @@ interface Order {
     transaction_reference?: string;
     provider_status?: string;
     payer_phone?: string;
+    proof_url?: string;
   };
   created_at: string;
 }
@@ -104,6 +105,20 @@ const Orders: React.FC = () => {
         return "bg-purple-100 text-purple-800";
       default:
         return "bg-gray-100 text-gray-800";
+    }
+  };
+
+  const reviewPayment = async (orderId: string, approved: boolean) => {
+    try {
+      await adminAPI.reviewPayment(
+        orderId,
+        approved,
+        approved ? "Approved by admin" : "Rejected by admin",
+      );
+      await fetchOrders();
+    } catch (error) {
+      console.error("Failed to review payment", error);
+      alert("Failed to review payment. Please try again.");
     }
   };
 
@@ -212,6 +227,33 @@ const Orders: React.FC = () => {
                               <span className='text-xs text-gray-400'>
                                 Phone: {order.payment_verification.payer_phone}
                               </span>
+                            )}
+                            {order.payment_verification?.proof_url && (
+                              <a
+                                href={order.payment_verification.proof_url}
+                                target='_blank'
+                                rel='noreferrer'
+                                className='text-xs text-blue-600 underline'
+                              >
+                                View proof
+                              </a>
+                            )}
+                            {order.payment_verification?.status ===
+                              "pending_review" && (
+                              <div className='mt-1 flex gap-2'>
+                                <button
+                                  onClick={() => reviewPayment(order.id, true)}
+                                  className='rounded bg-green-600 px-2 py-1 text-xs text-white'
+                                >
+                                  Approve
+                                </button>
+                                <button
+                                  onClick={() => reviewPayment(order.id, false)}
+                                  className='rounded bg-red-600 px-2 py-1 text-xs text-white'
+                                >
+                                  Reject
+                                </button>
+                              </div>
                             )}
                           </div>
                         </td>

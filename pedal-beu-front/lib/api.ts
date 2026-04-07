@@ -392,6 +392,54 @@ export const orderAPI = {
     }
   },
 
+  submitPaymentProof: async (
+    orderId: string,
+    proofData: {
+      method: "cbe_transfer" | "telebirr_transfer";
+      transaction_reference: string;
+      amount: number;
+      payer_phone?: string;
+      proof_url: string;
+    },
+  ): Promise<any> => {
+    try {
+      const response = await api.post(
+        `/orders/${orderId}/payment-proof`,
+        proofData,
+        { timeout: 60000 },
+      );
+      return response.data;
+    } catch (error: any) {
+      console.error(
+        "Payment proof submission error:",
+        error.response?.data || error.message,
+      );
+      throw new Error(
+        error.response?.data?.error || "Failed to submit payment proof",
+      );
+    }
+  },
+
+  uploadPaymentProof: async (asset: {
+    uri: string;
+    fileName?: string | null;
+    mimeType?: string | null;
+  }): Promise<any> => {
+    const formData = new FormData();
+    formData.append("type", "payment-proofs");
+    formData.append("image", {
+      uri: asset.uri,
+      name: asset.fileName || `payment-proof-${Date.now()}.jpg`,
+      type: asset.mimeType || "image/jpeg",
+    } as any);
+
+    const response = await api.post("/upload", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+      timeout: 60000,
+    });
+    return response.data;
+  },
+
   getOrderById: async (orderId: string): Promise<any> => {
     const response = await api.get(`/orders/${orderId}`, { timeout: 60000 });
     return response.data;

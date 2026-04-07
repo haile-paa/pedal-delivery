@@ -61,6 +61,7 @@ interface OrderDetails {
     transaction_reference?: string;
     status?: string;
     payer_phone?: string;
+    proof_url?: string;
   };
   delivery_address: string;
   estimated_delivery_time: string;
@@ -869,6 +870,27 @@ const OrderTrackingScreen: React.FC = () => {
                   Ref: {orderDetails.payment_verification.transaction_reference}
                 </Text>
               </View>
+            )}
+            {orderDetails.payment_verification?.proof_url && (
+              <TouchableOpacity
+                style={styles.orderInfoRow}
+                onPress={() =>
+                  Linking.openURL(orderDetails.payment_verification!.proof_url!)
+                }
+              >
+                <Ionicons
+                  name='image-outline'
+                  size={20}
+                  color={colors.gray600}
+                />
+                <Text style={styles.orderInfoText}>
+                  Payment screenshot submitted
+                  {orderDetails.payment_verification.status ===
+                  "pending_review"
+                    ? " for admin review"
+                    : ""}
+                </Text>
+              </TouchableOpacity>
             )}
             <TouchableOpacity
               style={styles.viewOrderButton}

@@ -18,6 +18,7 @@ import { colors } from "../../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { Restaurant, CartItem, Order } from "../../types";
 import * as Location from "expo-location";
+import * as ImagePicker from "expo-image-picker";
 import { addressAPI, orderAPI } from "../../../lib/api";
 
 interface CheckoutBottomSheetProps {
@@ -76,6 +77,8 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
   const [isSavingAddress, setIsSavingAddress] = useState(false);
   const [transactionReference, setTransactionReference] = useState("");
   const [payerPhone, setPayerPhone] = useState("");
+  const [paymentProof, setPaymentProof] =
+    useState<ImagePicker.ImagePickerAsset | null>(null);
 
   const panResponder = PanResponder.create({
     onStartShouldSetPanResponder: () => true,
@@ -101,9 +104,30 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
       setResolvedAddressId(address?.id || null);
       setTransactionReference("");
       setPayerPhone(customerPhone || "");
+      setPaymentProof(null);
       getUserLocation();
     }
   }, [visible]);
+
+  const pickPaymentProof = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert(
+        "Permission Required",
+        "Please allow photo access to attach your payment screenshot.",
+      );
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets.length > 0) {
+      setPaymentProof(result.assets[0]);
+    }
+  };
 
   const getUserLocation = async () => {
     try {
@@ -261,6 +285,17 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
       );
       return;
     }
+    if (
+      (selectedPaymentMethod === "telebirr" ||
+        selectedPaymentMethod === "cbe") &&
+      !paymentProof
+    ) {
+      Alert.alert(
+        "Payment Screenshot Required",
+        "Attach your payment screenshot so admin can approve it if automatic verification is unavailable.",
+      );
+      return;
+    }
 
     // Resolve address ID
     let finalAddressId = resolvedAddressId || address?.id;
@@ -326,6 +361,28 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
           );
           return;
         } catch (verificationError: any) {
+          let proofSubmitted = false;
+          let proofSubmissionError = "";
+          try {
+            if (!paymentProof) {
+              throw verificationError;
+            }
+            const uploadResponse =
+              await orderAPI.uploadPaymentProof(paymentProof);
+            await orderAPI.submitPaymentProof(createdOrder.id, {
+              method: verificationMethod,
+              transaction_reference: transactionReference.trim().toUpperCase(),
+              amount: verificationAmount,
+              payer_phone: payerPhone.trim(),
+              proof_url: uploadResponse.url,
+            });
+            proofSubmitted = true;
+          } catch (proofError: any) {
+            console.error("Payment proof fallback failed:", proofError);
+            proofSubmissionError =
+              proofError?.message || "Could not submit the payment screenshot.";
+          }
+
           router.push({
             pathname: "/(customer)/order-traking",
             params: {
@@ -336,9 +393,14 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
           });
           handleClose();
           Alert.alert(
-            "Order Created, Payment Still Pending",
-            verificationError.message ||
-              "We created the order, but we could not verify this payment reference yet.",
+            proofSubmitted
+              ? "Payment Submitted for Review"
+              : "Order Created, Payment Still Pending",
+            proofSubmitted
+              ? "We could not auto-verify it, so your screenshot was sent for admin review."
+              : proofSubmissionError ||
+                  verificationError.message ||
+                  "We created the order, but could not submit the payment proof.",
           );
           return;
         }
@@ -601,6 +663,21 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
                     }
                     placeholderTextColor={colors.gray500}
                   />
+                  <TouchableOpacity
+                    style={styles.proofButton}
+                    onPress={pickPaymentProof}
+                  >
+                    <Ionicons
+                      name='image-outline'
+                      size={18}
+                      color={colors.primary}
+                    />
+                    <Text style={styles.proofButtonText}>
+                      {paymentProof
+                        ? "Payment screenshot attached"
+                        : "Attach payment screenshot"}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               )}
             </View>
@@ -960,6 +1037,24 @@ const styles = StyleSheet.create({
   },
   referenceInputSpacing: {
     marginTop: 10,
+  },
+  proofButton: {
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: colors.white,
+  },
+  proofButtonText: {
+    color: colors.primary,
+    fontSize: 14,
+    fontWeight: "600",
   },
   radioContainer: {
     marginLeft: 12,
