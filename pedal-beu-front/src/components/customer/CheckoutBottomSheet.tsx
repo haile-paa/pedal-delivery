@@ -47,6 +47,9 @@ interface UserLocation {
   address?: string;
 }
 
+const CBE_PAYMENT_ACCOUNT = "1000325579904";
+const TELEBIRR_PAYMENT_MERCHANT = "shegaw misene (2519****7666)";
+
 const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
   visible,
   onClose,
@@ -79,6 +82,12 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
   const [payerPhone, setPayerPhone] = useState("");
   const [paymentProof, setPaymentProof] =
     useState<ImagePicker.ImagePickerAsset | null>(null);
+  const isTransferPayment =
+    selectedPaymentMethod === "telebirr" || selectedPaymentMethod === "cbe";
+  const paymentReceiverLabel =
+    selectedPaymentMethod === "cbe"
+      ? `CBE account ${CBE_PAYMENT_ACCOUNT}`
+      : `Telebirr merchant ${TELEBIRR_PAYMENT_MERCHANT}`;
 
   const panResponder = PanResponder.create({
     onStartShouldSetPanResponder: () => true,
@@ -274,25 +283,17 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
       );
       return;
     }
-    if (
-      (selectedPaymentMethod === "telebirr" ||
-        selectedPaymentMethod === "cbe") &&
-      !transactionReference.trim()
-    ) {
+    if (isTransferPayment && !transactionReference.trim()) {
       Alert.alert(
         "Transaction Reference Required",
-        "Enter the transfer reference so we can verify your payment.",
+        `Pay ${grandTotal.toFixed(2)} Birr to ${paymentReceiverLabel}, then enter the transfer reference so we can verify your payment.`,
       );
       return;
     }
-    if (
-      (selectedPaymentMethod === "telebirr" ||
-        selectedPaymentMethod === "cbe") &&
-      !paymentProof
-    ) {
+    if (isTransferPayment && !paymentProof) {
       Alert.alert(
         "Payment Screenshot Required",
-        "Attach your payment screenshot so admin can approve it if automatic verification is unavailable.",
+        `Attach the screenshot after paying ${grandTotal.toFixed(2)} Birr to ${paymentReceiverLabel}. Admin can use it if automatic verification is unavailable.`,
       );
       return;
     }
@@ -331,7 +332,7 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
         throw new Error("No order returned from server");
       }
 
-      if (selectedPaymentMethod === "telebirr" || selectedPaymentMethod === "cbe") {
+      if (isTransferPayment) {
         const verificationMethod =
           selectedPaymentMethod === "cbe" ? "cbe_transfer" : "telebirr_transfer";
         const verificationAmount =
@@ -628,20 +629,24 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
                 </TouchableOpacity>
               ))}
 
-              {(selectedPaymentMethod === "telebirr" ||
-                selectedPaymentMethod === "cbe") && (
+              {isTransferPayment && (
                 <View style={styles.verificationCard}>
                   <Text style={styles.verificationTitle}>
-                    {selectedPaymentMethod === "cbe"
-                      ? "Pay to CBE account 1000325579904"
-                      : "Pay to Telebirr merchant shegaw misene (2519****7666)"}
+                    Pay exactly {grandTotal.toFixed(2)} Birr first
                   </Text>
+                  <View style={styles.receiverBox}>
+                    <Text style={styles.receiverLabel}>Send payment to</Text>
+                    <Text style={styles.receiverValue}>
+                      {paymentReceiverLabel}
+                    </Text>
+                  </View>
                   <Text style={styles.verificationText}>
-                    After sending the order total, paste the transaction reference
-                    below. The backend order total will be used for verification.
+                    After sending the money, enter the transaction reference and
+                    attach the screenshot. The order will only be marked paid
+                    after automatic verification or admin approval.
                   </Text>
                   <Text style={styles.estimatedAmountText}>
-                    Estimated total shown here: {grandTotal.toFixed(2)} Birr
+                    Amount to pay now: {grandTotal.toFixed(2)} Birr
                   </Text>
                   <TextInput
                     style={styles.referenceInput}
@@ -792,7 +797,8 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
               ) : (
                 <>
                   <Text style={styles.placeOrderText}>
-                    Place Order • {grandTotal.toFixed(2)} Birr
+                    {isTransferPayment ? "I Paid, Verify Order" : "Place Order"}{" "}
+                    • {grandTotal.toFixed(2)} Birr
                   </Text>
                   <Ionicons
                     name='arrow-forward'
@@ -1020,9 +1026,30 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     marginBottom: 12,
   },
+  receiverBox: {
+    backgroundColor: colors.white,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.gray200,
+    padding: 12,
+    marginBottom: 12,
+  },
+  receiverLabel: {
+    fontSize: 11,
+    color: colors.gray500,
+    marginBottom: 4,
+    textTransform: "uppercase",
+    fontWeight: "700",
+  },
+  receiverValue: {
+    fontSize: 15,
+    color: colors.gray900,
+    fontWeight: "700",
+  },
   estimatedAmountText: {
     fontSize: 12,
-    color: colors.gray600,
+    color: colors.primary,
+    fontWeight: "700",
     marginBottom: 10,
   },
   referenceInput: {
