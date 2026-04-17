@@ -1,134 +1,105 @@
-import React, { useState, useEffect } from "react";
+// app/(auth)/register.tsx
+import React, { useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TextInput,
   TouchableOpacity,
-  ScrollView,
   Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { colors } from "../../src/theme/colors";
 import { authAPI } from "../../lib/api";
 import { LinearGradient } from "expo-linear-gradient";
-import type { RegisterRequest } from "../../src/types"; // Import the type
+import { useAppState } from "../../src/context/AppStateContext";
 
 const RegisterScreen: React.FC = () => {
   const router = useRouter();
-  const params = useLocalSearchParams();
-  const { phone, role = "customer" } = params as {
+  const params = useLocalSearchParams<{
     phone: string;
     role: "customer" | "driver";
-  };
+  }>();
+  const { dispatch } = useAppState();
 
+  const phone = params.phone || "";
+  const role = params.role || "customer";
+
+  const [firstName, setFirstName] = useState("");
+  const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    first_name: "", // Changed to snake_case to match API
-    email: "",
-  });
-
-  // Generate a random password for drivers
-  const [generatedPassword, setGeneratedPassword] = useState("");
-
-  useEffect(() => {
-    if (role === "driver") {
-      // Generate a secure random password for drivers
-      const randomPassword = generateSecurePassword();
-      setGeneratedPassword(randomPassword);
-    }
-  }, [role]);
-
-  const generateSecurePassword = () => {
-    const chars =
-      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
-    let password = "";
-    for (let i = 0; i < 12; i++) {
-      password += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return password;
-  };
 
   const handleRegister = async () => {
-    // Validation
-    if (!formData.first_name.trim()) {
+    if (!firstName.trim()) {
       Alert.alert("Error", "Please enter your first name");
       return;
     }
 
     setLoading(true);
+    console.log("🚀 Starting registration process...");
+
     try {
-      // Format phone for backend
-      let formattedPhone = phone;
-      if (phone.startsWith("9")) {
-        formattedPhone = `+251${phone}`;
-      } else if (phone.startsWith("0")) {
-        formattedPhone = `+251${phone.substring(1)}`;
-      }
+      const response = await authAPI.register({
+        phone,
+        first_name: firstName.trim(),
+        email: email.trim() || undefined,
+        role,
+      });
 
-      // For drivers, use generated password
-      // For customers, they'll use OTP only (no password needed for login)
-      const password = role === "driver" ? generatedPassword : "otp_only_auth";
+      console.log("📋 Register response object:", response);
 
-      // Create register data matching the RegisterRequest type
-      const registerData: RegisterRequest = {
-        phone: formattedPhone,
-        email: formData.email || undefined,
-        first_name: formData.first_name, // Use snake_case
-        password: password,
-        role: role,
-      };
+      if (response.success && response.user && response.tokens) {
+        console.log("✅ Registration successful, logging in...");
 
-      const response = await authAPI.register(registerData);
+        // Backend returns snake_case tokens
+        const accessToken =
+          response.tokens.access_token || response.tokens.accessToken;
+        const refreshToken =
+          response.tokens.refresh_token || response.tokens.refreshToken;
 
-      if (response.success) {
-        Alert.alert("Success", "Registration successful!", [
-          {
-            text: "OK",
-            onPress: () => {
-              // Navigate based on role
-              if (role === "driver") {
-                router.push({
-                  pathname: "/(driver)/dashboard" as any,
-                  params: {
-                    phone: formattedPhone,
-                    role,
-                  },
-                });
-              } else {
-                router.push({
-                  pathname: "/(customer)/home" as any,
-                  params: {
-                    phone: formattedPhone,
-                    role,
-                  },
-                });
-              }
-            },
+        if (!accessToken) {
+          Alert.alert("Registration Error", "No access token received");
+          return;
+        }
+
+        // Update app state - ensure role is only customer or driver
+        const userRole = response.user.role as "customer" | "driver";
+
+        dispatch({
+          type: "LOGIN_SUCCESS",
+          payload: {
+            user: response.user,
+            token: accessToken,
+            role: userRole,
           },
-        ]);
+        });
+
+        // Navigate to appropriate home screen
+        const targetRoute =
+          userRole === "driver" ? "/(driver)/dashboard" : "/(customer)/home";
+
+        console.log(`🚗 Navigating to ${targetRoute}`);
+        router.replace(targetRoute);
       } else {
-        Alert.alert("Error", response.error || "Registration failed");
+        console.error("❌ Registration response indicates failure:", response);
+        Alert.alert(
+          "Registration Failed",
+          response.error || "Something went wrong. Please try again.",
+        );
       }
     } catch (error: any) {
-      console.error("Registration error:", error);
+      console.error("❌ Registration exception:", error);
       Alert.alert(
-        "Error",
-        error.message || "Registration failed. Please try again.",
+        "Registration Error",
+        error.message || "Unable to complete registration. Please try again.",
       );
     } finally {
       setLoading(false);
     }
-  };
-
-  const updateFormData = (field: keyof typeof formData, value: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
   };
 
   return (
@@ -136,100 +107,80 @@ const RegisterScreen: React.FC = () => {
       style={styles.container}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
+      <LinearGradient colors={["#667eea", "#764ba2"]} style={styles.header}>
+        <Text style={styles.headerTitle}>Complete Your Profile</Text>
+        <Text style={styles.headerSubtitle}>
+          Register as a {role === "driver" ? "Driver" : "Customer"}
+        </Text>
+      </LinearGradient>
+
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.formContainer}
+        keyboardShouldPersistTaps='handled'
       >
-        <LinearGradient
-          colors={["#667eea", "#764ba2"]}
-          style={styles.headerGradient}
-        >
-          <Text style={styles.headerTitle}>Create Account</Text>
-          <Text style={styles.headerSubtitle}>
-            Register as a {role === "driver" ? "driver" : "customer"}
-          </Text>
-          {role === "driver" && (
-            <Text style={styles.driverNote}>
-              🚗 Password will be auto-generated for driver account
-            </Text>
-          )}
-        </LinearGradient>
-
-        <View style={styles.formContainer}>
-          <View style={styles.phoneDisplay}>
-            <Text style={styles.phoneLabel}>Phone Number</Text>
-            <Text style={styles.phoneValue}>+251 {phone}</Text>
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>First Name *</Text>
-            <TextInput
-              style={styles.input}
-              placeholder='Enter your first name'
-              value={formData.first_name}
-              onChangeText={(text) => updateFormData("first_name", text)}
-              editable={!loading}
-            />
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Email (Optional)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder='Enter your email'
-              value={formData.email}
-              onChangeText={(text) => updateFormData("email", text)}
-              keyboardType='email-address'
-              autoCapitalize='none'
-              editable={!loading}
-            />
-          </View>
-
-          {role === "driver" && (
-            <View style={styles.passwordInfo}>
-              <Text style={styles.passwordLabel}>Auto-generated Password:</Text>
-              <Text style={styles.passwordValue}>{generatedPassword}</Text>
-              <Text style={styles.passwordHint}>
-                This password is automatically generated. You'll use OTP for
-                login.
-              </Text>
-            </View>
-          )}
-
-          <View style={styles.noteContainer}>
-            <Text style={styles.noteText}>
-              <Text style={styles.noteBold}>Note:</Text> You'll use OTP
-              verification to login. No password needed for customers.
-            </Text>
-          </View>
-
-          <TouchableOpacity
-            style={[styles.registerButton, loading && styles.buttonDisabled]}
-            onPress={handleRegister}
-            disabled={loading}
-          >
-            <LinearGradient
-              colors={["#667eea", "#764ba2"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.registerButtonGradient}
-            >
-              {loading ? (
-                <ActivityIndicator color={colors.white} size='small' />
-              ) : (
-                <Text style={styles.registerButtonText}>Create Account</Text>
-              )}
-            </LinearGradient>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => router.back()}
-            disabled={loading}
-          >
-            <Text style={styles.backButtonText}>← Back</Text>
-          </TouchableOpacity>
+        <View style={styles.phoneDisplay}>
+          <Text style={styles.phoneLabel}>Phone Number</Text>
+          <Text style={styles.phoneValue}>+251 {phone}</Text>
         </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>First Name *</Text>
+          <TextInput
+            style={styles.input}
+            placeholder='Enter your first name'
+            value={firstName}
+            onChangeText={setFirstName}
+            editable={!loading}
+            autoCapitalize='words'
+            autoCorrect={false}
+          />
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Email (Optional)</Text>
+          <TextInput
+            style={styles.input}
+            placeholder='your.email@example.com'
+            value={email}
+            onChangeText={setEmail}
+            editable={!loading}
+            keyboardType='email-address'
+            autoCapitalize='none'
+            autoCorrect={false}
+          />
+        </View>
+
+        <TouchableOpacity
+          style={[styles.registerButton, loading && styles.buttonDisabled]}
+          onPress={handleRegister}
+          disabled={loading}
+        >
+          <LinearGradient
+            colors={["#667eea", "#764ba2"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.registerButtonGradient}
+          >
+            {loading ? (
+              <ActivityIndicator color={colors.white} size='small' />
+            ) : (
+              <Text style={styles.registerButtonText}>Create Account</Text>
+            )}
+          </LinearGradient>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => router.back()}
+          disabled={loading}
+        >
+          <Text style={styles.backButtonText}>← Back</Text>
+        </TouchableOpacity>
+
+        <Text style={styles.termsText}>
+          By creating an account, you agree to our Terms of Service and Privacy
+          Policy.
+        </Text>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -240,10 +191,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  scrollContent: {
-    flexGrow: 1,
-  },
-  headerGradient: {
+  header: {
     paddingTop: 60,
     paddingBottom: 40,
     paddingHorizontal: 24,
@@ -259,16 +207,10 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     fontSize: 16,
     color: "rgba(255, 255, 255, 0.8)",
-    marginBottom: 4,
-  },
-  driverNote: {
-    fontSize: 14,
-    color: "rgba(255, 255, 255, 0.9)",
-    fontStyle: "italic",
-    marginTop: 8,
   },
   formContainer: {
     padding: 24,
+    paddingBottom: 40,
   },
   phoneDisplay: {
     backgroundColor: colors.white,
@@ -310,50 +252,8 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.gray900,
   },
-  passwordInfo: {
-    backgroundColor: colors.gray50,
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: colors.gray200,
-  },
-  passwordLabel: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: colors.gray700,
-    marginBottom: 4,
-  },
-  passwordValue: {
-    fontSize: 16,
-    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-    color: colors.primary,
-    marginBottom: 8,
-  },
-  passwordHint: {
-    fontSize: 12,
-    color: colors.gray600,
-    fontStyle: "italic",
-  },
-  noteContainer: {
-    backgroundColor: colors.primary + "10",
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 24,
-    borderLeftWidth: 4,
-    borderLeftColor: colors.primary,
-  },
-  noteText: {
-    fontSize: 14,
-    color: colors.gray700,
-    lineHeight: 20,
-  },
-  noteBold: {
-    fontWeight: "bold",
-    color: colors.primary,
-  },
   registerButton: {
-    marginTop: 10,
+    marginTop: 24,
     marginBottom: 20,
     borderRadius: 12,
     overflow: "hidden",
@@ -383,6 +283,12 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontSize: 16,
     fontWeight: "500",
+  },
+  termsText: {
+    fontSize: 12,
+    color: colors.gray500,
+    textAlign: "center",
+    marginTop: 24,
   },
 });
 

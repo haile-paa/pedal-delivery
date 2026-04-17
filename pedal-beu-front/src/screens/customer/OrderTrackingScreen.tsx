@@ -451,6 +451,11 @@ const OrderTrackingScreen: React.FC = () => {
         onPress: async () => {
           try {
             const token = await AsyncStorage.getItem("accessToken");
+            if (!token) {
+              Alert.alert("Error", "You are not logged in");
+              return;
+            }
+
             const response = await fetch(
               `https://pedal-delivery-back.onrender.com/api/v1/orders/${orderId}/cancel`,
               {
@@ -459,21 +464,25 @@ const OrderTrackingScreen: React.FC = () => {
                   Authorization: `Bearer ${token}`,
                   "Content-Type": "application/json",
                 },
+                body: JSON.stringify({
+                  reason: "Customer requested cancellation",
+                }),
               },
             );
+
+            const data = await response.json();
 
             if (response.ok) {
               setCurrentStatus("cancelled");
               Alert.alert(
                 "Order Cancelled",
-                "Your order has been cancelled successfully.",
+                data.message || "Your order has been cancelled successfully.",
               );
               setTimeout(() => {
                 router.replace("/(customer)/home");
               }, 2000);
             } else {
-              const data = await response.json();
-              throw new Error(data.message || "Failed to cancel order");
+              throw new Error(data.error || "Failed to cancel order");
             }
           } catch (error: any) {
             Alert.alert("Error", error.message || "Failed to cancel order");
@@ -482,7 +491,6 @@ const OrderTrackingScreen: React.FC = () => {
       },
     ]);
   };
-
   const handleContactRestaurant = () => {
     Alert.alert("Contact Restaurant", "This feature is coming soon!", [
       { text: "OK" },

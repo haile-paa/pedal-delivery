@@ -1,3 +1,4 @@
+// screens/customer/ProfileScreen.tsx
 import React, { useState, useEffect } from "react";
 import {
   View,
@@ -13,86 +14,58 @@ import { useRouter } from "expo-router";
 import { colors } from "../../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
 import AnimatedButton from "../../components/ui/AnimatedButton";
-
-const API = "https://pedal-delivery-back.onrender.com/api/v1";
+import api from "../../../lib/api";
 
 const CustomerProfileScreen = () => {
   const router = useRouter();
   const { state, dispatch } = useAppState();
   const [loading, setLoading] = useState(false);
 
-  const token = state.auth.token;
-
-  // ================================
-  // 🔥 FETCH PROFILE FROM BACKEND
-  // ================================
   const fetchProfile = async () => {
     try {
-      const res = await fetch(`${API}/users/me`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await api.get("/users/me");
+      const data = response.data;
+      dispatch({
+        type: "UPDATE_USER",
+        payload: {
+          ...data,
+          name: data.profile?.first_name || data.username || "User",
+        },
       });
-
-      const data = await res.json();
-
-      if (res.ok) {
-        dispatch({
-          type: "UPDATE_USER",
-          payload: {
-            ...data,
-            name: data.profile?.first_name || data.username || "User",
-          },
-        });
+    } catch (error: any) {
+      console.log("Profile fetch error:", error.message);
+      if (error.isAuthError || error.response?.status === 401) {
+        // Handled by context logout
       }
-    } catch (error) {
-      console.log("Profile fetch error:", error);
     }
   };
 
-  // ================================
-  // 🔥 FETCH ADDRESSES
-  // ================================
   const fetchAddresses = async () => {
     try {
-      const res = await fetch(`${API}/users/addresses`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      const data = await res.json();
-      if (res.ok) {
-        dispatch({ type: "SET_ADDRESSES", payload: data.addresses });
-      }
-    } catch (err) {
-      console.log("Address fetch:", err);
+      const response = await api.get("/users/addresses");
+      const data = response.data;
+      dispatch({ type: "SET_ADDRESSES", payload: data.addresses });
+    } catch (err: any) {
+      console.log("Address fetch error:", err.message);
     }
   };
 
-  // ================================
-  // 🔥 FETCH ORDER HISTORY
-  // ================================
   const fetchOrders = async () => {
     try {
-      const res = await fetch(`${API}/orders`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      const data = await res.json();
-      if (res.ok) {
-        dispatch({ type: "SET_CUSTOMER_ORDERS", payload: data.orders });
-      }
-    } catch (e) {
-      console.log("Orders fetch error:", e);
+      const response = await api.get("/orders");
+      const data = response.data;
+      dispatch({ type: "SET_CUSTOMER_ORDERS", payload: data.orders });
+    } catch (e: any) {
+      console.log("Orders fetch error:", e.message);
     }
   };
 
   useEffect(() => {
-    if (token) {
-      fetchProfile();
-      fetchAddresses();
-      fetchOrders();
-    }
-  }, [token]);
+    fetchProfile();
+    fetchAddresses();
+    fetchOrders();
+  }, []);
 
-  // Safely access customer data with fallbacks
   const user = state.auth.user;
   const customer = state.customer || {};
   const addresses = customer.addresses || [];
@@ -103,16 +76,10 @@ const CustomerProfileScreen = () => {
   const favoriteCount = favoriteRestaurants.length;
   const addressesCount = addresses.length;
 
-  // ============================
-  // 🔥 UPDATE PROFILE
-  // ============================
   const updateProfile = async () => {
     Alert.alert("Update", "Edit profile feature coming soon!");
   };
 
-  // ============================
-  // 🔥 LOGOUT
-  // ============================
   const handleLogout = () => {
     Alert.alert("Logout", "Are you sure you want to logout?", [
       { text: "Cancel", style: "cancel" },
@@ -127,7 +94,6 @@ const CustomerProfileScreen = () => {
     ]);
   };
 
-  // MENU ITEMS
   const menuItems = [
     {
       id: "orders",
@@ -154,9 +120,7 @@ const CustomerProfileScreen = () => {
   return (
     <View style={styles.container}>
       <StatusBar barStyle='dark-content' backgroundColor={colors.background} />
-
       <ScrollView style={styles.scrollView}>
-        {/* --- Profile Header --- */}
         <View style={styles.profileHeader}>
           <View style={styles.avatarContainer}>
             <View style={styles.avatarPlaceholder}>
@@ -165,11 +129,9 @@ const CustomerProfileScreen = () => {
               </Text>
             </View>
           </View>
-
           <Text style={styles.userName}>{user?.name}</Text>
           <Text style={styles.userEmail}>{user?.email}</Text>
           <Text style={styles.userPhone}>{user?.phone}</Text>
-
           <TouchableOpacity
             style={styles.editProfileButton}
             onPress={updateProfile}
@@ -178,29 +140,23 @@ const CustomerProfileScreen = () => {
           </TouchableOpacity>
         </View>
 
-        {/* --- Stats --- */}
         <View style={styles.statsContainer}>
           <View style={styles.statItem}>
             <Text style={styles.statValue}>{ordersCount}</Text>
             <Text style={styles.statLabel}>Orders</Text>
           </View>
-
           <View style={styles.statDivider} />
-
           <View style={styles.statItem}>
             <Text style={styles.statValue}>{favoriteCount}</Text>
             <Text style={styles.statLabel}>Favorites</Text>
           </View>
-
           <View style={styles.statDivider} />
-
           <View style={styles.statItem}>
             <Text style={styles.statValue}>{addressesCount}</Text>
             <Text style={styles.statLabel}>Addresses</Text>
           </View>
         </View>
 
-        {/* --- Menu Items --- */}
         <View style={styles.menuContainer}>
           {menuItems.map((item) => (
             <TouchableOpacity
@@ -212,7 +168,6 @@ const CustomerProfileScreen = () => {
                 <Ionicons name={item.icon} size={24} color={colors.gray600} />
                 <Text style={styles.menuItemText}>{item.title}</Text>
               </View>
-
               <View style={styles.menuItemRight}>
                 {item.badge !== undefined && (
                   <View style={styles.badge}>
@@ -229,7 +184,6 @@ const CustomerProfileScreen = () => {
           ))}
         </View>
 
-        {/* --- Logout --- */}
         <View style={styles.logoutContainer}>
           <AnimatedButton
             title='Logout'

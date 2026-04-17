@@ -1,3 +1,5 @@
+// src/types/index.ts
+
 // User Types
 export interface User {
   id: string;
@@ -5,6 +7,7 @@ export interface User {
   email?: string;
   role: "customer" | "driver" | "admin";
   name?: string; // Mapped from profile.first_name or username
+  firstName?: string; // Added for direct access
   profile: {
     first_name: string;
     last_name?: string;
@@ -53,8 +56,10 @@ export interface AuthResponse {
   message?: string;
   user?: User;
   tokens?: {
-    access_token: string;
-    refresh_token: string;
+    accessToken?: string;
+    refreshToken?: string;
+    access_token?: string;
+    refresh_token?: string;
   };
   exists?: boolean; // For OTP verification
   otp?: string; // For development only
@@ -108,7 +113,7 @@ export interface VerifyOTPResponse {
   };
 }
 
-// Restaurant Types (unchanged, keep as before)
+// Restaurant Types
 export interface Restaurant {
   id: string;
   owner_id: string;
@@ -161,7 +166,7 @@ export interface Addon {
   is_active: boolean;
 }
 
-// Order Types (unchanged, keep as before)
+// Order Types
 export type OrderStatus =
   | "pending"
   | "accepted"
@@ -267,7 +272,7 @@ export interface CancellationInfo {
   refund_amount?: number;
 }
 
-// Utility Types (unchanged)
+// Utility Types
 export interface GeoLocation {
   type: "Point";
   coordinates: [number, number]; // [longitude, latitude]

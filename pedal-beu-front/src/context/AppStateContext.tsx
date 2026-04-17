@@ -1,3 +1,4 @@
+// context/AppStateContext.tsx
 import React, {
   createContext,
   useContext,
@@ -14,11 +15,11 @@ import {
   DriverEarnings,
   Restaurant,
   MenuItem,
-  OrderItem,
-  OrderEvent,
 } from "../types";
 import { authAPI, checkAuth, orderAPI } from "../../lib/api";
 import { restaurantAPI } from "../../lib/restaurant";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useRouter } from "expo-router";
 
 interface AppState {
   auth: {
@@ -158,25 +159,33 @@ const initialState: AppState = {
 // Helper function to compare cart items
 const cartItemsMatch = (item1: CartItem, item2: CartItem): boolean => {
   if (item1.id !== item2.id) return false;
-
   const addons1 = item1.selected_addons.map((a) => a.id).sort();
   const addons2 = item2.selected_addons.map((a) => a.id).sort();
-
   return JSON.stringify(addons1) === JSON.stringify(addons2);
 };
 
 // Normalize user object from backend to frontend shape
 const normalizeUser = (backendUser: any): User => {
+  // Extract first name from various possible locations
+  const firstName =
+    backendUser.firstName ||
+    backendUser.first_name ||
+    backendUser.profile?.first_name ||
+    backendUser.profile?.firstName ||
+    backendUser.username ||
+    "";
+
   return {
     id: backendUser.id || backendUser._id,
     phone: backendUser.phone,
     email: backendUser.email,
     role: backendUser.role?.type || backendUser.role,
-    name: backendUser.profile?.first_name || backendUser.username || "",
+    name: firstName, // Keep name for backward compatibility
+    firstName: firstName, // Also store as firstName for direct access
     profile: {
-      first_name: backendUser.profile?.first_name || "",
-      last_name: backendUser.profile?.last_name || "",
-      avatar: backendUser.profile?.avatar,
+      first_name: firstName,
+      last_name: backendUser.profile?.last_name || backendUser.lastName || "",
+      avatar: backendUser.profile?.avatar || backendUser.avatar,
       addresses: backendUser.profile?.addresses || [],
     },
     is_verified: backendUser.is_verified || false,
@@ -192,13 +201,11 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
         ...state,
         ui: { ...state.ui, loading: action.payload },
       };
-
     case "SET_ERROR":
       return {
         ...state,
         ui: { ...state.ui, error: action.payload },
       };
-
     case "LOGIN_SUCCESS":
       return {
         ...state,
@@ -210,13 +217,11 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
           isAuthenticated: true,
         },
       };
-
     case "LOGOUT":
       return {
         ...initialState,
         auth: { ...initialState.auth, isLoading: false },
       };
-
     case "UPDATE_USER":
       return {
         ...state,
@@ -225,14 +230,11 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
           user: normalizeUser(action.payload),
         },
       };
-
-    case "ADD_TO_CART":
-      // Guard cart array
+    case "ADD_TO_CART": {
       const currentCart = state.customer.cart || [];
       const existingItem = currentCart.find((item) =>
         cartItemsMatch(item, action.payload),
       );
-
       if (existingItem) {
         const updatedCart = currentCart.map((item) =>
           cartItemsMatch(item, action.payload)
@@ -244,7 +246,6 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
           customer: { ...state.customer, cart: updatedCart },
         };
       }
-
       return {
         ...state,
         customer: {
@@ -252,8 +253,8 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
           cart: [...currentCart, action.payload],
         },
       };
-
-    case "REMOVE_FROM_CART":
+    }
+    case "REMOVE_FROM_CART": {
       const currentCartForRemove = state.customer.cart || [];
       const filteredCart = currentCartForRemove.filter((item) => {
         if (action.payload.selectedAddonsIds) {
@@ -270,8 +271,8 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
         ...state,
         customer: { ...state.customer, cart: filteredCart },
       };
-
-    case "UPDATE_CART_QUANTITY":
+    }
+    case "UPDATE_CART_QUANTITY": {
       const currentCartForUpdate = state.customer.cart || [];
       const updatedCart = currentCartForUpdate
         .map((item) => {
@@ -290,30 +291,26 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
           return item;
         })
         .filter((item) => item.quantity > 0);
-
       return {
         ...state,
         customer: { ...state.customer, cart: updatedCart },
       };
-
+    }
     case "CLEAR_CART":
       return {
         ...state,
         customer: { ...state.customer, cart: [] },
       };
-
     case "SET_DRIVER_ONLINE":
       return {
         ...state,
         driver: { ...state.driver, isOnline: action.payload },
       };
-
     case "SET_CURRENT_ORDER":
       return {
         ...state,
         driver: { ...state.driver, currentOrder: action.payload },
       };
-
     case "SET_CUSTOMER_ORDERS":
       return {
         ...state,
@@ -323,7 +320,6 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
           isLoading: false,
         },
       };
-
     case "SET_DRIVER_ORDERS":
       return {
         ...state,
@@ -333,9 +329,7 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
           isLoading: false,
         },
       };
-
     case "UPDATE_ORDER_STATUS": {
-      // Validate payload to prevent crashes
       if (
         !action.payload ||
         !action.payload.orderId ||
@@ -347,30 +341,24 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
         );
         return state;
       }
-
       try {
-        // Guard all arrays and objects before spreading
         const customerOrders = state.customer.orders || [];
         const driverOrders = state.driver.availableOrders || [];
         const currentOrder = state.driver.currentOrder;
-
         const updatedCustomerOrders = customerOrders.map((order) =>
           order && order.id === action.payload.orderId
             ? { ...order, status: action.payload.status as any }
             : order,
         );
-
         const updatedDriverOrders = driverOrders.map((order) =>
           order && order.id === action.payload.orderId
             ? { ...order, status: action.payload.status as any }
             : order,
         );
-
         const updatedCurrentOrder =
           currentOrder?.id === action.payload.orderId
             ? { ...currentOrder, status: action.payload.status as any }
             : currentOrder;
-
         return {
           ...state,
           customer: {
@@ -384,14 +372,10 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
           },
         };
       } catch (error) {
-        console.error("Error in UPDATE_ORDER_STATUS:", error, {
-          action,
-          state,
-        });
-        return state; // Fallback to current state
+        console.error("Error in UPDATE_ORDER_STATUS:", error);
+        return state;
       }
     }
-
     case "ADD_NOTIFICATION":
       return {
         ...state,
@@ -400,7 +384,6 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
           notifications: [action.payload, ...(state.ui.notifications || [])],
         },
       };
-
     case "SET_RESTAURANTS":
       return {
         ...state,
@@ -410,7 +393,6 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
           isLoading: false,
         },
       };
-
     case "SET_CURRENT_RESTAURANT":
       return {
         ...state,
@@ -419,7 +401,6 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
           currentRestaurant: action.payload,
         },
       };
-
     case "SET_RESTAURANTS_LOADING":
       return {
         ...state,
@@ -428,7 +409,6 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
           isLoading: action.payload,
         },
       };
-
     case "SET_LOCATION":
       return {
         ...state,
@@ -437,7 +417,6 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
           currentLocation: action.payload,
         },
       };
-
     case "SET_ADDRESSES":
       return {
         ...state,
@@ -446,7 +425,6 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
           addresses: Array.isArray(action.payload) ? action.payload : [],
         },
       };
-
     case "SELECT_ADDRESS":
       return {
         ...state,
@@ -455,8 +433,7 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
           selectedAddress: action.payload,
         },
       };
-
-    case "ADD_ORDER":
+    case "ADD_ORDER": {
       const currentOrders = state.customer.orders || [];
       return {
         ...state,
@@ -465,8 +442,8 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
           orders: [action.payload, ...currentOrders],
         },
       };
-
-    case "UPDATE_RESTAURANT":
+    }
+    case "UPDATE_RESTAURANT": {
       const currentRestaurants = state.restaurants.list || [];
       return {
         ...state,
@@ -483,7 +460,7 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
               : state.restaurants.currentRestaurant,
         },
       };
-
+    }
     default:
       return state;
   }
@@ -517,25 +494,14 @@ export const AppStateProvider: React.FC<{ children: ReactNode }> = ({
   children,
 }) => {
   const [state, dispatch] = useReducer(appReducer, initialState);
+  const router = useRouter();
 
-  // Load user on mount
   useEffect(() => {
     const loadUser = async () => {
       try {
         const authStatus = await checkAuth();
         if (authStatus.isAuthenticated && authStatus.user) {
-          // Get token from AsyncStorage
-          const token = await (async () => {
-            try {
-              const AsyncStorage =
-                await import("@react-native-async-storage/async-storage");
-              return await AsyncStorage.default.getItem("accessToken");
-            } catch (error) {
-              console.error("Error getting token:", error);
-              return null;
-            }
-          })();
-
+          const token = await AsyncStorage.getItem("accessToken");
           if (token) {
             dispatch({
               type: "LOGIN_SUCCESS",
@@ -545,8 +511,6 @@ export const AppStateProvider: React.FC<{ children: ReactNode }> = ({
                 role: authStatus.user.role as "customer" | "driver",
               },
             });
-
-            // Load additional data based on role
             if (authStatus.user.role === "customer") {
               await loadCustomerOrders();
               await loadRestaurants();
@@ -554,14 +518,16 @@ export const AppStateProvider: React.FC<{ children: ReactNode }> = ({
               await loadDriverOrders();
             }
           }
+        } else {
+          dispatch({ type: "LOGOUT" });
         }
       } catch (error) {
         console.error("Error loading user:", error);
+        dispatch({ type: "LOGOUT" });
       } finally {
         dispatch({ type: "SET_LOADING", payload: false });
       }
     };
-
     loadUser();
   }, []);
 
@@ -572,8 +538,11 @@ export const AppStateProvider: React.FC<{ children: ReactNode }> = ({
       if (response) {
         dispatch({ type: "UPDATE_USER", payload: response });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error loading profile:", error);
+      if (error.isAuthError || error.response?.status === 401) {
+        await logout();
+      }
     } finally {
       dispatch({ type: "SET_LOADING", payload: false });
     }
@@ -583,13 +552,16 @@ export const AppStateProvider: React.FC<{ children: ReactNode }> = ({
     try {
       dispatch({ type: "SET_LOADING", payload: true });
       const response = await orderAPI.getCustomerOrders(1, 10);
-      // Backend returns { orders: [...], pagination: {...} }
       const orders = response.orders || response.data || [];
       console.log(`📋 Loaded ${orders.length} customer orders`);
       dispatch({ type: "SET_CUSTOMER_ORDERS", payload: orders });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error loading orders:", error);
-      dispatch({ type: "SET_CUSTOMER_ORDERS", payload: [] });
+      if (error.isAuthError || error.response?.status === 401) {
+        await logout();
+      } else {
+        dispatch({ type: "SET_CUSTOMER_ORDERS", payload: [] });
+      }
     } finally {
       dispatch({ type: "SET_LOADING", payload: false });
     }
@@ -598,7 +570,7 @@ export const AppStateProvider: React.FC<{ children: ReactNode }> = ({
   const loadDriverOrders = async () => {
     try {
       dispatch({ type: "SET_LOADING", payload: true });
-      // TODO: Implement driver orders API
+      // TODO: Implement driver orders API when ready
       dispatch({ type: "SET_DRIVER_ORDERS", payload: [] });
     } catch (error) {
       console.error("Error loading driver orders:", error);
@@ -613,7 +585,6 @@ export const AppStateProvider: React.FC<{ children: ReactNode }> = ({
   }) => {
     try {
       dispatch({ type: "SET_RESTAURANTS_LOADING", payload: true });
-
       const response = await restaurantAPI.getAll({
         page: 1,
         limit: 20,
@@ -624,7 +595,6 @@ export const AppStateProvider: React.FC<{ children: ReactNode }> = ({
           },
         }),
       });
-
       if (response.success && response.data.length > 0) {
         const restaurants: Restaurant[] = response.data.map(
           (restaurant: any) => ({
@@ -662,10 +632,8 @@ export const AppStateProvider: React.FC<{ children: ReactNode }> = ({
             updated_at: restaurant.updated_at || new Date().toISOString(),
           }),
         );
-
         dispatch({ type: "SET_RESTAURANTS", payload: restaurants });
       } else {
-        // Fallback to empty array
         dispatch({ type: "SET_RESTAURANTS", payload: [] });
       }
     } catch (error) {
@@ -681,7 +649,6 @@ export const AppStateProvider: React.FC<{ children: ReactNode }> = ({
   ): Promise<Restaurant | null> => {
     try {
       dispatch({ type: "SET_RESTAURANTS_LOADING", payload: true });
-
       const existingRestaurant = state.restaurants.list.find(
         (r) => r.id === restaurantId,
       );
@@ -692,14 +659,12 @@ export const AppStateProvider: React.FC<{ children: ReactNode }> = ({
         });
         return existingRestaurant;
       }
-
       const response = await restaurantAPI.getById(restaurantId);
       if (response.success && response.data) {
         const restaurant = response.data as Restaurant;
         dispatch({ type: "SET_CURRENT_RESTAURANT", payload: restaurant });
         return restaurant;
       }
-
       return null;
     } catch (error) {
       console.error("Error loading restaurant details:", error);
@@ -782,41 +747,29 @@ export const AppStateProvider: React.FC<{ children: ReactNode }> = ({
     }
   };
 
-  // *** UPDATED createOrder: calls the real backend API ***
   const createOrder = async (orderData: any): Promise<Order> => {
     try {
       dispatch({ type: "SET_LOADING", payload: true });
-
-      // Build payload matching backend's CreateOrderRequest exactly
       const payload = {
         restaurant_id: orderData.restaurant_id,
         items: (state.customer.cart || []).map((item) => ({
           menu_item_id: item.menu_item.id,
           quantity: item.quantity,
-          addons: item.selected_addons.map((a) => ({
-            addon_id: a.id,
-          })),
+          addons: item.selected_addons.map((a) => ({ addon_id: a.id })),
           notes: item.special_instructions || "",
         })),
         address_id: orderData.address_id,
         payment_method: orderData.payment_method,
         notes: orderData.notes || "",
       };
-
       console.log(
         "📦 Sending order payload:",
         JSON.stringify(payload, null, 2),
       );
-
-      // Call the real API
       const serverOrder: Order = await orderAPI.createOrder(payload);
-
       console.log("📦 Order created successfully:", serverOrder.id);
-
-      // Add to state
       dispatch({ type: "ADD_ORDER", payload: serverOrder });
       dispatch({ type: "CLEAR_CART" });
-
       return serverOrder;
     } catch (error: any) {
       console.error("❌ Error creating order:", error);
@@ -844,9 +797,12 @@ export const AppStateProvider: React.FC<{ children: ReactNode }> = ({
   const logout = async () => {
     try {
       await authAPI.logout();
-      dispatch({ type: "LOGOUT" });
     } catch (error) {
       console.error("Error logging out:", error);
+    } finally {
+      await AsyncStorage.multiRemove(["accessToken", "refreshToken", "user"]);
+      dispatch({ type: "LOGOUT" });
+      router.replace("/(auth)/welcome");
     }
   };
 

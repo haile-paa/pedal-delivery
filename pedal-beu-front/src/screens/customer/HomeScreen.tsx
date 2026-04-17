@@ -37,22 +37,21 @@ const HomeScreen: React.FC = () => {
   const [hasLocationPermission, setHasLocationPermission] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
 
-  // Debounce and API call tracking refs - FIXED: Using number for React Native timeout ID
   const fetchTimeoutRef = useRef<number | null>(null);
   const isFetchingRef = useRef(false);
   const lastFetchTimeRef = useRef<number>(0);
   const shouldFetchRef = useRef(true);
 
-  // Get user's first name
+  // Debug user state changes
+  useEffect(() => {
+    console.log("HomeScreen - current user:", state.auth.user);
+  }, [state.auth.user]);
+
+  // Get user's first name - robust version
   const getUserFirstName = () => {
     const user = state.auth.user;
     if (!user) return "Guest";
-
-    if (user.firstName) return user.firstName;
-    if (user.profile?.first_name) return user.profile.first_name;
-    if (user.username) return user.username;
-
-    return "Guest";
+    return user.firstName || user.name || user.profile?.first_name || "Guest";
   };
 
   // Cleanup function for debounce timeout
@@ -70,21 +69,16 @@ const HomeScreen: React.FC = () => {
       location?: { latitude: number; longitude: number },
       forceRefresh: boolean = false,
     ) => {
-      // Clear any existing timeout
       cleanupFetch();
 
-      // If already fetching and not forcing refresh, skip
       if (isFetchingRef.current && !forceRefresh) {
         console.log("Already fetching, skipping duplicate call");
         return;
       }
 
-      // Check if we should fetch (min 2 seconds between calls unless forced)
       const now = Date.now();
       if (!forceRefresh && now - lastFetchTimeRef.current < 2000) {
         console.log("Too soon since last fetch, debouncing...");
-
-        // Schedule the fetch for later
         fetchTimeoutRef.current = setTimeout(
           () => {
             loadRestaurantsDebounced(useLocation, location, forceRefresh);
@@ -94,10 +88,9 @@ const HomeScreen: React.FC = () => {
         return;
       }
 
-      // Set timeout for the actual fetch
       fetchTimeoutRef.current = setTimeout(async () => {
         await loadRestaurants(useLocation, location, forceRefresh);
-      }, 300) as unknown as number; // 300ms debounce delay
+      }, 300) as unknown as number;
     },
     [],
   );
@@ -118,13 +111,11 @@ const HomeScreen: React.FC = () => {
     setLoading(true);
 
     try {
-      // Build query parameters
       const params: any = {
         page: 1,
         limit: 20,
       };
 
-      // Only add location if we have it and permission is granted
       if (useLocation && location && hasLocationPermission) {
         params.latitude = location.latitude;
         params.longitude = location.longitude;
@@ -143,7 +134,6 @@ const HomeScreen: React.FC = () => {
       });
 
       if (response.success && response.data) {
-        // Log the first restaurant to see its structure
         if (response.data.length > 0) {
           console.log(
             "First restaurant data:",
@@ -153,7 +143,6 @@ const HomeScreen: React.FC = () => {
 
         dispatch({ type: "SET_RESTAURANTS", payload: response.data });
 
-        // Extract unique categories
         const allCategories = ["All"];
         response.data.forEach((restaurant: Restaurant) => {
           if (
@@ -169,11 +158,9 @@ const HomeScreen: React.FC = () => {
         });
         setCategories(allCategories.slice(0, 10));
 
-        // Update last fetch time on success
         lastFetchTimeRef.current = Date.now();
       } else {
         console.warn("Failed to load restaurants:", response.error);
-        // Don't show alert for network errors
         if (response.error && !response.error.includes("Network")) {
           Alert.alert("Error", response.error || "Failed to load restaurants");
         }
@@ -186,7 +173,6 @@ const HomeScreen: React.FC = () => {
         stack: error.stack,
       });
 
-      // Don't show alert for network/timeout errors
       if (error.code !== "ECONNABORTED" && error.message !== "Network Error") {
         Alert.alert(
           "Connection Error",
@@ -208,7 +194,6 @@ const HomeScreen: React.FC = () => {
     try {
       console.log("Requesting location permissions...");
 
-      // First, check if location services are enabled
       const enabled = await Location.hasServicesEnabledAsync();
       if (!enabled) {
         setLocationError("Location services are disabled on your device");
@@ -217,7 +202,6 @@ const HomeScreen: React.FC = () => {
         return;
       }
 
-      // Request permissions
       const { status } = await Location.requestForegroundPermissionsAsync();
 
       if (status === "granted") {
@@ -255,7 +239,6 @@ const HomeScreen: React.FC = () => {
       const { latitude, longitude } = location.coords;
       console.log("Got location:", latitude, longitude);
 
-      // Store location in state
       dispatch({
         type: "SET_LOCATION",
         payload: { latitude, longitude },
@@ -264,7 +247,6 @@ const HomeScreen: React.FC = () => {
       setHasLocationPermission(true);
       setLocationError(null);
 
-      // Load restaurants with location (debounced)
       loadRestaurantsDebounced(true, { latitude, longitude }, true);
     } catch (error: any) {
       console.error("Error getting location:", error);
@@ -272,7 +254,6 @@ const HomeScreen: React.FC = () => {
       setHasLocationPermission(false);
       setLocationLoading(false);
 
-      // Load restaurants without location (debounced)
       loadRestaurantsDebounced(false, undefined, true);
     }
   };
@@ -281,7 +262,6 @@ const HomeScreen: React.FC = () => {
   useEffect(() => {
     let filtered = state.restaurants.list;
 
-    // Filter by search query
     if (searchQuery.trim()) {
       filtered = filtered.filter(
         (restaurant) =>
@@ -293,7 +273,6 @@ const HomeScreen: React.FC = () => {
       );
     }
 
-    // Filter by category
     if (selectedCategory !== "All") {
       filtered = filtered.filter(
         (restaurant) =>
@@ -308,21 +287,17 @@ const HomeScreen: React.FC = () => {
   // Initial load with debounce
   useEffect(() => {
     const initialize = async () => {
-      // Try to get location first, then load restaurants
       await requestLocationPermission();
     };
 
-    // Debounce the initial call
     if (shouldFetchRef.current) {
       shouldFetchRef.current = false;
 
-      // Add a small delay to initial load for better UX
       fetchTimeoutRef.current = setTimeout(() => {
         initialize();
       }, 100) as unknown as number;
     }
 
-    // Cleanup on unmount
     return () => {
       cleanupFetch();
     };
@@ -330,18 +305,15 @@ const HomeScreen: React.FC = () => {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    // Use debounced version for refresh too, but with force refresh
     loadRestaurantsDebounced(
       hasLocationPermission,
       state.location.currentLocation || undefined,
       true,
     );
-    // Use a timeout to ensure minimum refresh display time
     const refreshTimeout = setTimeout(() => {
       setRefreshing(false);
     }, 500) as unknown as number;
 
-    // Clean up the timeout
     return () => clearTimeout(refreshTimeout);
   }, [
     hasLocationPermission,
@@ -494,7 +466,6 @@ const HomeScreen: React.FC = () => {
             selectedCategory={selectedCategory}
             onCategorySelect={(setCategory) => {
               setSelectedCategory(setCategory);
-              // No need to reload from API, just filter local data
             }}
           />
         </View>
