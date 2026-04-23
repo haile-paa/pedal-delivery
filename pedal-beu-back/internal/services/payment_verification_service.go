@@ -53,6 +53,13 @@ func (s *orderService) VerifyOrderPayment(ctx context.Context, orderID primitive
 		return nil, errors.New("this transaction reference has already been used")
 	}
 
+	payerPhone := strings.TrimSpace(req.PayerPhone)
+	if payerPhone == "" {
+		if customer, err := s.userRepo.FindByID(ctx, customerID); err == nil {
+			payerPhone = customer.Phone
+		}
+	}
+
 	result, verificationErr := verifyTransferWithProvider(ctx, req.Method, transactionReference)
 	if verificationMode() == "mock" {
 		result.Amount = req.Amount
@@ -73,6 +80,7 @@ func (s *orderService) VerifyOrderPayment(ctx context.Context, orderID primitive
 		ProviderStatus:       result.ProviderStatus,
 		ReceiverText:         result.ReceiverText,
 		ReceiverDigits:       result.ReceiverDigits,
+		PayerPhone:           payerPhone,
 		RawResponse:          result.RawResponse,
 	}
 	now := time.Now()
@@ -110,6 +118,94 @@ func (s *orderService) VerifyOrderPayment(ctx context.Context, orderID primitive
 	}
 
 	log.Printf("payment verified: order=%s method=%s reference=%s", orderID.Hex(), req.Method, transactionReference)
+	return s.orderRepo.FindByID(ctx, orderID)
+}
+
+func (s *orderService) SubmitPaymentProof(ctx context.Context, orderID primitive.ObjectID, customerID primitive.ObjectID, req *models.SubmitPaymentProofRequest) (*models.Order, error) {
+	order, err := s.orderRepo.FindByID(ctx, orderID)
+	if err != nil {
+		return nil, err
+	}
+	if order.CustomerID != customerID {
+		return nil, errors.New("unauthorized")
+	}
+	if !paymentMethodMatches(order.PaymentMethod, req.Method) {
+		return nil, errors.New("payment method does not match this order")
+	}
+
+	transactionReference := strings.ToUpper(strings.TrimSpace(req.TransactionReference))
+	if transactionReference == "" {
+		return nil, errors.New("transaction reference is required")
+	}
+	if existing, err := s.orderRepo.FindByTransactionReference(ctx, transactionReference); err == nil && existing.ID != order.ID {
+		return nil, errors.New("this transaction reference has already been used")
+	}
+	proofURL := strings.TrimSpace(req.ProofURL)
+	if proofURL == "" {
+		return nil, errors.New("payment proof screenshot is required")
+	}
+
+	payerPhone := strings.TrimSpace(req.PayerPhone)
+	if payerPhone == "" {
+		if customer, err := s.userRepo.FindByID(ctx, customerID); err == nil {
+			payerPhone = customer.Phone
+		}
+	}
+
+	now := time.Now()
+	verification := &models.PaymentVerification{
+		Method:               req.Method,
+		Status:               "pending_review",
+		TransactionReference: transactionReference,
+		PayerPhone:           payerPhone,
+		ProofURL:             proofURL,
+		ProviderStatus:       "manual_review",
+		CheckedAt:            &now,
+		RawResponse: map[string]interface{}{
+			"mode":   "manual_proof",
+			"amount": req.Amount,
+		},
+	}
+
+	if err := s.orderRepo.UpdatePaymentVerification(ctx, orderID, "pending", verification); err != nil {
+		return nil, err
+	}
+	return s.orderRepo.FindByID(ctx, orderID)
+}
+
+func (s *orderService) ReviewPaymentProof(ctx context.Context, orderID primitive.ObjectID, adminID primitive.ObjectID, req *models.ReviewPaymentProofRequest) (*models.Order, error) {
+	order, err := s.orderRepo.FindByID(ctx, orderID)
+	if err != nil {
+		return nil, err
+	}
+	if order.PaymentVerification == nil || order.PaymentVerification.ProofURL == "" {
+		return nil, errors.New("payment proof not submitted")
+	}
+	if order.PaymentVerification.Status != "pending_review" {
+		return nil, errors.New("payment proof has already been reviewed")
+	}
+
+	now := time.Now()
+	verification := *order.PaymentVerification
+	verification.ReviewedBy = &adminID
+	verification.ReviewedAt = &now
+	if req.Approved {
+		verification.Status = "verified"
+		verification.ProviderStatus = "admin_approved"
+		verification.VerifiedAt = &now
+		verification.FailureReason = ""
+		if err := s.orderRepo.UpdatePaymentVerification(ctx, orderID, "paid", &verification); err != nil {
+			return nil, err
+		}
+	} else {
+		verification.Status = "rejected"
+		verification.ProviderStatus = "admin_rejected"
+		verification.FailureReason = firstNonEmpty(req.Notes, "Payment proof rejected by admin")
+		if err := s.orderRepo.UpdatePaymentVerification(ctx, orderID, "failed", &verification); err != nil {
+			return nil, err
+		}
+	}
+
 	return s.orderRepo.FindByID(ctx, orderID)
 }
 

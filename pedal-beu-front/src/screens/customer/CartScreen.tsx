@@ -57,6 +57,11 @@ const CartScreen: React.FC = () => {
 
   const calculateServiceCharge = () => {
     const subtotal = calculateSubtotal();
+    return subtotal * 0.05;
+  };
+
+  const calculateTax = () => {
+    const subtotal = calculateSubtotal();
     return subtotal * 0.1;
   };
 
@@ -64,7 +69,8 @@ const CartScreen: React.FC = () => {
     const subtotal = calculateSubtotal();
     const deliveryFee = calculateDeliveryFee();
     const serviceCharge = calculateServiceCharge();
-    return subtotal + deliveryFee + serviceCharge;
+    const tax = calculateTax();
+    return subtotal + deliveryFee + serviceCharge + tax;
   };
 
   const handleUpdateQuantity = (
@@ -226,6 +232,7 @@ const CartScreen: React.FC = () => {
   const subtotal = calculateSubtotal();
   const deliveryFee = calculateDeliveryFee();
   const serviceCharge = calculateServiceCharge();
+  const tax = calculateTax();
   const grandTotal = calculateGrandTotal();
 
   return (
@@ -304,10 +311,14 @@ const CartScreen: React.FC = () => {
             </Text>
           </View>
           <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Service Charge (10%)</Text>
+            <Text style={styles.summaryLabel}>Service Charge (5%)</Text>
             <Text style={styles.summaryValue}>
               {serviceCharge.toFixed(2)}Birr
             </Text>
+          </View>
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Tax (10%)</Text>
+            <Text style={styles.summaryValue}>{tax.toFixed(2)}Birr</Text>
           </View>
           <View style={[styles.summaryRow, styles.totalRow]}>
             <Text style={styles.totalLabel}>Total</Text>
@@ -350,7 +361,9 @@ const CartScreen: React.FC = () => {
           cartTotal={subtotal}
           deliveryFee={deliveryFee}
           serviceCharge={serviceCharge}
+          tax={tax}
           grandTotal={grandTotal}
+          customerPhone={state.auth.user?.phone}
           onPlaceOrder={handlePlaceOrder} // ✅ now expects (paymentMethod, addressId)
         />
       )}

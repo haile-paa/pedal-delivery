@@ -286,12 +286,16 @@ type Order struct {
 
 type PaymentVerification struct {
 	Method               string                 `bson:"method" json:"method"`
-	Status               string                 `bson:"status" json:"status"` // "pending", "verified", "failed"
+	Status               string                 `bson:"status" json:"status"` // "pending", "pending_review", "verified", "failed", "rejected"
 	TransactionReference string                 `bson:"transaction_reference,omitempty" json:"transaction_reference,omitempty"`
 	VerificationURL      string                 `bson:"verification_url,omitempty" json:"verification_url,omitempty"`
 	ProviderStatus       string                 `bson:"provider_status,omitempty" json:"provider_status,omitempty"`
 	ReceiverText         string                 `bson:"receiver_text,omitempty" json:"receiver_text,omitempty"`
 	ReceiverDigits       string                 `bson:"receiver_digits,omitempty" json:"receiver_digits,omitempty"`
+	PayerPhone           string                 `bson:"payer_phone,omitempty" json:"payer_phone,omitempty"`
+	ProofURL             string                 `bson:"proof_url,omitempty" json:"proof_url,omitempty"`
+	ReviewedBy           *primitive.ObjectID    `bson:"reviewed_by,omitempty" json:"reviewed_by,omitempty"`
+	ReviewedAt           *time.Time             `bson:"reviewed_at,omitempty" json:"reviewed_at,omitempty"`
 	FailureReason        string                 `bson:"failure_reason,omitempty" json:"failure_reason,omitempty"`
 	VerifiedAt           *time.Time             `bson:"verified_at,omitempty" json:"verified_at,omitempty"`
 	CheckedAt            *time.Time             `bson:"checked_at,omitempty" json:"checked_at,omitempty"`
@@ -379,6 +383,20 @@ type VerifyOrderPaymentRequest struct {
 	Method               string  `json:"method" binding:"required,oneof=cbe_transfer telebirr_transfer"`
 	TransactionReference string  `json:"transaction_reference" binding:"required"`
 	Amount               float64 `json:"amount" binding:"required,gt=0"`
+	PayerPhone           string  `json:"payer_phone"`
+}
+
+type SubmitPaymentProofRequest struct {
+	Method               string  `json:"method" binding:"required,oneof=cbe_transfer telebirr_transfer"`
+	TransactionReference string  `json:"transaction_reference" binding:"required"`
+	Amount               float64 `json:"amount" binding:"required,gt=0"`
+	PayerPhone           string  `json:"payer_phone"`
+	ProofURL             string  `json:"proof_url" binding:"required"`
+}
+
+type ReviewPaymentProofRequest struct {
+	Approved bool   `json:"approved"`
+	Notes    string `json:"notes"`
 }
 
 type OrderItemRequest struct {

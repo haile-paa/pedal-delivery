@@ -18,6 +18,7 @@ import { colors } from "../../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { Restaurant, CartItem, Order } from "../../types";
 import * as Location from "expo-location";
+import * as ImagePicker from "expo-image-picker";
 import { addressAPI, orderAPI } from "../../../lib/api";
 
 interface CheckoutBottomSheetProps {
@@ -28,8 +29,10 @@ interface CheckoutBottomSheetProps {
   cartTotal: number;
   deliveryFee: number;
   serviceCharge: number;
+  tax?: number;
   grandTotal: number;
   onPlaceOrder: (paymentMethod: string, addressId: string) => Promise<Order>;
+  customerPhone?: string;
   address?: {
     id?: string;
     label: string;
@@ -44,6 +47,9 @@ interface UserLocation {
   address?: string;
 }
 
+const CBE_PAYMENT_ACCOUNT = "1000325579904";
+const TELEBIRR_PAYMENT_MERCHANT = "shegaw misene (2519****7666)";
+
 const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
   visible,
   onClose,
@@ -52,8 +58,10 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
   cartTotal,
   deliveryFee,
   serviceCharge,
+  tax = 0,
   grandTotal,
   onPlaceOrder,
+  customerPhone,
   address,
   onAddressChange,
 }) => {
@@ -71,6 +79,15 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
   );
   const [isSavingAddress, setIsSavingAddress] = useState(false);
   const [transactionReference, setTransactionReference] = useState("");
+  const [payerPhone, setPayerPhone] = useState("");
+  const [paymentProof, setPaymentProof] =
+    useState<ImagePicker.ImagePickerAsset | null>(null);
+  const isTransferPayment =
+    selectedPaymentMethod === "telebirr" || selectedPaymentMethod === "cbe";
+  const paymentReceiverLabel =
+    selectedPaymentMethod === "cbe"
+      ? `CBE account ${CBE_PAYMENT_ACCOUNT}`
+      : `Telebirr merchant ${TELEBIRR_PAYMENT_MERCHANT}`;
 
   const panResponder = PanResponder.create({
     onStartShouldSetPanResponder: () => true,
@@ -95,9 +112,31 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
     if (visible) {
       setResolvedAddressId(address?.id || null);
       setTransactionReference("");
+      setPayerPhone(customerPhone || "");
+      setPaymentProof(null);
       getUserLocation();
     }
   }, [visible]);
+
+  const pickPaymentProof = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert(
+        "Permission Required",
+        "Please allow photo access to attach your payment screenshot.",
+      );
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets.length > 0) {
+      setPaymentProof(result.assets[0]);
+    }
+  };
 
   const getUserLocation = async () => {
     try {
@@ -244,14 +283,17 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
       );
       return;
     }
-    if (
-      (selectedPaymentMethod === "telebirr" ||
-        selectedPaymentMethod === "cbe") &&
-      !transactionReference.trim()
-    ) {
+    if (isTransferPayment && !transactionReference.trim()) {
       Alert.alert(
         "Transaction Reference Required",
-        "Enter the transfer reference so we can verify your payment.",
+        `Pay ${grandTotal.toFixed(2)} Birr to ${paymentReceiverLabel}, then enter the transfer reference so we can verify your payment.`,
+      );
+      return;
+    }
+    if (isTransferPayment && !paymentProof) {
+      Alert.alert(
+        "Payment Screenshot Required",
+        `Attach the screenshot after paying ${grandTotal.toFixed(2)} Birr to ${paymentReceiverLabel}. Admin can use it if automatic verification is unavailable.`,
       );
       return;
     }
@@ -290,7 +332,7 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
         throw new Error("No order returned from server");
       }
 
-      if (selectedPaymentMethod === "telebirr" || selectedPaymentMethod === "cbe") {
+      if (isTransferPayment) {
         const verificationMethod =
           selectedPaymentMethod === "cbe" ? "cbe_transfer" : "telebirr_transfer";
         const verificationAmount =
@@ -301,6 +343,7 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
             method: verificationMethod,
             transaction_reference: transactionReference.trim().toUpperCase(),
             amount: verificationAmount,
+            payer_phone: payerPhone.trim(),
           });
 
           const verifiedOrder = verificationResponse.order || createdOrder;
@@ -319,6 +362,28 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
           );
           return;
         } catch (verificationError: any) {
+          let proofSubmitted = false;
+          let proofSubmissionError = "";
+          try {
+            if (!paymentProof) {
+              throw verificationError;
+            }
+            const uploadResponse =
+              await orderAPI.uploadPaymentProof(paymentProof);
+            await orderAPI.submitPaymentProof(createdOrder.id, {
+              method: verificationMethod,
+              transaction_reference: transactionReference.trim().toUpperCase(),
+              amount: verificationAmount,
+              payer_phone: payerPhone.trim(),
+              proof_url: uploadResponse.url,
+            });
+            proofSubmitted = true;
+          } catch (proofError: any) {
+            console.error("Payment proof fallback failed:", proofError);
+            proofSubmissionError =
+              proofError?.message || "Could not submit the payment screenshot.";
+          }
+
           router.push({
             pathname: "/(customer)/order-traking",
             params: {
@@ -329,9 +394,14 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
           });
           handleClose();
           Alert.alert(
-            "Order Created, Payment Still Pending",
-            verificationError.message ||
-              "We created the order, but we could not verify this payment reference yet.",
+            proofSubmitted
+              ? "Payment Submitted for Review"
+              : "Order Created, Payment Still Pending",
+            proofSubmitted
+              ? "We could not auto-verify it, so your screenshot was sent for admin review."
+              : proofSubmissionError ||
+                  verificationError.message ||
+                  "We created the order, but could not submit the payment proof.",
           );
           return;
         }
@@ -414,7 +484,6 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
                         : colors.warning
                     }
                   />
-                  {/* Existing copy uses a literal apostrophe here; keep text and silence RN JSX lint. */}
                   <Text style={styles.distanceText}>
                     You are {distanceToRestaurant}km away •{" "}
                     {distanceToRestaurant <= 5
@@ -560,20 +629,35 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
                 </TouchableOpacity>
               ))}
 
-              {(selectedPaymentMethod === "telebirr" ||
-                selectedPaymentMethod === "cbe") && (
+              {isTransferPayment && (
                 <View style={styles.verificationCard}>
                   <Text style={styles.verificationTitle}>
-                    {selectedPaymentMethod === "cbe"
-                      ? "Pay to CBE account 1000325579904"
-                      : "Pay to Telebirr merchant shegaw misene (2519****7666)"}
+                    Pay exactly {grandTotal.toFixed(2)} Birr first
                   </Text>
+                  <View style={styles.receiverBox}>
+                    <Text style={styles.receiverLabel}>Send payment to</Text>
+                    <Text style={styles.receiverValue}>
+                      {paymentReceiverLabel}
+                    </Text>
+                  </View>
                   <Text style={styles.verificationText}>
-                    After sending {grandTotal.toFixed(2)} Birr, paste the transaction
-                    reference below and we will verify it automatically.
+                    After sending the money, enter the transaction reference and
+                    attach the screenshot. The order will only be marked paid
+                    after automatic verification or admin approval.
+                  </Text>
+                  <Text style={styles.estimatedAmountText}>
+                    Amount to pay now: {grandTotal.toFixed(2)} Birr
                   </Text>
                   <TextInput
                     style={styles.referenceInput}
+                    value={payerPhone}
+                    onChangeText={setPayerPhone}
+                    keyboardType='phone-pad'
+                    placeholder='Payer phone number'
+                    placeholderTextColor={colors.gray500}
+                  />
+                  <TextInput
+                    style={[styles.referenceInput, styles.referenceInputSpacing]}
                     value={transactionReference}
                     onChangeText={setTransactionReference}
                     autoCapitalize='characters'
@@ -584,6 +668,21 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
                     }
                     placeholderTextColor={colors.gray500}
                   />
+                  <TouchableOpacity
+                    style={styles.proofButton}
+                    onPress={pickPaymentProof}
+                  >
+                    <Ionicons
+                      name='image-outline'
+                      size={18}
+                      color={colors.primary}
+                    />
+                    <Text style={styles.proofButtonText}>
+                      {paymentProof
+                        ? "Payment screenshot attached"
+                        : "Attach payment screenshot"}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               )}
             </View>
@@ -605,10 +704,14 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
                   </Text>
                 </View>
                 <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>Service Charge</Text>
+                  <Text style={styles.summaryLabel}>Service Charge (5%)</Text>
                   <Text style={styles.summaryValue}>
                     {serviceCharge.toFixed(2)} Birr
                   </Text>
+                </View>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Tax (10%)</Text>
+                  <Text style={styles.summaryValue}>{tax.toFixed(2)} Birr</Text>
                 </View>
                 <View style={styles.divider} />
                 <View style={styles.summaryRow}>
@@ -694,7 +797,8 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
               ) : (
                 <>
                   <Text style={styles.placeOrderText}>
-                    Place Order • {grandTotal.toFixed(2)} Birr
+                    {isTransferPayment ? "I Paid, Verify Order" : "Place Order"}{" "}
+                    • {grandTotal.toFixed(2)} Birr
                   </Text>
                   <Ionicons
                     name='arrow-forward'
@@ -922,6 +1026,32 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     marginBottom: 12,
   },
+  receiverBox: {
+    backgroundColor: colors.white,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.gray200,
+    padding: 12,
+    marginBottom: 12,
+  },
+  receiverLabel: {
+    fontSize: 11,
+    color: colors.gray500,
+    marginBottom: 4,
+    textTransform: "uppercase",
+    fontWeight: "700",
+  },
+  receiverValue: {
+    fontSize: 15,
+    color: colors.gray900,
+    fontWeight: "700",
+  },
+  estimatedAmountText: {
+    fontSize: 12,
+    color: colors.primary,
+    fontWeight: "700",
+    marginBottom: 10,
+  },
   referenceInput: {
     borderWidth: 1,
     borderColor: colors.gray300,
@@ -931,6 +1061,27 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.gray900,
     backgroundColor: colors.white,
+  },
+  referenceInputSpacing: {
+    marginTop: 10,
+  },
+  proofButton: {
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: colors.white,
+  },
+  proofButtonText: {
+    color: colors.primary,
+    fontSize: 14,
+    fontWeight: "600",
   },
   radioContainer: {
     marginLeft: 12,

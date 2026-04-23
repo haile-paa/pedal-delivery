@@ -53,6 +53,8 @@ export const adminAPI = {
     api.get("/admin/orders", { params: { page, limit } }),
   getProfile: () => api.get("/admin/profile"), // new
   updateProfile: (data: any) => api.put("/admin/profile", data), // new
+  reviewPayment: (orderId: string, approved: boolean, notes?: string) =>
+    api.post(`/admin/orders/${orderId}/payment-review`, { approved, notes }),
 };
 
 // ==================== Restaurant API ====================

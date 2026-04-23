@@ -133,6 +133,66 @@ func (h *OrderHandler) VerifyOrderPayment(c *gin.Context) {
 	})
 }
 
+func (h *OrderHandler) SubmitPaymentProof(c *gin.Context) {
+	userID := c.MustGet("userID").(primitive.ObjectID)
+	userRole := c.MustGet("userRole").(string)
+
+	if userRole != "customer" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Only customers can submit payment proof"})
+		return
+	}
+
+	orderID, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid order ID"})
+		return
+	}
+
+	var req models.SubmitPaymentProofRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	order, err := h.orderService.SubmitPaymentProof(c.Request.Context(), orderID, userID, &req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Payment proof submitted for admin review",
+		"order":   order,
+	})
+}
+
+func (h *OrderHandler) ReviewPaymentProof(c *gin.Context) {
+	adminID := c.MustGet("userID").(primitive.ObjectID)
+
+	orderID, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid order ID"})
+		return
+	}
+
+	var req models.ReviewPaymentProofRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	order, err := h.orderService.ReviewPaymentProof(c.Request.Context(), orderID, adminID, &req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Payment proof reviewed successfully",
+		"order":   order,
+	})
+}
+
 func (h *OrderHandler) GetPaymentVerificationHealth(c *gin.Context) {
 	c.JSON(http.StatusOK, h.orderService.GetPaymentVerificationHealth(c.Request.Context()))
 }

@@ -416,6 +416,7 @@ func main() {
 				admin.GET("/profile", adminHandler.GetProfile)
 				admin.PUT("/profile", adminHandler.UpdateProfile)
 				admin.GET("/orders", orderHandler.GetAllOrders)
+				admin.POST("/orders/:id/payment-review", orderHandler.ReviewPaymentProof)
 			}
 
 			user := protected.Group("/users")
@@ -497,6 +498,7 @@ func main() {
 				orders.GET("/health/payment-verification", orderHandler.GetPaymentVerificationHealth)
 				orders.GET("/:id", orderHandler.GetOrderByID)
 				orders.POST("/:id/verify-payment", orderHandler.VerifyOrderPayment)
+				orders.POST("/:id/payment-proof", orderHandler.SubmitPaymentProof)
 				orders.POST("/:id/cancel", orderHandler.CancelOrder)
 				orders.POST("/:id/rate", orderHandler.RateOrder)
 				orders.PUT("/:id/status", orderHandler.UpdateOrderStatus)
