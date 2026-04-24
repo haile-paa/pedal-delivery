@@ -178,19 +178,19 @@ const normalizeUser = (backendUser: any): User => {
   return {
     id: backendUser.id || backendUser._id,
     phone: backendUser.phone,
-    email: backendUser.email,
+    email: backendUser.email || "",
     role: backendUser.role?.type || backendUser.role,
-    name: firstName, // Keep name for backward compatibility
-    firstName: firstName, // Also store as firstName for direct access
+    name: firstName,
+    firstName: firstName,
     profile: {
       first_name: firstName,
       last_name: backendUser.profile?.last_name || backendUser.lastName || "",
-      avatar: backendUser.profile?.avatar || backendUser.avatar,
+      avatar: backendUser.profile?.avatar || undefined,
       addresses: backendUser.profile?.addresses || [],
     },
-    is_verified: backendUser.is_verified || false,
-    created_at: backendUser.created_at,
-    updated_at: backendUser.updated_at,
+    is_verified: backendUser.is_verified ?? false,
+    created_at: backendUser.created_at || "",
+    updated_at: backendUser.updated_at || "",
   };
 };
 

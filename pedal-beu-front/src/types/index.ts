@@ -15,8 +15,8 @@ export interface User {
     addresses?: Address[];
   };
   is_verified: boolean;
-  created_at: string;
-  updated_at: string;
+  created_at?: string;
+  updated_at?: string;
   // Optional fields for drivers
   driver_profile?: DriverProfile;
 }

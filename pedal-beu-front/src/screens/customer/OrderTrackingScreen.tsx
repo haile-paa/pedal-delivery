@@ -159,6 +159,18 @@ const OrderTrackingScreen: React.FC = () => {
     };
   }, [orderId]);
 
+  useEffect(() => {
+    if (!orderId) return;
+
+    const paymentRefreshInterval = setInterval(() => {
+      fetchOrderDetails().catch((refreshError) => {
+        console.warn("Background order refresh failed:", refreshError);
+      });
+    }, 15000);
+
+    return () => clearInterval(paymentRefreshInterval);
+  }, [orderId]);
+
   const initializeTracking = async () => {
     try {
       setLoading(true);
@@ -361,6 +373,12 @@ const OrderTrackingScreen: React.FC = () => {
 
   const handleOrderStatusUpdate = (data: any) => {
     setCurrentStatus(data.status);
+    fetchOrderDetails().catch((refreshError) => {
+      console.warn(
+        "Failed to refresh order after status update:",
+        refreshError,
+      );
+    });
     if (data.message) {
       Alert.alert("Status Update", data.message, [{ text: "OK" }]);
     }
@@ -368,6 +386,9 @@ const OrderTrackingScreen: React.FC = () => {
 
   const handleOrderAccepted = (data: any) => {
     setCurrentStatus("accepted");
+    fetchOrderDetails().catch((refreshError) => {
+      console.warn("Failed to refresh order after acceptance:", refreshError);
+    });
     Alert.alert(
       "Order Accepted",
       "The restaurant has accepted your order and started preparing it.",
@@ -376,15 +397,24 @@ const OrderTrackingScreen: React.FC = () => {
 
   const handleOrderPreparing = (data: any) => {
     setCurrentStatus("preparing");
+    fetchOrderDetails().catch((refreshError) => {
+      console.warn("Failed to refresh order while preparing:", refreshError);
+    });
   };
 
   const handleOrderReady = (data: any) => {
     setCurrentStatus("ready");
+    fetchOrderDetails().catch((refreshError) => {
+      console.warn("Failed to refresh order when ready:", refreshError);
+    });
     Alert.alert("Order Ready", "Your order is ready for pickup!");
   };
 
   const handleOrderPickedUp = (data: any) => {
     setCurrentStatus("picked_up");
+    fetchOrderDetails().catch((refreshError) => {
+      console.warn("Failed to refresh order after pickup:", refreshError);
+    });
     Alert.alert(
       "On the Way!",
       "Your order has been picked up and is on its way to you!",
@@ -393,6 +423,9 @@ const OrderTrackingScreen: React.FC = () => {
 
   const handleOrderDelivered = (data: any) => {
     setCurrentStatus("delivered");
+    fetchOrderDetails().catch((refreshError) => {
+      console.warn("Failed to refresh order after delivery:", refreshError);
+    });
     Alert.alert(
       "Order Delivered!",
       "Your order has been delivered. Enjoy your meal!",
@@ -462,11 +495,6 @@ const OrderTrackingScreen: React.FC = () => {
         onPress: async () => {
           try {
             const token = await AsyncStorage.getItem("accessToken");
-            if (!token) {
-              Alert.alert("Error", "You are not logged in");
-              return;
-            }
-
             const response = await fetch(
               `https://pedal-delivery-back.onrender.com/api/v1/orders/${orderId}/cancel`,
               {
@@ -475,25 +503,21 @@ const OrderTrackingScreen: React.FC = () => {
                   Authorization: `Bearer ${token}`,
                   "Content-Type": "application/json",
                 },
-                body: JSON.stringify({
-                  reason: "Customer requested cancellation",
-                }),
               },
             );
-
-            const data = await response.json();
 
             if (response.ok) {
               setCurrentStatus("cancelled");
               Alert.alert(
                 "Order Cancelled",
-                data.message || "Your order has been cancelled successfully.",
+                "Your order has been cancelled successfully.",
               );
               setTimeout(() => {
                 router.replace("/(customer)/home");
               }, 2000);
             } else {
-              throw new Error(data.error || "Failed to cancel order");
+              const data = await response.json();
+              throw new Error(data.message || "Failed to cancel order");
             }
           } catch (error: any) {
             Alert.alert("Error", error.message || "Failed to cancel order");
@@ -502,6 +526,7 @@ const OrderTrackingScreen: React.FC = () => {
       },
     ]);
   };
+
   const handleContactRestaurant = () => {
     Alert.alert("Contact Restaurant", "This feature is coming soon!", [
       { text: "OK" },
@@ -893,8 +918,7 @@ const OrderTrackingScreen: React.FC = () => {
                 />
                 <Text style={styles.orderInfoText}>
                   Payment screenshot submitted
-                  {orderDetails.payment_verification.status ===
-                  "pending_review"
+                  {orderDetails.payment_verification.status === "pending_review"
                     ? " for admin review"
                     : ""}
                 </Text>

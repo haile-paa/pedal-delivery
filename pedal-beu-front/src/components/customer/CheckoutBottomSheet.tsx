@@ -1,3 +1,4 @@
+// components/CheckoutBottomSheet.tsx
 import React, { useRef, useState, useEffect } from "react";
 import {
   View,
@@ -19,6 +20,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Restaurant, CartItem, Order } from "../../types";
 import * as Location from "expo-location";
 import * as ImagePicker from "expo-image-picker";
+import * as Clipboard from "expo-clipboard";
 import { addressAPI, orderAPI } from "../../../lib/api";
 
 interface CheckoutBottomSheetProps {
@@ -48,7 +50,9 @@ interface UserLocation {
 }
 
 const CBE_PAYMENT_ACCOUNT = "1000325579904";
-const TELEBIRR_PAYMENT_MERCHANT = "shegaw misene (2519****7666)";
+const CBE_PAYMENT_NAME = "Wubshet Kindie Alebachew";
+const TELEBIRR_PAYMENT_NAME = "Wubshet Kindie";
+const TELEBIRR_PAYMENT_PHONE = "0909585090";
 
 const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
   visible,
@@ -84,10 +88,6 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
     useState<ImagePicker.ImagePickerAsset | null>(null);
   const isTransferPayment =
     selectedPaymentMethod === "telebirr" || selectedPaymentMethod === "cbe";
-  const paymentReceiverLabel =
-    selectedPaymentMethod === "cbe"
-      ? `CBE account ${CBE_PAYMENT_ACCOUNT}`
-      : `Telebirr merchant ${TELEBIRR_PAYMENT_MERCHANT}`;
 
   const panResponder = PanResponder.create({
     onStartShouldSetPanResponder: () => true,
@@ -178,9 +178,7 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
         setDistanceToRestaurant(2.5);
       }
 
-      // If no saved address, auto-save current location (but we don't need to wait here)
       if (!address?.id) {
-        // Fire and forget – the ID will be captured later if needed
         autoSaveAddress(latitude, longitude, addressStr).then((id) => {
           if (id) setResolvedAddressId(id);
         });
@@ -197,10 +195,6 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
     }
   };
 
-  /**
-   * Auto-save the current location as a delivery address.
-   * Returns the saved address ID or null if failed.
-   */
   const autoSaveAddress = async (
     lat: number,
     lng: number,
@@ -224,7 +218,6 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
       }
     } catch (error: any) {
       console.error("Auto-save address failed:", error.message);
-      // Fallback: try to get any existing address
       try {
         const existing = await addressAPI.getAddresses();
         if (existing.length > 0) {
@@ -286,22 +279,20 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
     if (isTransferPayment && !transactionReference.trim()) {
       Alert.alert(
         "Transaction Reference Required",
-        `Pay ${grandTotal.toFixed(2)} Birr to ${paymentReceiverLabel}, then enter the transfer reference so we can verify your payment.`,
+        `Pay ${grandTotal.toFixed(2)} Birr, then enter the transfer reference so we can verify your payment.`,
       );
       return;
     }
     if (isTransferPayment && !paymentProof) {
       Alert.alert(
         "Payment Screenshot Required",
-        `Attach the screenshot after paying ${grandTotal.toFixed(2)} Birr to ${paymentReceiverLabel}. Admin can use it if automatic verification is unavailable.`,
+        `Attach the screenshot after paying ${grandTotal.toFixed(2)} Birr.`,
       );
       return;
     }
 
-    // Resolve address ID
     let finalAddressId = resolvedAddressId || address?.id;
     if (!finalAddressId) {
-      // Try to auto-save now and get the ID directly
       if (userLocation) {
         const newId = await autoSaveAddress(
           userLocation.latitude,
@@ -309,8 +300,8 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
           userLocation.address || "Current Location",
         );
         if (newId) {
-          finalAddressId = newId; // use the returned ID immediately
-          setResolvedAddressId(newId); // also update state for UI
+          finalAddressId = newId;
+          setResolvedAddressId(newId);
         }
       }
       if (!finalAddressId) {
@@ -328,23 +319,26 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
         selectedPaymentMethod,
         finalAddressId,
       );
-      if (!createdOrder) {
-        throw new Error("No order returned from server");
-      }
+      if (!createdOrder) throw new Error("No order returned from server");
 
       if (isTransferPayment) {
         const verificationMethod =
-          selectedPaymentMethod === "cbe" ? "cbe_transfer" : "telebirr_transfer";
+          selectedPaymentMethod === "cbe"
+            ? "cbe_transfer"
+            : "telebirr_transfer";
         const verificationAmount =
           createdOrder.total_amount?.total || grandTotal;
 
         try {
-          const verificationResponse = await orderAPI.verifyPayment(createdOrder.id, {
-            method: verificationMethod,
-            transaction_reference: transactionReference.trim().toUpperCase(),
-            amount: verificationAmount,
-            payer_phone: payerPhone.trim(),
-          });
+          const verificationResponse = await orderAPI.verifyPayment(
+            createdOrder.id,
+            {
+              method: verificationMethod,
+              transaction_reference: transactionReference.trim().toUpperCase(),
+              amount: verificationAmount,
+              payer_phone: payerPhone.trim(),
+            },
+          );
 
           const verifiedOrder = verificationResponse.order || createdOrder;
           router.push({
@@ -365,9 +359,7 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
           let proofSubmitted = false;
           let proofSubmissionError = "";
           try {
-            if (!paymentProof) {
-              throw verificationError;
-            }
+            if (!paymentProof) throw verificationError;
             const uploadResponse =
               await orderAPI.uploadPaymentProof(paymentProof);
             await orderAPI.submitPaymentProof(createdOrder.id, {
@@ -434,6 +426,18 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
 
   const isBelowMinOrder =
     restaurant.min_order != null && cartTotal < restaurant.min_order;
+
+  // Copy CBE account number to clipboard
+  const copyAccountNumber = () => {
+    Clipboard.setStringAsync(CBE_PAYMENT_ACCOUNT);
+    Alert.alert("Copied", "Account number copied to clipboard");
+  };
+
+  // Copy Telebirr phone number to clipboard
+  const copyPhoneNumber = () => {
+    Clipboard.setStringAsync(TELEBIRR_PAYMENT_PHONE);
+    Alert.alert("Copied", "Phone number copied to clipboard");
+  };
 
   return (
     <Modal
@@ -634,11 +638,47 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
                   <Text style={styles.verificationTitle}>
                     Pay exactly {grandTotal.toFixed(2)} Birr first
                   </Text>
+                  {/* Receiver details - now with broken lines and copyable account/phone */}
                   <View style={styles.receiverBox}>
                     <Text style={styles.receiverLabel}>Send payment to</Text>
-                    <Text style={styles.receiverValue}>
-                      {paymentReceiverLabel}
+                    <Text style={styles.receiverName}>
+                      {selectedPaymentMethod === "cbe"
+                        ? CBE_PAYMENT_NAME
+                        : TELEBIRR_PAYMENT_NAME}
                     </Text>
+                    {selectedPaymentMethod === "cbe" ? (
+                      <TouchableOpacity
+                        style={styles.receiverAccountRow}
+                        onPress={copyAccountNumber}
+                      >
+                        <Text style={styles.receiverAccountLabel}>
+                          Account:{" "}
+                        </Text>
+                        <Text style={styles.receiverAccountValue} selectable>
+                          {CBE_PAYMENT_ACCOUNT}
+                        </Text>
+                        <Ionicons
+                          name='copy-outline'
+                          size={16}
+                          color={colors.primary}
+                        />
+                      </TouchableOpacity>
+                    ) : (
+                      <TouchableOpacity
+                        style={styles.receiverAccountRow}
+                        onPress={copyPhoneNumber}
+                      >
+                        <Text style={styles.receiverAccountLabel}>Phone: </Text>
+                        <Text style={styles.receiverAccountValue} selectable>
+                          {TELEBIRR_PAYMENT_PHONE}
+                        </Text>
+                        <Ionicons
+                          name='copy-outline'
+                          size={16}
+                          color={colors.primary}
+                        />
+                      </TouchableOpacity>
+                    )}
                   </View>
                   <Text style={styles.verificationText}>
                     After sending the money, enter the transaction reference and
@@ -657,7 +697,10 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
                     placeholderTextColor={colors.gray500}
                   />
                   <TextInput
-                    style={[styles.referenceInput, styles.referenceInputSpacing]}
+                    style={[
+                      styles.referenceInput,
+                      styles.referenceInputSpacing,
+                    ]}
                     value={transactionReference}
                     onChangeText={setTransactionReference}
                     autoCapitalize='characters'
@@ -1037,14 +1080,31 @@ const styles = StyleSheet.create({
   receiverLabel: {
     fontSize: 11,
     color: colors.gray500,
-    marginBottom: 4,
+    marginBottom: 8,
     textTransform: "uppercase",
     fontWeight: "700",
   },
-  receiverValue: {
-    fontSize: 15,
-    color: colors.gray900,
+  receiverName: {
+    fontSize: 16,
     fontWeight: "700",
+    color: colors.gray900,
+    marginBottom: 10,
+  },
+  receiverAccountRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 4,
+  },
+  receiverAccountLabel: {
+    fontSize: 14,
+    color: colors.gray600,
+    fontWeight: "500",
+  },
+  receiverAccountValue: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: colors.primary,
+    flex: 1,
   },
   estimatedAmountText: {
     fontSize: 12,
@@ -1200,4 +1260,3 @@ const styles = StyleSheet.create({
 });
 
 export default CheckoutBottomSheet;
-

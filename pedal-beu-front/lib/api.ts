@@ -1,4 +1,3 @@
-// lib/api.ts
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axiosRetry from "axios-retry";
@@ -20,7 +19,7 @@ const api = axios.create({
 });
 
 axiosRetry(api, {
-  retries: 3,
+  retries: 5,
   retryDelay: (retryCount) => axiosRetry.exponentialDelay(retryCount),
   retryCondition: (error) => {
     return (
@@ -64,24 +63,6 @@ const refreshApi = axios.create({
   timeout: 30000,
 });
 
-// Flag to prevent multiple simultaneous refresh attempts
-let isRefreshing = false;
-let failedQueue: Array<{
-  resolve: (token: string) => void;
-  reject: (error: any) => void;
-}> = [];
-
-const processQueue = (error: any, token: string | null = null) => {
-  failedQueue.forEach((prom) => {
-    if (error) {
-      prom.reject(error);
-    } else {
-      prom.resolve(token!);
-    }
-  });
-  failedQueue = [];
-};
-
 // Response interceptor with token refresh
 api.interceptors.response.use(
   (response) => {
@@ -91,39 +72,17 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    // Check if error is due to unauthorized (401) or potential auth-related 400
-    const isAuthError =
-      error.response?.status === 401 ||
-      (error.response?.status === 400 &&
-        error.response?.data?.error?.toLowerCase().includes("token"));
-
-    if (isAuthError && !originalRequest._retry) {
-      if (isRefreshing) {
-        // Queue the request while refresh is in progress
-        return new Promise((resolve, reject) => {
-          failedQueue.push({ resolve, reject });
-        })
-          .then((token) => {
-            originalRequest.headers.Authorization = `Bearer ${token}`;
-            return api(originalRequest);
-          })
-          .catch((err) => Promise.reject(err));
-      }
-
+    if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
-      isRefreshing = true;
 
       try {
         const refreshToken = await AsyncStorage.getItem("refreshToken");
         if (!refreshToken) {
-          // No refresh token, cannot refresh
           await AsyncStorage.multiRemove([
             "accessToken",
             "refreshToken",
             "user",
           ]);
-          isRefreshing = false;
-          processQueue(new Error("No refresh token"), null);
           return Promise.reject(error);
         }
 
@@ -148,36 +107,39 @@ api.interceptors.response.use(
             response.data.refresh_token || response.data.refreshToken;
         }
 
-        if (!newAccessToken) {
-          throw new Error("No access token in refresh response");
-        }
+        if (!newAccessToken) return Promise.reject(error);
 
         await AsyncStorage.setItem("accessToken", newAccessToken);
-        if (newRefreshToken) {
+        if (newRefreshToken)
           await AsyncStorage.setItem("refreshToken", newRefreshToken);
-        }
 
-        // Update Authorization header for the original request
         originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
-
-        // Process queued requests
-        processQueue(null, newAccessToken);
-        isRefreshing = false;
-
         return api(originalRequest);
       } catch (refreshError: any) {
-        // Refresh failed - clear auth data
-        await AsyncStorage.multiRemove(["accessToken", "refreshToken", "user"]);
-        processQueue(refreshError, null);
-        isRefreshing = false;
-
-        // Add a flag to identify auth failure
-        refreshError.isAuthError = true;
+        if (refreshError.response?.status === 401) {
+          await AsyncStorage.multiRemove([
+            "accessToken",
+            "refreshToken",
+            "user",
+          ]);
+        }
         return Promise.reject(refreshError);
       }
     }
 
-    // Log errors
+    const isExpectedPaymentVerificationFallback =
+      error.config?.url?.includes("/verify-payment") &&
+      error.response?.status === 400;
+
+    if (isExpectedPaymentVerificationFallback) {
+      console.warn("Payment verification fell back to manual review:", {
+        url: error.config?.url,
+        status: error.response?.status,
+        data: error.response?.data,
+      });
+      return Promise.reject(error);
+    }
+
     if (error.response) {
       console.error("❌ API Error:", {
         url: error.config?.url,
@@ -229,69 +191,27 @@ export const authAPI = {
 
   register: async (data: RegisterRequest): Promise<AuthResponse> => {
     try {
-      console.log("📝 Register request data:", {
-        ...data,
-        phone: formatPhoneNumber(data.phone),
-      });
       const response = await api.post("/auth/register", {
         ...data,
         phone: formatPhoneNumber(data.phone),
       });
-      console.log("📝 Register response status:", response.status);
-      console.log(
-        "📝 Register response data:",
-        JSON.stringify(response.data, null, 2),
-      );
-
-      // Check if the response contains the expected fields
       if (response.data.user && response.data.tokens) {
-        // Backend returns snake_case tokens
-        const accessToken = response.data.tokens.access_token;
-        const refreshToken = response.data.tokens.refresh_token;
-
-        if (!accessToken || !refreshToken) {
-          console.error("❌ Missing tokens in response:", response.data.tokens);
-          return {
-            success: false,
-            error: "Invalid token response from server",
-          };
-        }
-
-        console.log("✅ Registration successful, storing tokens and user");
         await AsyncStorage.multiSet([
-          ["accessToken", accessToken],
-          ["refreshToken", refreshToken],
+          ["accessToken", response.data.tokens.accessToken],
+          ["refreshToken", response.data.tokens.refreshToken],
           ["user", JSON.stringify(response.data.user)],
         ]);
-        return {
-          success: true,
-          message: "Registration successful",
-          user: response.data.user,
-          tokens: {
-            access_token: accessToken,
-            refresh_token: refreshToken,
-          },
-        };
-      } else {
-        console.error(
-          "❌ Register response missing user or tokens:",
-          response.data,
-        );
-        return {
-          success: false,
-          error: "Invalid response from server",
-        };
       }
+      return {
+        success: true,
+        message: "Registration successful",
+        user: response.data.user,
+        tokens: response.data.tokens,
+      };
     } catch (error: any) {
-      console.error(
-        "❌ Register error:",
-        error.response?.status,
-        error.response?.data || error.message,
-      );
       return {
         success: false,
-        error:
-          error.response?.data?.error || error.message || "Registration failed",
+        error: error.response?.data?.error || "Registration failed",
       };
     }
   },
@@ -302,11 +222,9 @@ export const authAPI = {
         phone: formatPhoneNumber(phone),
       });
       if (response.data.user && response.data.tokens) {
-        const accessToken = response.data.tokens.access_token;
-        const refreshToken = response.data.tokens.refresh_token;
         await AsyncStorage.multiSet([
-          ["accessToken", accessToken],
-          ["refreshToken", refreshToken],
+          ["accessToken", response.data.tokens.accessToken],
+          ["refreshToken", response.data.tokens.refreshToken],
           ["user", JSON.stringify(response.data.user)],
         ]);
       }
@@ -330,11 +248,9 @@ export const authAPI = {
         password: data.password,
       });
       if (response.data.user && response.data.tokens) {
-        const accessToken = response.data.tokens.access_token;
-        const refreshToken = response.data.tokens.refresh_token;
         await AsyncStorage.multiSet([
-          ["accessToken", accessToken],
-          ["refreshToken", refreshToken],
+          ["accessToken", response.data.tokens.accessToken],
+          ["refreshToken", response.data.tokens.refreshToken],
           ["user", JSON.stringify(response.data.user)],
         ]);
       }
@@ -382,6 +298,10 @@ export const authAPI = {
 // ==================== ADDRESS API ====================
 
 export const addressAPI = {
+  /**
+   * Save a new address to user's profile.
+   * Returns the saved address object with its generated `id`.
+   */
   addAddress: async (data: {
     label: string;
     address: string;
@@ -402,6 +322,7 @@ export const addressAPI = {
     }
   },
 
+  /** Get all saved addresses for the current user. */
   getAddresses: async (): Promise<any[]> => {
     try {
       const response = await api.get("/users/addresses");
@@ -412,6 +333,7 @@ export const addressAPI = {
     }
   },
 
+  /** Delete an address by ID. */
   deleteAddress: async (addressId: string): Promise<void> => {
     await api.delete(`/users/addresses/${addressId}`);
   },
@@ -420,6 +342,11 @@ export const addressAPI = {
 // ==================== ORDER API ====================
 
 export const orderAPI = {
+  /**
+   * Create a new order.
+   * Payload must match backend CreateOrderRequest:
+   *   { restaurant_id, items, address_id, payment_method, notes }
+   */
   createOrder: async (orderData: {
     restaurant_id: string;
     items: Array<{
@@ -468,8 +395,8 @@ export const orderAPI = {
       );
       return response.data;
     } catch (error: any) {
-      console.error(
-        "Payment verification error:",
+      console.warn(
+        "Payment verification could not be completed automatically:",
         error.response?.data || error.message,
       );
       throw new Error(
@@ -547,13 +474,17 @@ export const orderAPI = {
     return response.data;
   },
 
+  /**
+   * Get current customer's orders.
+   * Backend returns: { orders: [...], pagination: {...} }
+   */
   getCustomerOrders: async (page = 1, limit = 10): Promise<any> => {
     try {
       const response = await api.get("/orders", {
         params: { page, limit },
         timeout: 60000,
       });
-      return response.data;
+      return response.data; // { orders: [...], pagination: {...} }
     } catch (error: any) {
       console.error("❌ getCustomerOrders error:", error.message);
       throw new Error(error.response?.data?.error || "Failed to fetch orders");

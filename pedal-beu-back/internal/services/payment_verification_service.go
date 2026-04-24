@@ -468,7 +468,7 @@ func verificationMode() string {
 func verificationTimeout() time.Duration {
 	timeoutMs, err := strconv.Atoi(strings.TrimSpace(os.Getenv("VERIFICATION_TIMEOUT_MS")))
 	if err != nil || timeoutMs <= 0 {
-		timeoutMs = 8000
+		timeoutMs = 3000
 	}
 	return time.Duration(timeoutMs) * time.Millisecond
 }
