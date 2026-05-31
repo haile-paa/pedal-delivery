@@ -14,6 +14,7 @@ class WebSocketService {
   private baseUrl = "wss://pedal-delivery-back.onrender.com";
   private token: string | null = null;
   private intentionalClose = false;
+  private rooms: string[] = []; // rooms to re‑join on reconnect
 
   private constructor() {}
 
@@ -33,7 +34,6 @@ class WebSocketService {
     this.token = token;
     this.intentionalClose = false;
 
-    // ✅ Use the correct WebSocket endpoint – "/ws/orders" for order tracking
     const url = `${this.baseUrl}/ws/orders?token=${token}`;
     console.log(`Connecting to WebSocket: ${url}`);
 
@@ -54,6 +54,16 @@ class WebSocketService {
     console.log("✅ WebSocket connected");
     this.reconnectAttempts = 0;
     this.trigger("connect", null);
+
+    // Rejoin rooms that were joined before disconnect
+    this.rooms.forEach((room) => {
+      const [type, id] = room.split(":");
+      if (type === "order") {
+        this.emit("join:order_room", { orderId: id });
+      } else if (type === "driver") {
+        this.emit("join:driver_room", { driverId: id });
+      }
+    });
   }
 
   private handleMessage(event: WebSocketMessageEvent) {
@@ -65,7 +75,6 @@ class WebSocketService {
       if (type) {
         this.trigger(type, data);
       } else {
-        // If no type field, use the message as is (fallback)
         this.trigger("message", message);
       }
     } catch (error) {
@@ -73,9 +82,9 @@ class WebSocketService {
     }
   }
 
-  private handleError(error: Event) {
-    console.error("WebSocket error:", error);
-    this.trigger("error", error);
+  private handleError(_error: Event) {
+    console.error("WebSocket error: connection failure");
+    this.trigger("error", { message: "WebSocket error" });
   }
 
   private handleClose(event: WebSocketCloseEvent) {
@@ -107,7 +116,6 @@ class WebSocketService {
     }, delay) as unknown as number;
   }
 
-  // Register an event listener
   on(event: string, callback: EventCallback) {
     if (!this.listeners.has(event)) {
       this.listeners.set(event, []);
@@ -115,7 +123,6 @@ class WebSocketService {
     this.listeners.get(event)!.push(callback);
   }
 
-  // Remove an event listener
   off(event: string, callback: EventCallback) {
     const callbacks = this.listeners.get(event);
     if (callbacks) {
@@ -131,7 +138,6 @@ class WebSocketService {
     }
   }
 
-  // Send a raw message (as JSON)
   emit(type: string, payload: any) {
     if (this.ws?.readyState !== WebSocket.OPEN) {
       console.warn("Cannot emit: WebSocket not connected");
@@ -144,25 +150,29 @@ class WebSocketService {
     return true;
   }
 
-  // Join an order room
   joinOrderRoom(orderId: string) {
+    const room = `order:${orderId}`;
+    if (!this.rooms.includes(room)) {
+      this.rooms.push(room);
+    }
     this.emit("join:order_room", { orderId });
   }
 
-  // Join a driver room
   joinDriverRoom(driverId: string) {
+    const room = `driver:${driverId}`;
+    if (!this.rooms.includes(room)) {
+      this.rooms.push(room);
+    }
     this.emit("join:driver_room", { driverId });
   }
 
-  // Update driver location (send to server)
   updateDriverLocation(
     location: { lat: number; lng: number },
     orderId?: string,
   ) {
-    this.emit("driver:location_update", { location, orderId });
+    this.emit("location_update", { location, orderId }); // FIXED event key
   }
 
-  // Disconnect manually
   disconnect() {
     this.intentionalClose = true;
     if (this.ws) {
@@ -174,15 +184,14 @@ class WebSocketService {
       this.reconnectTimeout = null;
     }
     this.listeners.clear();
+    this.rooms = [];
     this.reconnectAttempts = 0;
   }
 
-  // Check if connected
   isConnected(): boolean {
     return this.ws?.readyState === WebSocket.OPEN;
   }
 
-  // Get connection status as a Promise (useful for waiting)
   checkConnection(): Promise<boolean> {
     return new Promise((resolve) => {
       if (this.isConnected()) {

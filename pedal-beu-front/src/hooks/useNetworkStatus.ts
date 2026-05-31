@@ -1,11 +1,14 @@
 import { useState, useEffect } from "react";
+import NetInfo, { NetInfoState } from "@react-native-community/netinfo";
 
 export const useNetworkStatus = () => {
   const [isConnected, setIsConnected] = useState(true);
 
-  // Mock network status for demo
   useEffect(() => {
-    setIsConnected(true);
+    const unsubscribe = NetInfo.addEventListener((state: NetInfoState) => {
+      setIsConnected(state.isConnected ?? true);
+    });
+    return () => unsubscribe();
   }, []);
 
   return isConnected;

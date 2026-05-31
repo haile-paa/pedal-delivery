@@ -42,19 +42,16 @@ const HomeScreen: React.FC = () => {
   const lastFetchTimeRef = useRef<number>(0);
   const shouldFetchRef = useRef(true);
 
-  // Debug user state changes
   useEffect(() => {
     console.log("HomeScreen - current user:", state.auth.user);
   }, [state.auth.user]);
 
-  // Get user's first name - robust version
   const getUserFirstName = () => {
     const user = state.auth.user;
     if (!user) return "Guest";
     return user.firstName || user.name || user.profile?.first_name || "Guest";
   };
 
-  // Cleanup function for debounce timeout
   const cleanupFetch = () => {
     if (fetchTimeoutRef.current !== null) {
       clearTimeout(fetchTimeoutRef.current);
@@ -62,7 +59,6 @@ const HomeScreen: React.FC = () => {
     }
   };
 
-  // Debounced restaurant loader
   const loadRestaurantsDebounced = useCallback(
     (
       useLocation: boolean = false,
@@ -95,7 +91,6 @@ const HomeScreen: React.FC = () => {
     [],
   );
 
-  // Actual restaurant loader function
   const loadRestaurants = async (
     useLocation: boolean = false,
     location?: { latitude: number; longitude: number },
@@ -160,25 +155,12 @@ const HomeScreen: React.FC = () => {
 
         lastFetchTimeRef.current = Date.now();
       } else {
+        // Silently handle – do not show alert to customer
         console.warn("Failed to load restaurants:", response.error);
-        if (response.error && !response.error.includes("Network")) {
-          Alert.alert("Error", response.error || "Failed to load restaurants");
-        }
       }
     } catch (error: any) {
+      // Silently handle network errors – no user‑facing alert
       console.warn("Error loading restaurants:", error.message);
-      console.warn("Error details:", {
-        message: error.message,
-        code: error.code,
-        stack: error.stack,
-      });
-
-      if (error.code !== "ECONNABORTED" && error.message !== "Network Error") {
-        Alert.alert(
-          "Connection Error",
-          "Unable to connect to the server. Please check your internet connection and try again.",
-        );
-      }
     } finally {
       isFetchingRef.current = false;
       setLoading(false);
@@ -186,7 +168,6 @@ const HomeScreen: React.FC = () => {
     }
   };
 
-  // Request location permission using Expo Location
   const requestLocationPermission = async () => {
     setLocationLoading(true);
     setLocationError(null);
@@ -224,7 +205,6 @@ const HomeScreen: React.FC = () => {
     }
   };
 
-  // Get current location
   const getCurrentLocation = async () => {
     setLocationLoading(true);
     setLocationError(null);
@@ -258,7 +238,6 @@ const HomeScreen: React.FC = () => {
     }
   };
 
-  // Filter restaurants based on search and category
   useEffect(() => {
     let filtered = state.restaurants.list;
 
@@ -284,7 +263,6 @@ const HomeScreen: React.FC = () => {
     setFilteredRestaurants(filtered);
   }, [searchQuery, selectedCategory, state.restaurants.list]);
 
-  // Initial load with debounce
   useEffect(() => {
     const initialize = async () => {
       await requestLocationPermission();

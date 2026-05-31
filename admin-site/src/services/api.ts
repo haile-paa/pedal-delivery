@@ -1,6 +1,5 @@
 import axios from "axios";
 
-// Hardcoded production backend URL
 const API_URL = "https://pedal-delivery-back.onrender.com/api/v1";
 
 const api = axios.create({
@@ -10,7 +9,7 @@ const api = axios.create({
   },
 });
 
-// Add auth token to requests
+// Request interceptor – attach token
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("admin_token");
   if (token) {
@@ -19,21 +18,71 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Response interceptor to handle errors
+// Response interceptor with refresh logic
+let isRefreshing = false;
+let failedQueue: any[] = [];
+
+const processQueue = (error: any, token: string | null = null) => {
+  failedQueue.forEach((prom) => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(token);
+    }
+  });
+  failedQueue = [];
+};
+
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      // Clear token and redirect to login if unauthorized
-      localStorage.removeItem("admin_token");
-      localStorage.removeItem("admin_user");
-      window.location.href = "/login";
+  async (error) => {
+    const originalRequest = error.config;
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      if (isRefreshing) {
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
+        }).then((token) => {
+          originalRequest.headers.Authorization = `Bearer ${token}`;
+          return api(originalRequest);
+        });
+      }
+
+      originalRequest._retry = true;
+      isRefreshing = true;
+
+      const refreshToken = localStorage.getItem("admin_refreshToken");
+      if (!refreshToken) {
+        localStorage.removeItem("admin_token");
+        localStorage.removeItem("admin_user");
+        window.location.href = "/login";
+        return Promise.reject(error);
+      }
+
+      try {
+        const { data } = await api.post("/auth/refresh", {
+          refresh_token: refreshToken,
+        });
+        const newAccessToken = data.tokens.accessToken;
+        localStorage.setItem("admin_token", newAccessToken);
+        api.defaults.headers.common.Authorization = `Bearer ${newAccessToken}`;
+        processQueue(null, newAccessToken);
+        return api(originalRequest);
+      } catch (refreshError) {
+        processQueue(refreshError, null);
+        localStorage.removeItem("admin_token");
+        localStorage.removeItem("admin_refreshToken");
+        localStorage.removeItem("admin_user");
+        window.location.href = "/login";
+        return Promise.reject(refreshError);
+      } finally {
+        isRefreshing = false;
+      }
     }
     return Promise.reject(error);
   },
 );
 
-// ==================== Auth API ====================
+// Auth API
 export const authAPI = {
   sendOTP: (phone: string, role: string = "admin") =>
     api.post("/auth/send-otp", { phone, role }),
@@ -46,18 +95,18 @@ export const authAPI = {
   logout: () => api.post("/auth/logout"),
 };
 
-// ==================== Admin API (protected, admin only) ====================
+// Admin API
 export const adminAPI = {
   getDashboardStats: () => api.get("/admin/dashboard/stats"),
   getAllOrders: (page = 1, limit = 20) =>
     api.get("/admin/orders", { params: { page, limit } }),
-  getProfile: () => api.get("/admin/profile"), // new
-  updateProfile: (data: any) => api.put("/admin/profile", data), // new
+  getProfile: () => api.get("/admin/profile"),
+  updateProfile: (data: any) => api.put("/admin/profile", data),
   reviewPayment: (orderId: string, approved: boolean, notes?: string) =>
     api.post(`/admin/orders/${orderId}/payment-review`, { approved, notes }),
 };
 
-// ==================== Restaurant API ====================
+// Restaurant API
 export const restaurantAPI = {
   getAll: (params?: any) => api.get("/restaurants", { params }),
   getById: (id: string) => api.get(`/restaurants/${id}`),
@@ -68,7 +117,7 @@ export const restaurantAPI = {
   edit: (id: string, data: any) => api.put(`/restaurants/${id}`, data),
 };
 
-// ==================== Menu API ====================
+// Menu API
 export const menuAPI = {
   create: (restaurantId: string, data: any) =>
     api.post(`/restaurants/${restaurantId}/menu`, data),
@@ -86,7 +135,7 @@ export const menuAPI = {
     }),
 };
 
-// ==================== Upload API ====================
+// Upload API
 export const uploadAPI = {
   uploadImage: (formData: FormData) => {
     return api.post("/upload", formData, {
@@ -100,7 +149,7 @@ export const uploadAPI = {
   },
 };
 
-// ==================== Order API (for customers) ====================
+// Order API (admin)
 export const orderAPI = {
   getAll: (params?: any) => api.get("/orders", { params }),
   getById: (id: string) => api.get(`/orders/${id}`),
@@ -108,12 +157,20 @@ export const orderAPI = {
     api.put(`/orders/${id}/status`, { status }),
 };
 
-// ==================== Driver API ====================
+// Driver API – routes are under /admin/drivers (admin-protected)
 export const driverAPI = {
-  getAll: () => api.get("/drivers"),
-  getById: (id: string) => api.get(`/drivers/${id}`),
+  getAll: () => api.get("/admin/drivers"),
+  getById: (id: string) => api.get(`/admin/drivers/${id}`),
+  create: (data: {
+    phone: string;
+    name: string;
+    vehicleType: string;
+    vehicleModel?: string;
+    vehicleColor?: string;
+    licensePlate?: string;
+  }) => api.post("/admin/drivers", data),
   updateStatus: (id: string, status: string) =>
-    api.put(`/drivers/${id}/status`, { status }),
+    api.put(`/admin/drivers/${id}/status`, { status }),
 };
 
 export default api;

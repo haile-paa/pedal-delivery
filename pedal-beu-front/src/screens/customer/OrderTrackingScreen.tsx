@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from "react";
+// app/(customer)/order-traking.tsx
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -20,6 +21,7 @@ import AnimatedButton from "../../components/ui/AnimatedButton";
 import WebSocketService from "../../services/websocket.service";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
+import { useAppState } from "../../context/AppStateContext";
 
 interface DriverInfo {
   id: string;
@@ -68,6 +70,8 @@ interface OrderDetails {
   created_at: string;
 }
 
+const AUTO_CANCEL_MINUTES = 30;
+
 const OrderTrackingScreen: React.FC = () => {
   const router = useRouter();
   const { orderId, restaurantName } = useLocalSearchParams<{
@@ -91,7 +95,8 @@ const OrderTrackingScreen: React.FC = () => {
   } | null>(null);
   const [currentStatus, setCurrentStatus] =
     useState<OrderStatus["status"]>("pending");
-  const [timeRemaining, setTimeRemaining] = useState<number>(30);
+  const [timeRemaining, setTimeRemaining] =
+    useState<number>(AUTO_CANCEL_MINUTES);
   const [driverInfo, setDriverInfo] = useState<DriverInfo | null>(null);
   const [orderDetails, setOrderDetails] = useState<OrderDetails | null>(null);
   const [loading, setLoading] = useState(true);
@@ -101,6 +106,30 @@ const OrderTrackingScreen: React.FC = () => {
   >([]);
   const [error, setError] = useState<string | null>(null);
 
+  const { dispatch } = useAppState();
+
+  // Track if the order has been accepted or further processed
+  const isOrderActive = useCallback(() => {
+    const activeStatuses: OrderStatus["status"][] = [
+      "accepted",
+      "preparing",
+      "ready",
+      "picked_up",
+      "delivered",
+    ];
+    return activeStatuses.includes(currentStatus);
+  }, [currentStatus]);
+
+  // Compute time remaining from order creation time
+  const computeTimeRemaining = useCallback((createdAt: string) => {
+    const created = new Date(createdAt).getTime();
+    const deadline = created + AUTO_CANCEL_MINUTES * 60 * 1000;
+    const now = Date.now();
+    const diffMs = deadline - now;
+    if (diffMs <= 0) return 0;
+    return Math.ceil(diffMs / (60 * 1000));
+  }, []);
+
   const statusSteps = [
     { title: "Order Placed", description: "Restaurant confirmed" },
     { title: "Preparing", description: "Food being prepared" },
@@ -108,7 +137,7 @@ const OrderTrackingScreen: React.FC = () => {
     { title: "Delivered", description: "Enjoy your meal!" },
   ];
 
-  const statusIcons = {
+  const statusIcons: Record<OrderStatus["status"], string> = {
     pending: "time-outline",
     accepted: "checkmark-circle-outline",
     preparing: "restaurant-outline",
@@ -118,7 +147,7 @@ const OrderTrackingScreen: React.FC = () => {
     cancelled: "close-circle-outline",
   };
 
-  const statusColors = {
+  const statusColors: Record<OrderStatus["status"], string> = {
     pending: colors.gray500,
     accepted: colors.info,
     preparing: colors.warning,
@@ -171,22 +200,79 @@ const OrderTrackingScreen: React.FC = () => {
     return () => clearInterval(paymentRefreshInterval);
   }, [orderId]);
 
+  // Auto‑cancel timer based on real‑time remaining
+  useEffect(() => {
+    if (!orderDetails?.created_at || isOrderActive()) return;
+
+    // Update time remaining every 10 seconds
+    const interval = setInterval(() => {
+      const remaining = computeTimeRemaining(orderDetails.created_at);
+      setTimeRemaining(remaining);
+
+      // If time runs out, cancel automatically
+      if (remaining <= 0 && currentStatus !== "cancelled") {
+        cancelOrderAutomatically();
+      }
+    }, 10000);
+
+    // Initial calculation
+    const remaining = computeTimeRemaining(orderDetails.created_at);
+    setTimeRemaining(remaining);
+    if (remaining <= 0 && currentStatus !== "cancelled") {
+      cancelOrderAutomatically();
+    }
+
+    return () => clearInterval(interval);
+  }, [orderDetails?.created_at, currentStatus, isOrderActive]);
+
+  const cancelOrderAutomatically = async () => {
+    try {
+      const token = await AsyncStorage.getItem("accessToken");
+      if (!token) return;
+
+      console.log("Auto‑cancelling order due to timeout");
+      const response = await fetch(
+        `https://pedal-delivery-back.onrender.com/api/v1/orders/${orderId}/cancel`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            reason:
+              "Order automatically cancelled: no driver accepted within 30 minutes",
+          }),
+        },
+      );
+
+      const data = await response.json();
+      if (response.ok) {
+        setCurrentStatus("cancelled");
+        dispatch({
+          type: "UPDATE_ORDER_STATUS",
+          payload: { orderId, status: "cancelled" },
+        });
+        Alert.alert(
+          "Order Cancelled",
+          "Your order was automatically cancelled because no driver accepted within 30 minutes.",
+        );
+      } else {
+        console.warn("Auto‑cancel failed:", data.error);
+      }
+    } catch (error: any) {
+      console.error("Auto‑cancel error:", error);
+    }
+  };
+
   const initializeTracking = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      // Get user location
       await getUserLocation();
-
-      // Fetch order details
       await fetchOrderDetails();
-
-      // Connect to WebSocket
       await setupWebSocket();
-
-      // Set up time remaining timer
-      startTimer();
     } catch (err) {
       console.error("Initialization error:", err);
       setError("Failed to load order details. Please try again.");
@@ -208,7 +294,7 @@ const OrderTrackingScreen: React.FC = () => {
           },
           (error) => {
             console.error("Location error:", error);
-            resolve(); // Continue without location
+            resolve();
           },
           { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 },
         );
@@ -225,7 +311,6 @@ const OrderTrackingScreen: React.FC = () => {
         throw new Error("You are not logged in");
       }
 
-      // Fetch order
       const orderRes = await fetch(
         `https://pedal-delivery-back.onrender.com/api/v1/orders/${orderId}`,
         {
@@ -242,7 +327,6 @@ const OrderTrackingScreen: React.FC = () => {
 
       console.log("Order data from backend:", orderData);
 
-      // Fetch restaurant details using restaurant_id
       const restaurantRes = await fetch(
         `https://pedal-delivery-back.onrender.com/api/v1/restaurants/${orderData.restaurant_id}`,
         {
@@ -254,7 +338,6 @@ const OrderTrackingScreen: React.FC = () => {
         throw new Error("Failed to fetch restaurant");
       }
 
-      // Transform into OrderDetails
       const details: OrderDetails = {
         id: orderData.id,
         restaurant_name: restaurantData.name,
@@ -277,7 +360,6 @@ const OrderTrackingScreen: React.FC = () => {
       setOrderDetails(details);
       setCurrentStatus(orderData.status);
 
-      // Restaurant location
       if (restaurantData.location?.coordinates) {
         setRestaurantLocation({
           latitude: restaurantData.location.coordinates[1],
@@ -285,12 +367,10 @@ const OrderTrackingScreen: React.FC = () => {
         });
       }
 
-      // Driver info (if already assigned)
       if (orderData.driver_id && orderData.driver) {
         setDriverInfo(orderData.driver);
       }
 
-      // Driver location (if any)
       if (orderData.driver_location?.coordinates) {
         const driverLoc = {
           latitude: orderData.driver_location.coordinates[1],
@@ -299,13 +379,9 @@ const OrderTrackingScreen: React.FC = () => {
         setDriverLocation(driverLoc);
         calculateRoute(driverLoc);
       }
-
-      if (orderData.estimated_delivery_minutes) {
-        setTimeRemaining(orderData.estimated_delivery_minutes);
-      }
     } catch (error: any) {
       console.error("Fetch order error:", error);
-      throw error; // re-throw to be caught by initializeTracking
+      throw error;
     }
   };
 
@@ -448,20 +524,6 @@ const OrderTrackingScreen: React.FC = () => {
     setRouteCoordinates([driverLoc, userLocation]);
   };
 
-  const startTimer = () => {
-    const timer = setInterval(() => {
-      setTimeRemaining((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 60000);
-
-    return () => clearInterval(timer);
-  };
-
   const handleCallDriver = () => {
     if (!driverInfo) {
       Alert.alert("No Driver", "Driver has not been assigned yet.");
@@ -495,6 +557,11 @@ const OrderTrackingScreen: React.FC = () => {
         onPress: async () => {
           try {
             const token = await AsyncStorage.getItem("accessToken");
+            if (!token) {
+              Alert.alert("Error", "You are not logged in");
+              return;
+            }
+
             const response = await fetch(
               `https://pedal-delivery-back.onrender.com/api/v1/orders/${orderId}/cancel`,
               {
@@ -503,21 +570,31 @@ const OrderTrackingScreen: React.FC = () => {
                   Authorization: `Bearer ${token}`,
                   "Content-Type": "application/json",
                 },
+                body: JSON.stringify({
+                  reason: "Customer requested cancellation",
+                }),
               },
             );
 
+            const data = await response.json();
+
             if (response.ok) {
               setCurrentStatus("cancelled");
+
+              dispatch({
+                type: "UPDATE_ORDER_STATUS",
+                payload: { orderId, status: "cancelled" },
+              });
+
               Alert.alert(
                 "Order Cancelled",
-                "Your order has been cancelled successfully.",
+                data.message || "Your order has been cancelled successfully.",
               );
               setTimeout(() => {
                 router.replace("/(customer)/home");
               }, 2000);
             } else {
-              const data = await response.json();
-              throw new Error(data.message || "Failed to cancel order");
+              throw new Error(data.error || "Failed to cancel order");
             }
           } catch (error: any) {
             Alert.alert("Error", error.message || "Failed to cancel order");
@@ -548,7 +625,7 @@ const OrderTrackingScreen: React.FC = () => {
   };
 
   const canCancelOrder = () => {
-    const cancellableStatuses = [
+    const cancellableStatuses: OrderStatus["status"][] = [
       "pending",
       "accepted",
       "preparing",
@@ -761,7 +838,7 @@ const OrderTrackingScreen: React.FC = () => {
       >
         <View style={styles.statusHeader}>
           <View style={styles.timeRemaining}>
-            <Text style={styles.timeLabel}>Estimated Delivery</Text>
+            <Text style={styles.timeLabel}>Auto‑cancel in</Text>
             <Text style={styles.timeValue}>{timeRemaining} min</Text>
           </View>
           <View style={styles.currentStatus}>

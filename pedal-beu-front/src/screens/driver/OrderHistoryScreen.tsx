@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -7,11 +7,12 @@ import {
   StatusBar,
   TouchableOpacity,
   ActivityIndicator,
+  RefreshControl,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { colors } from "../../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { orderAPI } from "../../../lib/api";
 
 interface Order {
   id: string;
@@ -27,45 +28,47 @@ const OrderHistoryScreen: React.FC = () => {
   const router = useRouter();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<"all" | "completed" | "cancelled">(
     "all",
   );
 
-  useEffect(() => {
-    fetchOrders();
-  }, []);
-
-  const fetchOrders = async () => {
+  const fetchOrders = useCallback(async (isRefresh = false) => {
     try {
-      setLoading(true);
-      const token = await AsyncStorage.getItem("accessToken");
-      const response = await fetch(
-        "https://pedal-delivery-back.onrender.com/api/v1/driver/orders?limit=50",
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      );
-      if (!response.ok) throw new Error("Failed to fetch orders");
-      const data = await response.json();
-      // Transform to local format
+      if (isRefresh) setRefreshing(true);
+      else setLoading(true);
+
+      // FIX: use orderAPI.getDriverOrders() — hits GET /orders/driver
+      // instead of the wrong raw fetch to /driver/orders
+      const data = await orderAPI.getDriverOrders(1, 50);
+
       const fetchedOrders: Order[] = (data.orders || []).map((order: any) => ({
         id: order.id,
         order_number: order.order_number || order.id.slice(0, 8),
         restaurant_name: order.restaurant?.name || "Restaurant",
-        total_amount: order.total_amount?.total || 0,
+        total_amount: order.total_amount?.total ?? order.total_amount ?? 0,
         status: order.status,
         created_at: order.created_at,
         items_count:
-          order.items?.reduce((sum: number, i: any) => sum + i.quantity, 0) ||
-          0,
+          order.items?.reduce(
+            (sum: number, i: any) => sum + (i.quantity || 0),
+            0,
+          ) || 0,
       }));
+
       setOrders(fetchedOrders);
     } catch (error) {
-      console.error("Fetch orders error:", error);
+      console.log("Fetch orders error:", error);
+      setOrders([]);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchOrders();
+  }, [fetchOrders]);
 
   const filteredOrders = orders.filter((order) => {
     if (filter === "all") return true;
@@ -121,59 +124,34 @@ const OrderHistoryScreen: React.FC = () => {
       </View>
 
       <View style={styles.filterRow}>
-        <TouchableOpacity
-          style={[
-            styles.filterChip,
-            filter === "all" && styles.filterChipActive,
-          ]}
-          onPress={() => setFilter("all")}
-        >
-          <Text
-            style={[
-              styles.filterText,
-              filter === "all" && styles.filterTextActive,
-            ]}
+        {(["all", "completed", "cancelled"] as const).map((f) => (
+          <TouchableOpacity
+            key={f}
+            style={[styles.filterChip, filter === f && styles.filterChipActive]}
+            onPress={() => setFilter(f)}
           >
-            All
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.filterChip,
-            filter === "completed" && styles.filterChipActive,
-          ]}
-          onPress={() => setFilter("completed")}
-        >
-          <Text
-            style={[
-              styles.filterText,
-              filter === "completed" && styles.filterTextActive,
-            ]}
-          >
-            Completed
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.filterChip,
-            filter === "cancelled" && styles.filterChipActive,
-          ]}
-          onPress={() => setFilter("cancelled")}
-        >
-          <Text
-            style={[
-              styles.filterText,
-              filter === "cancelled" && styles.filterTextActive,
-            ]}
-          >
-            Cancelled
-          </Text>
-        </TouchableOpacity>
+            <Text
+              style={[
+                styles.filterText,
+                filter === f && styles.filterTextActive,
+              ]}
+            >
+              {f.charAt(0).toUpperCase() + f.slice(1)}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
       <ScrollView
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => fetchOrders(true)}
+            colors={[colors.primary]}
+          />
+        }
       >
         {filteredOrders.length === 0 ? (
           <View style={styles.emptyContainer}>
@@ -239,7 +217,7 @@ const OrderHistoryScreen: React.FC = () => {
               <View style={styles.orderFooter}>
                 <Text style={styles.totalLabel}>Total</Text>
                 <Text style={styles.totalAmount}>
-                  {order.total_amount.toFixed(2)} Birr
+                  {Number(order.total_amount).toFixed(2)} Birr
                 </Text>
               </View>
             </TouchableOpacity>

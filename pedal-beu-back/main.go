@@ -179,6 +179,7 @@ func main() {
 	orderHandler := handlers.NewOrderHandler(orderService)
 	restaurantHandler := handlers.NewRestaurantHandler(restaurantService)
 	adminHandler := handlers.NewAdminHandler(orderRepo, restaurantRepo, driverRepo, adminRepo)
+	driverHandler := handlers.NewDriverHandler(driverRepo, userRepo) // NEW
 
 	handlers.SetUserRepository(userRepo)
 	handlers.SetAdminRepository(adminRepo)
@@ -417,6 +418,12 @@ func main() {
 				admin.PUT("/profile", adminHandler.UpdateProfile)
 				admin.GET("/orders", orderHandler.GetAllOrders)
 				admin.POST("/orders/:id/payment-review", orderHandler.ReviewPaymentProof)
+
+				// ── Driver management routes (admin only) ──────────────────
+				admin.GET("/drivers", driverHandler.GetAllDrivers)
+				admin.GET("/drivers/:id", driverHandler.GetDriverByID)
+				admin.POST("/drivers", driverHandler.CreateDriver)
+				admin.PUT("/drivers/:id/status", driverHandler.UpdateDriverStatus)
 			}
 
 			user := protected.Group("/users")

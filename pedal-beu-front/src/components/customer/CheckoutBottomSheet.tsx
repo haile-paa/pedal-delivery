@@ -49,7 +49,7 @@ interface UserLocation {
   address?: string;
 }
 
-const CBE_PAYMENT_ACCOUNT = "1000325579904";
+const CBE_PAYMENT_ACCOUNT = "1000533767072";
 const CBE_PAYMENT_NAME = "Wubshet Kindie Alebachew";
 const TELEBIRR_PAYMENT_NAME = "Wubshet Kindie";
 const TELEBIRR_PAYMENT_PHONE = "0909585090";

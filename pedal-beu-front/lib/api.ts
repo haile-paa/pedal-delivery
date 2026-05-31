@@ -30,9 +30,7 @@ axiosRetry(api, {
     );
   },
   onRetry: (retryCount, error, requestConfig) => {
-    console.log(
-      `🔄 Retry #${retryCount} for ${requestConfig.method?.toUpperCase()} ${requestConfig.url}: ${error.message}`,
-    );
+    console.log(`Retry attempt ${retryCount}/3 after error: ${error.message}`);
   },
 });
 
@@ -45,11 +43,11 @@ api.interceptors.request.use(
         config.headers.Authorization = `Bearer ${token}`;
       }
       console.log(
-        `🌐 Request: ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`,
+        `Request: ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`,
         { params: config.params },
       );
     } catch (error) {
-      console.error("Error getting token:", error);
+      console.log("Error getting token:", error);
     }
     return config;
   },
@@ -66,7 +64,7 @@ const refreshApi = axios.create({
 // Response interceptor with token refresh
 api.interceptors.response.use(
   (response) => {
-    console.log(`✅ Response: ${response.status} ${response.config.url}`);
+    console.log(`Response: ${response.status} ${response.config.url}`);
     return response;
   },
   async (error) => {
@@ -132,7 +130,7 @@ api.interceptors.response.use(
       error.response?.status === 400;
 
     if (isExpectedPaymentVerificationFallback) {
-      console.warn("Payment verification fell back to manual review:", {
+      console.log("Payment verification fell back to manual review:", {
         url: error.config?.url,
         status: error.response?.status,
         data: error.response?.data,
@@ -141,14 +139,15 @@ api.interceptors.response.use(
     }
 
     if (error.response) {
-      console.error("❌ API Error:", {
+      console.log("API error:", {
         url: error.config?.url,
         status: error.response.status,
         data: error.response.data,
       });
     } else {
-      console.error("❌ Network Error:", error.message);
+      console.log("Network error (silent):", error.message);
     }
+
     return Promise.reject(error);
   },
 );
@@ -278,7 +277,7 @@ export const authAPI = {
     try {
       await api.post("/auth/logout");
     } catch (error) {
-      console.error("Logout error:", error);
+      console.log("Logout error:", error);
     } finally {
       await AsyncStorage.multiRemove(["accessToken", "refreshToken", "user"]);
     }
@@ -298,10 +297,6 @@ export const authAPI = {
 // ==================== ADDRESS API ====================
 
 export const addressAPI = {
-  /**
-   * Save a new address to user's profile.
-   * Returns the saved address object with its generated `id`.
-   */
   addAddress: async (data: {
     label: string;
     address: string;
@@ -311,29 +306,27 @@ export const addressAPI = {
   }): Promise<any> => {
     try {
       const response = await api.post("/users/addresses", data);
-      console.log("📍 Address saved:", response.data);
+      console.log("Address saved:", response.data);
       return response.data;
     } catch (error: any) {
-      console.error(
-        "❌ Failed to save address:",
+      console.log(
+        "Failed to save address:",
         error.response?.data || error.message,
       );
       throw new Error(error.response?.data?.error || "Failed to save address");
     }
   },
 
-  /** Get all saved addresses for the current user. */
   getAddresses: async (): Promise<any[]> => {
     try {
       const response = await api.get("/users/addresses");
       return response.data.addresses || [];
     } catch (error: any) {
-      console.error("❌ Failed to get addresses:", error.message);
+      console.log("Failed to get addresses:", error.message);
       return [];
     }
   },
 
-  /** Delete an address by ID. */
   deleteAddress: async (addressId: string): Promise<void> => {
     await api.delete(`/users/addresses/${addressId}`);
   },
@@ -342,11 +335,6 @@ export const addressAPI = {
 // ==================== ORDER API ====================
 
 export const orderAPI = {
-  /**
-   * Create a new order.
-   * Payload must match backend CreateOrderRequest:
-   *   { restaurant_id, items, address_id, payment_method, notes }
-   */
   createOrder: async (orderData: {
     restaurant_id: string;
     items: Array<{
@@ -361,19 +349,16 @@ export const orderAPI = {
   }): Promise<any> => {
     try {
       console.log(
-        "📦 Creating order with payload:",
+        "Creating order with payload:",
         JSON.stringify(orderData, null, 2),
       );
       const response = await api.post("/orders", orderData, {
         timeout: 60000,
       });
-      console.log("📦 Order created:", JSON.stringify(response.data, null, 2));
+      console.log("Order created:", JSON.stringify(response.data, null, 2));
       return response.data;
     } catch (error: any) {
-      console.error(
-        "❌ createOrder error:",
-        error.response?.data || error.message,
-      );
+      console.log("createOrder error:", error.response?.data || error.message);
       throw new Error(error.response?.data?.error || "Failed to create order");
     }
   },
@@ -395,7 +380,7 @@ export const orderAPI = {
       );
       return response.data;
     } catch (error: any) {
-      console.warn(
+      console.log(
         "Payment verification could not be completed automatically:",
         error.response?.data || error.message,
       );
@@ -423,7 +408,7 @@ export const orderAPI = {
       );
       return response.data;
     } catch (error: any) {
-      console.error(
+      console.log(
         "Payment proof submission error:",
         error.response?.data || error.message,
       );
@@ -474,10 +459,6 @@ export const orderAPI = {
     return response.data;
   },
 
-  /**
-   * Get current customer's orders.
-   * Backend returns: { orders: [...], pagination: {...} }
-   */
   getCustomerOrders: async (page = 1, limit = 10): Promise<any> => {
     try {
       const response = await api.get("/orders", {
@@ -486,8 +467,24 @@ export const orderAPI = {
       });
       return response.data; // { orders: [...], pagination: {...} }
     } catch (error: any) {
-      console.error("❌ getCustomerOrders error:", error.message);
+      console.log("getCustomerOrders error:", error.message);
       throw new Error(error.response?.data?.error || "Failed to fetch orders");
+    }
+  },
+
+  // FIX 10: Fetch orders assigned to the authenticated driver
+  getDriverOrders: async (page = 1, limit = 20): Promise<any> => {
+    try {
+      const response = await api.get("/orders/driver", {
+        params: { page, limit },
+        timeout: 60000,
+      });
+      return response.data; // { orders: [...], pagination: {...} }
+    } catch (error: any) {
+      console.log("getDriverOrders error:", error.message);
+      throw new Error(
+        error.response?.data?.error || "Failed to fetch driver orders",
+      );
     }
   },
 };
