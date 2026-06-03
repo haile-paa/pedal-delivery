@@ -73,13 +73,42 @@ func (r *driverRepository) FindByUserID(ctx context.Context, userID primitive.Ob
 	return &driver, nil
 }
 
+// Create inserts a new driver document.
+// The location field is intentionally omitted when coordinates are empty so
+// MongoDB's 2dsphere index does not reject the document with an invalid GeoJSON error.
+// Location is only written to the DB when the driver first goes online and sends
+// their GPS coordinates via the location WebSocket handler.
 func (r *driverRepository) Create(ctx context.Context, driver *models.Driver) (*models.Driver, error) {
 	driver.ID = primitive.NewObjectID()
 	now := time.Now()
 	driver.CreatedAt = now
 	driver.UpdatedAt = now
 
-	_, err := r.collection.InsertOne(ctx, driver)
+	// Build the document manually so we can skip the location field entirely
+	// when no valid coordinates exist. Inserting { type: "", coordinates: null }
+	// would fail the 2dsphere index validation on the drivers collection.
+	doc := bson.D{
+		{Key: "_id", Value: driver.ID},
+		{Key: "user_id", Value: driver.UserID},
+		{Key: "status", Value: driver.Status},
+		{Key: "documents", Value: driver.Documents},
+		{Key: "vehicle", Value: driver.Vehicle},
+		{Key: "is_online", Value: driver.IsOnline},
+		{Key: "rating", Value: driver.Rating},
+		{Key: "total_trips", Value: driver.TotalTrips},
+		{Key: "earnings", Value: driver.Earnings},
+		{Key: "is_active", Value: driver.IsActive},
+		{Key: "created_at", Value: driver.CreatedAt},
+		{Key: "updated_at", Value: driver.UpdatedAt},
+	}
+
+	// Only include location when we have valid GeoJSON coordinates
+	if len(driver.Location.Coordinates) == 2 &&
+		(driver.Location.Coordinates[0] != 0 || driver.Location.Coordinates[1] != 0) {
+		doc = append(doc, bson.E{Key: "location", Value: driver.Location})
+	}
+
+	_, err := r.collection.InsertOne(ctx, doc)
 	if err != nil {
 		return nil, err
 	}
