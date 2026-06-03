@@ -212,5 +212,6 @@ func SetupWebSocketRoutes(router *gin.RouterGroup, authMiddleware gin.HandlerFun
 		ws.GET("/location", LocationWebSocketHandler)
 		ws.GET("/notifications", NotificationWebSocketHandler)
 		ws.GET("/chat", ChatWebSocketHandler)
+		ws.GET("/drivers", DriversWebSocketHandler) // admin live driver monitoring
 	}
 }

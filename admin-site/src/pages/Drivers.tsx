@@ -7,6 +7,8 @@ import {
   FiRefreshCw,
   FiX,
   FiTruck,
+  FiEye,
+  FiEyeOff,
 } from "react-icons/fi";
 import { driverAPI } from "../services/api";
 import { useWebSocket } from "../hooks/useWebSocket";
@@ -14,6 +16,7 @@ import { useWebSocket } from "../hooks/useWebSocket";
 interface Driver {
   id: string;
   name: string;
+  username: string;
   phone: string;
   status: "active" | "on_break" | "offline";
   rating: number;
@@ -21,7 +24,7 @@ interface Driver {
   location: string;
   vehicleType?: string;
   vehiclePlate?: string;
-  approvalStatus?: string; // pending | approved | rejected | suspended
+  approvalStatus?: string;
 }
 
 interface BackendDriver {
@@ -43,27 +46,20 @@ interface BackendDriver {
   user?: {
     name?: string;
     phone?: string;
+    username?: string;
   };
 }
 
 interface AddDriverForm {
-  name: string;
   phone: string;
-  vehicleType: string;
-  vehicleModel: string;
-  vehicleColor: string;
-  licensePlate: string;
+  username: string;
+  password: string;
 }
 
-const VEHICLE_TYPES = ["bicycle", "motorcycle", "car", "scooter", "van"];
-
 const emptyForm: AddDriverForm = {
-  name: "",
   phone: "",
-  vehicleType: "motorcycle",
-  vehicleModel: "",
-  vehicleColor: "",
-  licensePlate: "",
+  username: "",
+  password: "",
 };
 
 const Drivers: React.FC = () => {
@@ -78,7 +74,9 @@ const Drivers: React.FC = () => {
   const [addLoading, setAddLoading] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
   const [addSuccess, setAddSuccess] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
+  // WebSocket for live driver status updates
   const { lastMessage } = useWebSocket("/ws/drivers");
 
   const mapDriver = (d: BackendDriver): Driver => {
@@ -87,8 +85,9 @@ const Drivers: React.FC = () => {
 
     return {
       id: d.id,
-      name: d.user?.name || "Unknown",
-      phone: d.user?.phone || "N/A",
+      name: d.user?.name || d.user?.username || "Unknown",
+      username: d.user?.username || "",
+      phone: d.user?.phone || "",
       status,
       rating: d.rating || 0,
       deliveries: d.total_trips || 0,
@@ -122,6 +121,7 @@ const Drivers: React.FC = () => {
     fetchDrivers();
   }, []);
 
+  // Live updates from WebSocket
   useEffect(() => {
     if (lastMessage) {
       try {
@@ -143,32 +143,46 @@ const Drivers: React.FC = () => {
   const handleAddDriver = async () => {
     setAddError(null);
 
-    // Validate
-    if (!addForm.name.trim()) {
-      setAddError("Driver name is required.");
-      return;
-    }
-    if (!addForm.phone.trim()) {
+    // Validate phone
+    const phone = addForm.phone.trim();
+    if (!phone) {
       setAddError("Phone number is required.");
       return;
     }
-    if (!addForm.vehicleType) {
-      setAddError("Vehicle type is required.");
+    if (!/^\+?[0-9]{7,15}$/.test(phone.replace(/\s/g, ""))) {
+      setAddError("Enter a valid phone number (e.g. +251912345678).");
+      return;
+    }
+
+    // Validate username
+    const username = addForm.username.trim();
+    if (!username) {
+      setAddError("Username is required.");
+      return;
+    }
+    if (username.length < 3) {
+      setAddError("Username must be at least 3 characters.");
+      return;
+    }
+
+    // Validate password
+    if (!addForm.password) {
+      setAddError("Password is required.");
+      return;
+    }
+    if (addForm.password.length < 6) {
+      setAddError("Password must be at least 6 characters.");
       return;
     }
 
     setAddLoading(true);
     try {
       const response = await driverAPI.create({
-        name: addForm.name.trim(),
-        phone: addForm.phone.trim(),
-        vehicleType: addForm.vehicleType,
-        vehicleModel: addForm.vehicleModel.trim() || undefined,
-        vehicleColor: addForm.vehicleColor.trim() || undefined,
-        licensePlate: addForm.licensePlate.trim() || undefined,
+        phone,
+        username,
+        password: addForm.password,
       });
 
-      // Add the new driver to the top of the list
       const newDriver = mapDriver(response.data as BackendDriver);
       setDrivers((prev) => [newDriver, ...prev]);
       setAddSuccess(true);
@@ -176,7 +190,8 @@ const Drivers: React.FC = () => {
         setShowAddModal(false);
         setAddForm(emptyForm);
         setAddSuccess(false);
-      }, 1200);
+        setShowPassword(false);
+      }, 1800);
     } catch (err: any) {
       const msg =
         err?.response?.data?.error || "Failed to add driver. Please try again.";
@@ -192,6 +207,7 @@ const Drivers: React.FC = () => {
     setAddForm(emptyForm);
     setAddError(null);
     setAddSuccess(false);
+    setShowPassword(false);
   };
 
   const getStatusColor = (status: Driver["status"]) => {
@@ -294,6 +310,11 @@ const Drivers: React.FC = () => {
                     <h3 className='font-semibold text-gray-800'>
                       {driver.name}
                     </h3>
+                    {driver.username && (
+                      <p className='text-xs text-blue-500 font-mono'>
+                        @{driver.username}
+                      </p>
+                    )}
                     <p className='text-xs text-gray-400 font-mono'>
                       {driver.id.slice(-8)}
                     </p>
@@ -316,10 +337,12 @@ const Drivers: React.FC = () => {
               </div>
 
               <div className='space-y-2 text-sm'>
-                <div className='flex items-center gap-2 text-gray-600'>
-                  <FiPhone className='h-4 w-4 shrink-0' />
-                  <span>{driver.phone}</span>
-                </div>
+                {driver.phone && (
+                  <div className='flex items-center gap-2 text-gray-600'>
+                    <FiPhone className='h-4 w-4 shrink-0' />
+                    <span>{driver.phone}</span>
+                  </div>
+                )}
                 <div className='flex items-center gap-2 text-gray-600'>
                   <FiMapPin className='h-4 w-4 shrink-0' />
                   <span className='truncate'>{driver.location}</span>
@@ -358,7 +381,7 @@ const Drivers: React.FC = () => {
       {/* ── Add New Driver Modal ─────────────────────────────────────── */}
       {showAddModal && (
         <div className='fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4'>
-          <div className='w-full max-w-md rounded-xl bg-white shadow-xl'>
+          <div className='w-full max-w-sm rounded-xl bg-white shadow-xl'>
             {/* Modal header */}
             <div className='flex items-center justify-between border-b px-6 py-4'>
               <h2 className='text-lg font-semibold text-gray-800'>
@@ -383,6 +406,10 @@ const Drivers: React.FC = () => {
                   <p className='font-medium text-gray-800'>
                     Driver added successfully!
                   </p>
+                  <p className='mt-1 text-sm text-gray-500'>
+                    The driver can now log in with their username or phone
+                    number and password.
+                  </p>
                 </div>
               ) : (
                 <>
@@ -392,21 +419,10 @@ const Drivers: React.FC = () => {
                     </div>
                   )}
 
-                  {/* Name */}
-                  <div>
-                    <label className='mb-1 block text-sm font-medium text-gray-700'>
-                      Full Name <span className='text-red-500'>*</span>
-                    </label>
-                    <input
-                      type='text'
-                      placeholder='e.g. Abebe Kebede'
-                      value={addForm.name}
-                      onChange={(e) =>
-                        setAddForm((f) => ({ ...f, name: e.target.value }))
-                      }
-                      className='w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none'
-                    />
-                  </div>
+                  <p className='text-sm text-gray-500'>
+                    Create login credentials for the driver. Their phone number
+                    will be visible to customers during delivery.
+                  </p>
 
                   {/* Phone */}
                   <div>
@@ -415,93 +431,73 @@ const Drivers: React.FC = () => {
                     </label>
                     <input
                       type='tel'
-                      placeholder='e.g. +251911000000'
+                      placeholder='e.g. +251912345678'
                       value={addForm.phone}
                       onChange={(e) =>
                         setAddForm((f) => ({ ...f, phone: e.target.value }))
                       }
                       className='w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none'
+                      autoComplete='off'
                     />
+                    <p className='mt-1 text-xs text-gray-400'>
+                      Visible to customers on the delivery tracking screen.
+                    </p>
                   </div>
 
-                  {/* Vehicle Type */}
+                  {/* Username */}
                   <div>
                     <label className='mb-1 block text-sm font-medium text-gray-700'>
-                      Vehicle Type <span className='text-red-500'>*</span>
-                    </label>
-                    <select
-                      value={addForm.vehicleType}
-                      onChange={(e) =>
-                        setAddForm((f) => ({
-                          ...f,
-                          vehicleType: e.target.value,
-                        }))
-                      }
-                      className='w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none'
-                    >
-                      {VEHICLE_TYPES.map((v) => (
-                        <option key={v} value={v} className='capitalize'>
-                          {v.charAt(0).toUpperCase() + v.slice(1)}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Vehicle Model & Color (side by side) */}
-                  <div className='grid grid-cols-2 gap-3'>
-                    <div>
-                      <label className='mb-1 block text-sm font-medium text-gray-700'>
-                        Vehicle Model
-                      </label>
-                      <input
-                        type='text'
-                        placeholder='e.g. Honda CB'
-                        value={addForm.vehicleModel}
-                        onChange={(e) =>
-                          setAddForm((f) => ({
-                            ...f,
-                            vehicleModel: e.target.value,
-                          }))
-                        }
-                        className='w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none'
-                      />
-                    </div>
-                    <div>
-                      <label className='mb-1 block text-sm font-medium text-gray-700'>
-                        Color
-                      </label>
-                      <input
-                        type='text'
-                        placeholder='e.g. Red'
-                        value={addForm.vehicleColor}
-                        onChange={(e) =>
-                          setAddForm((f) => ({
-                            ...f,
-                            vehicleColor: e.target.value,
-                          }))
-                        }
-                        className='w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none'
-                      />
-                    </div>
-                  </div>
-
-                  {/* License Plate */}
-                  <div>
-                    <label className='mb-1 block text-sm font-medium text-gray-700'>
-                      License Plate
+                      Username <span className='text-red-500'>*</span>
                     </label>
                     <input
                       type='text'
-                      placeholder='e.g. AA-12345'
-                      value={addForm.licensePlate}
+                      placeholder='e.g. abebe_driver'
+                      value={addForm.username}
                       onChange={(e) =>
                         setAddForm((f) => ({
                           ...f,
-                          licensePlate: e.target.value,
+                          username: e.target.value.replace(/\s/g, "_"),
                         }))
                       }
                       className='w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none'
+                      autoComplete='off'
                     />
+                    <p className='mt-1 text-xs text-gray-400'>
+                      Used to log in to the driver app. No spaces allowed.
+                    </p>
+                  </div>
+
+                  {/* Password */}
+                  <div>
+                    <label className='mb-1 block text-sm font-medium text-gray-700'>
+                      Password <span className='text-red-500'>*</span>
+                    </label>
+                    <div className='relative'>
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        placeholder='Min. 6 characters'
+                        value={addForm.password}
+                        onChange={(e) =>
+                          setAddForm((f) => ({
+                            ...f,
+                            password: e.target.value,
+                          }))
+                        }
+                        className='w-full rounded-lg border border-gray-300 px-3 py-2 pr-10 text-sm focus:border-blue-500 focus:outline-none'
+                        autoComplete='new-password'
+                      />
+                      <button
+                        type='button'
+                        onClick={() => setShowPassword((v) => !v)}
+                        className='absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600'
+                      >
+                        {showPassword ? (
+                          <FiEyeOff size={16} />
+                        ) : (
+                          <FiEye size={16} />
+                        )}
+                      </button>
+                    </div>
                   </div>
                 </>
               )}

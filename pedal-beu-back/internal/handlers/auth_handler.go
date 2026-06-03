@@ -829,3 +829,75 @@ func CheckPhoneExists(c *gin.Context) {
 		},
 	})
 }
+
+// DriverLogin handles login for drivers created by admin.
+// Accepts either username or phone number together with password.
+// POST /api/v1/auth/driver-login
+func (h *AuthHandler) DriverLogin(c *gin.Context) {
+	var req struct {
+		// Driver can log in with either their username or phone number
+		Login    string `json:"login"    binding:"required"` // username OR phone
+		Password string `json:"password" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx := c.Request.Context()
+	login := strings.TrimSpace(req.Login)
+
+	// Try username first, then fall back to phone lookup
+	var user *models.User
+	var err error
+
+	user, err = userRepo.FindByUsername(ctx, login)
+	if err != nil || user == nil {
+		// Not found by username — try as phone number
+		normalized := normalizePhone(login)
+		user, err = userRepo.FindByPhone(ctx, normalized)
+		if err != nil || user == nil {
+			// Last attempt with original value
+			user, err = userRepo.FindByPhone(ctx, login)
+		}
+	}
+
+	if err != nil || user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username/phone or password"})
+		return
+	}
+
+	if user.Role.Type != "driver" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied. This login is for drivers only."})
+		return
+	}
+
+	if !auth.CheckPasswordHash(req.Password, user.Password) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username/phone or password"})
+		return
+	}
+
+	tokenPair, err := auth.GenerateToken(user)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
+		return
+	}
+
+	_ = userRepo.UpdateLastLogin(ctx, user.ID)
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Login successful",
+		"user": gin.H{
+			"id":        user.ID,
+			"username":  user.Username,
+			"phone":     user.Phone,
+			"role":      user.Role.Type,
+			"firstName": user.Profile.FirstName,
+		},
+		"tokens": gin.H{
+			"accessToken":  tokenPair.AccessToken,
+			"refreshToken": tokenPair.RefreshToken,
+		},
+	})
+}

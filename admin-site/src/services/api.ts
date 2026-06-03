@@ -137,16 +137,14 @@ export const menuAPI = {
 
 // Upload API
 export const uploadAPI = {
-  uploadImage: (formData: FormData) => {
-    return api.post("/upload", formData, {
+  uploadImage: (formData: FormData) =>
+    api.post("/upload", formData, {
       headers: { "Content-Type": "multipart/form-data" },
-    });
-  },
-  uploadMultipleImages: (formData: FormData) => {
-    return api.post("/upload/multiple", formData, {
+    }),
+  uploadMultipleImages: (formData: FormData) =>
+    api.post("/upload/multiple", formData, {
       headers: { "Content-Type": "multipart/form-data" },
-    });
-  },
+    }),
 };
 
 // Order API (admin)
@@ -157,18 +155,14 @@ export const orderAPI = {
     api.put(`/orders/${id}/status`, { status }),
 };
 
-// Driver API – routes are under /admin/drivers (admin-protected)
+// Driver API – admin creates drivers with phone + username + password.
+// Phone is stored so customers can see it on the delivery tracking screen.
+// Driver logs into the app using username (or phone) + password.
 export const driverAPI = {
   getAll: () => api.get("/admin/drivers"),
   getById: (id: string) => api.get(`/admin/drivers/${id}`),
-  create: (data: {
-    phone: string;
-    name: string;
-    vehicleType: string;
-    vehicleModel?: string;
-    vehicleColor?: string;
-    licensePlate?: string;
-  }) => api.post("/admin/drivers", data),
+  create: (data: { phone: string; username: string; password: string }) =>
+    api.post("/admin/drivers", data),
   updateStatus: (id: string, status: string) =>
     api.put(`/admin/drivers/${id}/status`, { status }),
 };

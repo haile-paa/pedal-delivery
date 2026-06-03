@@ -5,7 +5,6 @@ import {
   StyleSheet,
   TextInput,
   TouchableOpacity,
-  Dimensions,
   StatusBar,
   Alert,
   KeyboardAvoidingView,
@@ -14,61 +13,44 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { colors } from "../../theme/colors";
-import api, { authAPI } from "../../../lib/api";
+import { authAPI } from "../../../lib/api";
 
-const { width: screenWidth } = Dimensions.get("window");
-
-const DriverPhoneInputScreen: React.FC = () => {
+const DriverPhoneInput: React.FC = () => {
   const router = useRouter();
-  const [phoneNumber, setPhoneNumber] = useState("");
+  const [login, setLogin] = useState(""); // username OR phone number
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const formatPhoneNumber = (phone: string) => {
-    const digits = phone.replace(/\D/g, "");
 
-    if (digits.startsWith("9")) {
-      return `+251${digits}`;
-    }
-
-    if (digits.startsWith("0")) {
-      return `+251${digits.substring(1)}`;
-    }
-
-    return phone;
-  };
-
-  const handleContinue = async () => {
-    // Validate phone number
-    const digits = phoneNumber.replace(/\D/g, "");
-    if (digits.length !== 10 || !digits.startsWith("9")) {
+  const handleLogin = async () => {
+    if (!login.trim()) {
       Alert.alert(
-        "Invalid Phone Number",
-        "Please enter a valid Ethiopian phone number starting with 9"
+        "Missing Field",
+        "Please enter your username or phone number.",
       );
+      return;
+    }
+    if (!password) {
+      Alert.alert("Missing Field", "Please enter your password.");
       return;
     }
 
     setLoading(true);
-
     try {
-      const formattedPhone = formatPhoneNumber(phoneNumber);
+      const result = await authAPI.driverLogin({
+        login: login.trim(),
+        password,
+      });
 
-      // Request OTP for driver
-      const response = await authAPI.sendOTP(formattedPhone, "driver");
-
-      Alert.alert(
-        "OTP Sent",
-        response.message || "Verification code has been sent to your phone",
-        [{ text: "OK" }]
-      );
-
-      // Navigate to verification screen
-      router.push(
-        `/(auth)/phone-verification?role=driver&phone=${formattedPhone}`
-      );
+      if (result.success && result.user && result.tokens) {
+        router.replace("/(driver)/dashboard");
+      } else {
+        Alert.alert("Login Failed", result.error || "Invalid credentials.");
+      }
     } catch (error: any) {
       Alert.alert(
         "Error",
-        error.message || "Failed to send verification code. Please try again."
+        error?.message || "Something went wrong. Please try again.",
       );
     } finally {
       setLoading(false);
@@ -87,64 +69,68 @@ const DriverPhoneInputScreen: React.FC = () => {
           <Text style={styles.backButton} onPress={() => router.back()}>
             ← Back
           </Text>
-          <Text style={styles.title}>Driver Registration</Text>
+          <Text style={styles.title}>Driver Login</Text>
           <Text style={styles.subtitle}>
-            Enter your phone number to start the driver registration process
+            Log in with the credentials provided by your manager.
           </Text>
         </View>
 
         <View style={styles.formContainer}>
-          <View style={styles.phoneInputContainer}>
-            <Text style={styles.label}>Phone Number</Text>
-            <View style={styles.phoneInputWrapper}>
-              <View style={styles.countryCodeContainer}>
-                <Text style={styles.countryCodeText}>+251</Text>
-              </View>
-              <TextInput
-                style={styles.phoneInput}
-                placeholder='9 XXXXXXXX'
-                placeholderTextColor={colors.gray400}
-                keyboardType='phone-pad'
-                value={phoneNumber}
-                onChangeText={(text) => {
-                  const digits = text.replace(/\D/g, "").slice(0, 9);
-                  setPhoneNumber(digits);
-                }}
-                maxLength={9}
-                editable={!loading}
-                autoFocus
-              />
-            </View>
-            <Text style={styles.hint}>Enter your 9-digit phone number</Text>
+          {/* Username or Phone */}
+          <View style={styles.fieldContainer}>
+            <Text style={styles.label}>Username or Phone Number</Text>
+            <TextInput
+              style={styles.input}
+              placeholder='Enter username or phone (e.g. +251912345678)'
+              placeholderTextColor={colors.gray400}
+              autoCapitalize='none'
+              autoCorrect={false}
+              keyboardType='default'
+              value={login}
+              onChangeText={setLogin}
+              editable={!loading}
+            />
           </View>
 
-          <View style={styles.infoBox}>
-            <Text style={styles.infoTitle}>Important Information:</Text>
-            <Text style={styles.infoText}>
-              • You'll need to provide driver's license and vehicle details
-            </Text>
-            <Text style={styles.infoText}>
-              • Your account needs admin approval before you can start accepting
-              deliveries
-            </Text>
-            <Text style={styles.infoText}>
-              • Approval typically takes 24-48 hours
-            </Text>
+          {/* Password */}
+          <View style={styles.fieldContainer}>
+            <Text style={styles.label}>Password</Text>
+            <View style={styles.passwordWrapper}>
+              <TextInput
+                style={styles.passwordInput}
+                placeholder='Enter your password'
+                placeholderTextColor={colors.gray400}
+                secureTextEntry={!showPassword}
+                value={password}
+                onChangeText={setPassword}
+                editable={!loading}
+              />
+              <TouchableOpacity
+                style={styles.eyeButton}
+                onPress={() => setShowPassword((v) => !v)}
+              >
+                <Text style={styles.eyeText}>{showPassword ? "🙈" : "👁️"}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           <TouchableOpacity
             style={[
-              styles.continueButton,
-              (!phoneNumber.trim() || phoneNumber.length < 9 || loading) &&
-                styles.continueButtonDisabled,
+              styles.loginButton,
+              (!login.trim() || !password || loading) &&
+                styles.loginButtonDisabled,
             ]}
-            onPress={handleContinue}
-            disabled={!phoneNumber.trim() || phoneNumber.length < 9 || loading}
+            onPress={handleLogin}
+            disabled={!login.trim() || !password || loading}
           >
-            <Text style={styles.continueButtonText}>
-              {loading ? "Sending OTP..." : "Continue"}
+            <Text style={styles.loginButtonText}>
+              {loading ? "Logging in..." : "Log In"}
             </Text>
           </TouchableOpacity>
+
+          <Text style={styles.hint}>
+            Don't have credentials? Contact your manager to get set up.
+          </Text>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -189,8 +175,8 @@ const styles = StyleSheet.create({
   formContainer: {
     flex: 1,
   },
-  phoneInputContainer: {
-    marginBottom: 30,
+  fieldContainer: {
+    marginBottom: 20,
   },
   label: {
     fontSize: 16,
@@ -198,7 +184,17 @@ const styles = StyleSheet.create({
     color: colors.gray800,
     marginBottom: 8,
   },
-  phoneInputWrapper: {
+  input: {
+    backgroundColor: colors.white,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    height: 56,
+    borderWidth: 1,
+    borderColor: colors.gray300,
+    fontSize: 16,
+    color: colors.gray900,
+  },
+  passwordWrapper: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: colors.white,
@@ -208,64 +204,40 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.gray300,
   },
-  countryCodeContainer: {
-    marginRight: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: colors.gray50,
-    borderRadius: 8,
-  },
-  countryCodeText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: colors.gray800,
-  },
-  phoneInput: {
+  passwordInput: {
     flex: 1,
     fontSize: 16,
     color: colors.gray900,
     height: "100%",
   },
-  hint: {
-    fontSize: 14,
-    color: colors.gray500,
-    marginTop: 8,
+  eyeButton: {
+    padding: 4,
   },
-  infoBox: {
-    backgroundColor: colors.primary + "10",
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 30,
-    borderWidth: 1,
-    borderColor: colors.primary + "30",
+  eyeText: {
+    fontSize: 18,
   },
-  infoTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: colors.primary,
-    marginBottom: 8,
-  },
-  infoText: {
-    fontSize: 14,
-    color: colors.gray700,
-    lineHeight: 20,
-    marginBottom: 4,
-  },
-  continueButton: {
+  loginButton: {
     backgroundColor: colors.primary,
     paddingVertical: 16,
     borderRadius: 12,
     alignItems: "center",
-    marginTop: "auto",
+    marginTop: 10,
   },
-  continueButtonDisabled: {
+  loginButtonDisabled: {
     opacity: 0.6,
   },
-  continueButtonText: {
+  loginButtonText: {
     color: colors.white,
     fontSize: 16,
     fontWeight: "600",
   },
+  hint: {
+    marginTop: 20,
+    fontSize: 14,
+    color: colors.gray500,
+    textAlign: "center",
+    lineHeight: 20,
+  },
 });
 
-export default DriverPhoneInputScreen;
+export default DriverPhoneInput;

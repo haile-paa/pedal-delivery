@@ -266,6 +266,37 @@ export const authAPI = {
     }
   },
 
+  // Driver login — accepts username OR phone number + password (credentials created by admin)
+  driverLogin: async (data: {
+    login: string; // username or phone number
+    password: string;
+  }): Promise<AuthResponse> => {
+    try {
+      const response = await api.post("/auth/driver-login", {
+        login: data.login.trim(),
+        password: data.password,
+      });
+      if (response.data.user && response.data.tokens) {
+        await AsyncStorage.multiSet([
+          ["accessToken", response.data.tokens.accessToken],
+          ["refreshToken", response.data.tokens.refreshToken],
+          ["user", JSON.stringify(response.data.user)],
+        ]);
+      }
+      return {
+        success: true,
+        user: response.data.user,
+        tokens: response.data.tokens,
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error:
+          error.response?.data?.error || "Invalid username/phone or password",
+      };
+    }
+  },
+
   refreshToken: async (refreshToken: string) => {
     const response = await refreshApi.post("/auth/refresh", {
       refresh_token: refreshToken,

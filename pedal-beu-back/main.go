@@ -212,6 +212,7 @@ func main() {
 			auth.POST("/register-driver", authHandler.RegisterDriver)
 			auth.POST("/register", authHandler.Register)
 			auth.POST("/login-otp", authHandler.LoginWithOTP)
+			auth.POST("/driver-login", authHandler.DriverLogin) // username+password login for drivers
 			auth.POST("/refresh", authHandler.RefreshToken)
 			auth.POST("/forgot-password", authHandler.ForgotPassword)
 			auth.POST("/reset-password", authHandler.ResetPassword)

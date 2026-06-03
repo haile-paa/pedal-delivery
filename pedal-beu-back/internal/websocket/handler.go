@@ -83,3 +83,14 @@ func wsHandler(c *gin.Context, channel string) {
 	go client.writePump()
 	go client.readPump()
 }
+
+// DriversWebSocketHandler handles the admin /ws/drivers connection.
+// Admins join this channel to receive live driver_status_update events.
+func DriversWebSocketHandler(c *gin.Context) {
+	userRole, _ := c.Get("userRole")
+	if userRole != "admin" {
+		c.JSON(403, gin.H{"error": "Admin access required"})
+		return
+	}
+	wsHandler(c, "drivers")
+}
