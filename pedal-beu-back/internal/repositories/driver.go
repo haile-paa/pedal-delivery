@@ -19,6 +19,8 @@ type DriverRepository interface {
 	FindByUserID(ctx context.Context, userID primitive.ObjectID) (*models.Driver, error)
 	Create(ctx context.Context, driver *models.Driver) (*models.Driver, error)
 	UpdateStatus(ctx context.Context, id primitive.ObjectID, status string) error
+	UpdateOnlineStatus(ctx context.Context, userID primitive.ObjectID, isOnline bool) error
+	UpdateLocation(ctx context.Context, userID primitive.ObjectID, lng, lat float64) error
 }
 
 type driverRepository struct {
@@ -76,17 +78,12 @@ func (r *driverRepository) FindByUserID(ctx context.Context, userID primitive.Ob
 // Create inserts a new driver document.
 // The location field is intentionally omitted when coordinates are empty so
 // MongoDB's 2dsphere index does not reject the document with an invalid GeoJSON error.
-// Location is only written to the DB when the driver first goes online and sends
-// their GPS coordinates via the location WebSocket handler.
 func (r *driverRepository) Create(ctx context.Context, driver *models.Driver) (*models.Driver, error) {
 	driver.ID = primitive.NewObjectID()
 	now := time.Now()
 	driver.CreatedAt = now
 	driver.UpdatedAt = now
 
-	// Build the document manually so we can skip the location field entirely
-	// when no valid coordinates exist. Inserting { type: "", coordinates: null }
-	// would fail the 2dsphere index validation on the drivers collection.
 	doc := bson.D{
 		{Key: "_id", Value: driver.ID},
 		{Key: "user_id", Value: driver.UserID},
@@ -121,6 +118,37 @@ func (r *driverRepository) UpdateStatus(ctx context.Context, id primitive.Object
 		bson.M{"_id": id},
 		bson.M{"$set": bson.M{
 			"status":     status,
+			"updated_at": time.Now(),
+		}},
+	)
+	return err
+}
+
+// UpdateOnlineStatus sets is_online for the driver whose user_id matches.
+// Called from the WebSocket handler when the driver toggles online/offline.
+func (r *driverRepository) UpdateOnlineStatus(ctx context.Context, userID primitive.ObjectID, isOnline bool) error {
+	_, err := r.collection.UpdateOne(
+		ctx,
+		bson.M{"user_id": userID},
+		bson.M{"$set": bson.M{
+			"is_online":  isOnline,
+			"updated_at": time.Now(),
+		}},
+	)
+	return err
+}
+
+// UpdateLocation saves the driver's current GPS position.
+// Uses $set with a valid GeoJSON Point so the 2dsphere index is satisfied.
+func (r *driverRepository) UpdateLocation(ctx context.Context, userID primitive.ObjectID, lng, lat float64) error {
+	_, err := r.collection.UpdateOne(
+		ctx,
+		bson.M{"user_id": userID},
+		bson.M{"$set": bson.M{
+			"location": bson.M{
+				"type":        "Point",
+				"coordinates": []float64{lng, lat},
+			},
 			"updated_at": time.Now(),
 		}},
 	)

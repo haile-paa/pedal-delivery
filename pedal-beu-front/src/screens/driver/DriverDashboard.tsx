@@ -6,10 +6,9 @@ import {
   ScrollView,
   StatusBar,
   TouchableOpacity,
-  AppState,
-  type AppStateStatus,
   Alert,
 } from "react-native";
+import * as Location from "expo-location";
 import { useAppState } from "../../context/AppStateContext";
 import { colors } from "../../theme/colors";
 import OnlineToggle from "../../components/driver/OnlineToggle";
@@ -85,23 +84,16 @@ const DriverDashboard: React.FC = () => {
     weekEarnings: 0,
   });
 
-  // Load driver location
-  useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          setDriverLocation({
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-          });
-        },
-        (error) => console.warn("Location error:", error),
-        { enableHighAccuracy: true, timeout: 15000 },
-      );
-    }
-  }, []);
+  // Ref to hold the location watcher subscription
+  const locationSubscription = useRef<Location.LocationSubscription | null>(
+    null,
+  );
+  // Ref to hold the interval that sends location every 5 s
+  const locationSendInterval = useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
 
-  // Timer for online duration
+  // ─── Timer for online duration ──────────────────────────────────────────────
   useEffect(() => {
     let interval: ReturnType<typeof setInterval> | null = null;
     if (state.driver.isOnline) {
@@ -114,7 +106,7 @@ const DriverDashboard: React.FC = () => {
     };
   }, [state.driver.isOnline]);
 
-  // Fetch driver stats
+  // ─── Fetch driver stats ──────────────────────────────────────────────────────
   useEffect(() => {
     const fetchStats = async () => {
       try {
@@ -141,27 +133,92 @@ const DriverDashboard: React.FC = () => {
     fetchStats();
   }, []);
 
-  // WebSocket connection
+  // ─── WebSocket + location tracking when online ───────────────────────────────
   useEffect(() => {
-    const connectWebSocket = async () => {
-      if (!state.driver.isOnline) return;
-      const token = await AsyncStorage.getItem("accessToken");
-      if (!token) return;
-
-      WebSocketService.connect(token);
-
-      WebSocketService.on("order:new", handleNewOrder);
-      WebSocketService.on("order:cancelled", handleOrderCancelled);
-      WebSocketService.on("order:taken", handleOrderTaken);
-
-      return () => {
-        WebSocketService.off("order:new", handleNewOrder);
-        WebSocketService.off("order:cancelled", handleOrderCancelled);
-        WebSocketService.off("order:taken", handleOrderTaken);
-      };
-    };
-    connectWebSocket();
+    if (state.driver.isOnline) {
+      startOnline();
+    } else {
+      stopOnline();
+    }
+    return () => stopOnline();
   }, [state.driver.isOnline]);
+
+  const startOnline = async () => {
+    const token = await AsyncStorage.getItem("accessToken");
+    if (!token) return;
+
+    // 1. Connect WebSocket
+    await WebSocketService.connect(token);
+
+    // 2. Tell backend the driver is online
+    WebSocketService.setOnlineStatus(true);
+
+    // 3. Subscribe to order events
+    WebSocketService.on("order:new", handleNewOrder);
+    WebSocketService.on("order:cancelled", handleOrderCancelled);
+    WebSocketService.on("order:taken", handleOrderTaken);
+
+    // 4. Request GPS permission and start watching location
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert(
+        "Location required",
+        "Please enable location permissions so customers can track you.",
+      );
+      return;
+    }
+
+    // Get initial position immediately
+    try {
+      const pos = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+      const { latitude, longitude } = pos.coords;
+      setDriverLocation({ latitude, longitude });
+      // Send initial location to admin right away
+      WebSocketService.sendDriverLocation(latitude, longitude);
+    } catch (e) {
+      console.warn("Could not get initial position:", e);
+    }
+
+    // Watch for position changes and relay to backend every movement
+    locationSubscription.current = await Location.watchPositionAsync(
+      {
+        accuracy: Location.Accuracy.High,
+        distanceInterval: 20, // meters — only send when moved 20 m
+        timeInterval: 5000, // or at least every 5 s
+      },
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        setDriverLocation({ latitude, longitude });
+        WebSocketService.sendDriverLocation(latitude, longitude);
+      },
+    );
+  };
+
+  const stopOnline = () => {
+    // Tell backend offline
+    if (WebSocketService.isConnected()) {
+      WebSocketService.setOnlineStatus(false);
+    }
+
+    // Stop GPS watcher
+    if (locationSubscription.current) {
+      locationSubscription.current.remove();
+      locationSubscription.current = null;
+    }
+    if (locationSendInterval.current) {
+      clearInterval(locationSendInterval.current);
+      locationSendInterval.current = null;
+    }
+
+    WebSocketService.off("order:new", handleNewOrder);
+    WebSocketService.off("order:cancelled", handleOrderCancelled);
+    WebSocketService.off("order:taken", handleOrderTaken);
+    WebSocketService.disconnect();
+
+    setNotifications([]);
+  };
 
   const handleNewOrder = (data: BackendOrder) => {
     const order = mapBackendToNotification(data);
@@ -244,16 +301,11 @@ const DriverDashboard: React.FC = () => {
         Math.cos((lat2 * Math.PI) / 180) *
         Math.sin(dLon / 2) *
         Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   };
 
   const handleToggleOnline = (isOnline: boolean) => {
     dispatch({ type: "SET_DRIVER_ONLINE", payload: isOnline });
-    if (!isOnline) {
-      setNotifications([]);
-      WebSocketService.disconnect();
-    }
   };
 
   const handleAcceptOrder = async (orderId: string) => {
@@ -451,13 +503,13 @@ const DriverDashboard: React.FC = () => {
 
           {state.driver.isOnline ? (
             notifications.length > 0 ? (
-              notifications.map((order, index) => (
+              notifications.map((order) => (
                 <OrderNotification
                   key={order.id}
                   order={order}
                   onAccept={() => handleAcceptOrder(order.id)}
                   onReject={() => handleRejectOrder(order.id)}
-                  index={index}
+                  index={0}
                 />
               ))
             ) : (

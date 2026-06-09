@@ -531,6 +531,9 @@ func main() {
 		}
 	}
 
+	// Inject driver repository so WebSocket handlers can persist online
+	// status and GPS location when the driver toggles or moves.
+	websocket.SetDriverRepository(driverRepo)
 	websocket.SetupWebSocketRoutes(router.Group(""), middleware.AuthMiddleware())
 
 	if cfg.Server.Environment != "production" {

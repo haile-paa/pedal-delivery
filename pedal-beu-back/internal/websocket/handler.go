@@ -10,7 +10,6 @@ import (
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
-		// Allow all origins in development; restrict in production.
 		return true
 	},
 	ReadBufferSize:  1024,
@@ -22,7 +21,7 @@ var hub *Hub
 func init() {
 	hub = NewHub()
 	go hub.Run()
-	GlobalHub = hub // 👈 Export the hub for other packages
+	GlobalHub = hub
 }
 
 func GetHub() *Hub {
@@ -45,8 +44,19 @@ func ChatWebSocketHandler(c *gin.Context) {
 	wsHandler(c, "chat")
 }
 
+// DriversWebSocketHandler is for admins only.
+// The admin joins the "admin" room so it receives driver_status_update
+// and driver_location_update events broadcast by the driver's client.
+func DriversWebSocketHandler(c *gin.Context) {
+	userRole, _ := c.Get("userRole")
+	if userRole != "admin" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+		return
+	}
+	wsHandler(c, "admin")
+}
+
 func wsHandler(c *gin.Context, channel string) {
-	// Get user from context (set by AuthMiddleware)
 	userID, exists := c.Get("userID")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
@@ -71,26 +81,19 @@ func wsHandler(c *gin.Context, channel string) {
 
 	client.hub.register <- client
 
-	// 👇 AUTOMATIC ROOM JOINING BASED ON ROLE
-	if client.role == "driver" {
-		hub.JoinRoom(client, "drivers")                     // all drivers
-		hub.JoinRoom(client, "driver:"+client.userID.Hex()) // personal room
-	} else if client.role == "customer" {
-		hub.JoinRoom(client, "customers")                 // all customers (optional)
-		hub.JoinRoom(client, "user:"+client.userID.Hex()) // personal room
+	switch client.role {
+	case "driver":
+		// Driver joins their personal room and the shared drivers room
+		hub.JoinRoom(client, "drivers")
+		hub.JoinRoom(client, "driver:"+client.userID.Hex())
+	case "customer":
+		hub.JoinRoom(client, "customers")
+		hub.JoinRoom(client, "user:"+client.userID.Hex())
+	case "admin":
+		// Admin joins the "admin" room to receive live driver events
+		hub.JoinRoom(client, "admin")
 	}
 
 	go client.writePump()
 	go client.readPump()
-}
-
-// DriversWebSocketHandler handles the admin /ws/drivers connection.
-// Admins join this channel to receive live driver_status_update events.
-func DriversWebSocketHandler(c *gin.Context) {
-	userRole, _ := c.Get("userRole")
-	if userRole != "admin" {
-		c.JSON(403, gin.H{"error": "Admin access required"})
-		return
-	}
-	wsHandler(c, "drivers")
 }

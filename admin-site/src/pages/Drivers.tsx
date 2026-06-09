@@ -22,6 +22,8 @@ interface Driver {
   rating: number;
   deliveries: number;
   location: string;
+  lat?: number;
+  lng?: number;
   vehicleType?: string;
   vehiclePlate?: string;
   approvalStatus?: string;
@@ -31,23 +33,12 @@ interface BackendDriver {
   id: string;
   user_id?: string;
   status: string;
-  vehicle: {
-    type: string;
-    model?: string;
-    color?: string;
-    plate?: string;
-  };
+  vehicle: { type: string; model?: string; color?: string; plate?: string };
   rating: number;
   total_trips: number;
   is_online: boolean;
-  location?: {
-    coordinates: [number, number];
-  };
-  user?: {
-    name?: string;
-    phone?: string;
-    username?: string;
-  };
+  location?: { coordinates: [number, number] };
+  user?: { name?: string; phone?: string; username?: string };
 }
 
 interface AddDriverForm {
@@ -56,11 +47,10 @@ interface AddDriverForm {
   password: string;
 }
 
-const emptyForm: AddDriverForm = {
-  phone: "",
-  username: "",
-  password: "",
-};
+const emptyForm: AddDriverForm = { phone: "", username: "", password: "" };
+
+const formatCoords = (lat: number, lng: number) =>
+  `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
 
 const Drivers: React.FC = () => {
   const [drivers, setDrivers] = useState<Driver[]>([]);
@@ -68,7 +58,6 @@ const Drivers: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Add driver modal state
   const [showAddModal, setShowAddModal] = useState(false);
   const [addForm, setAddForm] = useState<AddDriverForm>(emptyForm);
   const [addLoading, setAddLoading] = useState(false);
@@ -76,24 +65,26 @@ const Drivers: React.FC = () => {
   const [addSuccess, setAddSuccess] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  // WebSocket for live driver status updates
+  // WebSocket — admin receives live driver_status_update and driver_location_update
   const { lastMessage } = useWebSocket("/ws/drivers");
 
   const mapDriver = (d: BackendDriver): Driver => {
-    let status: Driver["status"] = "offline";
-    if (d.is_online) status = "active";
+    const lat = d.location?.coordinates?.[1];
+    const lng = d.location?.coordinates?.[0];
+    const hasCoords =
+      lat !== undefined && lng !== undefined && (lat !== 0 || lng !== 0);
 
     return {
       id: d.id,
       name: d.user?.name || d.user?.username || "Unknown",
       username: d.user?.username || "",
       phone: d.user?.phone || "",
-      status,
+      status: d.is_online ? "active" : "offline",
       rating: d.rating || 0,
       deliveries: d.total_trips || 0,
-      location: d.location
-        ? `${d.location.coordinates[1].toFixed(4)}, ${d.location.coordinates[0].toFixed(4)}`
-        : "Location not available",
+      location: hasCoords ? formatCoords(lat!, lng!) : "Location not available",
+      lat: hasCoords ? lat : undefined,
+      lng: hasCoords ? lng : undefined,
       vehicleType: d.vehicle?.type || "—",
       vehiclePlate: d.vehicle?.plate || "—",
       approvalStatus: d.status,
@@ -106,11 +97,9 @@ const Drivers: React.FC = () => {
     setError(null);
     try {
       const response = await driverAPI.getAll();
-      const backendDrivers: BackendDriver[] = response.data || [];
-      setDrivers(backendDrivers.map(mapDriver));
-    } catch (err) {
+      setDrivers((response.data || []).map(mapDriver));
+    } catch {
       setError("Failed to load drivers. Please try again.");
-      console.error(err);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -121,29 +110,48 @@ const Drivers: React.FC = () => {
     fetchDrivers();
   }, []);
 
-  // Live updates from WebSocket
+  // ── Live WebSocket events ────────────────────────────────────────────────────
   useEffect(() => {
-    if (lastMessage) {
-      try {
-        const event = JSON.parse(lastMessage.data);
-        if (event.type === "driver_status_update") {
-          const updated = event.data;
-          setDrivers((prev) =>
-            prev.map((d) =>
-              d.id === updated.id ? { ...d, status: updated.status } : d,
-            ),
-          );
-        }
-      } catch (e) {
-        console.error("Failed to parse WebSocket message", e);
+    if (!lastMessage) return;
+    try {
+      const event = JSON.parse(lastMessage.data);
+
+      // Driver pressed online/offline toggle
+      if (event.type === "driver_status_update") {
+        const { driver_id, is_online } = event.data;
+        setDrivers((prev) =>
+          prev.map((d) =>
+            d.id === driver_id
+              ? { ...d, status: is_online ? "active" : "offline" }
+              : d,
+          ),
+        );
       }
+
+      // Driver GPS position changed
+      if (event.type === "driver_location_update") {
+        const { driver_id, lat, lng } = event.data;
+        setDrivers((prev) =>
+          prev.map((d) =>
+            d.id === driver_id
+              ? {
+                  ...d,
+                  lat,
+                  lng,
+                  location: formatCoords(lat, lng),
+                }
+              : d,
+          ),
+        );
+      }
+    } catch (e) {
+      console.error("Failed to parse WebSocket message", e);
     }
   }, [lastMessage]);
 
   const handleAddDriver = async () => {
     setAddError(null);
 
-    // Validate phone
     const phone = addForm.phone.trim();
     if (!phone) {
       setAddError("Phone number is required.");
@@ -154,7 +162,6 @@ const Drivers: React.FC = () => {
       return;
     }
 
-    // Validate username
     const username = addForm.username.trim();
     if (!username) {
       setAddError("Username is required.");
@@ -165,7 +172,6 @@ const Drivers: React.FC = () => {
       return;
     }
 
-    // Validate password
     if (!addForm.password) {
       setAddError("Password is required.");
       return;
@@ -182,9 +188,10 @@ const Drivers: React.FC = () => {
         username,
         password: addForm.password,
       });
-
-      const newDriver = mapDriver(response.data as BackendDriver);
-      setDrivers((prev) => [newDriver, ...prev]);
+      setDrivers((prev) => [
+        mapDriver(response.data as BackendDriver),
+        ...prev,
+      ]);
       setAddSuccess(true);
       setTimeout(() => {
         setShowAddModal(false);
@@ -193,9 +200,9 @@ const Drivers: React.FC = () => {
         setShowPassword(false);
       }, 1800);
     } catch (err: any) {
-      const msg =
-        err?.response?.data?.error || "Failed to add driver. Please try again.";
-      setAddError(msg);
+      setAddError(
+        err?.response?.data?.error || "Failed to add driver. Please try again.",
+      );
     } finally {
       setAddLoading(false);
     }
@@ -216,14 +223,13 @@ const Drivers: React.FC = () => {
         return "bg-green-100 text-green-800";
       case "on_break":
         return "bg-yellow-100 text-yellow-800";
-      case "offline":
       default:
         return "bg-gray-100 text-gray-800";
     }
   };
 
-  const getApprovalBadge = (approvalStatus?: string) => {
-    switch (approvalStatus) {
+  const getApprovalBadge = (s?: string) => {
+    switch (s) {
       case "approved":
         return "bg-emerald-50 text-emerald-700";
       case "pending":
@@ -252,7 +258,7 @@ const Drivers: React.FC = () => {
         <div>
           <h1 className='text-2xl font-bold text-gray-800'>Drivers</h1>
           <p className='text-gray-600'>
-            Manage drivers and their status
+            Live driver status and location
             {drivers.length > 0 && (
               <span className='ml-2 text-sm text-gray-400'>
                 ({drivers.length} total)
@@ -278,14 +284,12 @@ const Drivers: React.FC = () => {
         </div>
       </div>
 
-      {/* Error banner */}
       {error && (
         <div className='mb-4 p-4 bg-red-50 text-red-700 rounded-lg'>
           {error}
         </div>
       )}
 
-      {/* Empty state */}
       {!error && drivers.length === 0 ? (
         <div className='text-center py-12 bg-white rounded-lg shadow'>
           <FiTruck className='mx-auto mb-3 text-gray-300' size={48} />
@@ -322,8 +326,11 @@ const Drivers: React.FC = () => {
                 </div>
                 <div className='flex flex-col items-end gap-1'>
                   <span
-                    className={`rounded-full px-3 py-1 text-xs font-medium ${getStatusColor(driver.status)}`}
+                    className={`rounded-full px-3 py-1 text-xs font-medium flex items-center gap-1 ${getStatusColor(driver.status)}`}
                   >
+                    {driver.status === "active" && (
+                      <span className='inline-block h-2 w-2 rounded-full bg-green-500 animate-pulse' />
+                    )}
                     {driver.status.replace("_", " ")}
                   </span>
                   {driver.approvalStatus && (
@@ -344,8 +351,14 @@ const Drivers: React.FC = () => {
                   </div>
                 )}
                 <div className='flex items-center gap-2 text-gray-600'>
-                  <FiMapPin className='h-4 w-4 shrink-0' />
-                  <span className='truncate'>{driver.location}</span>
+                  <FiMapPin
+                    className={`h-4 w-4 shrink-0 ${driver.lat ? "text-blue-500" : ""}`}
+                  />
+                  <span
+                    className={`truncate text-xs ${driver.lat ? "text-blue-600 font-medium" : "text-gray-400"}`}
+                  >
+                    {driver.location}
+                  </span>
                 </div>
                 <div className='flex items-center gap-2 text-gray-600'>
                   <FiTruck className='h-4 w-4 shrink-0' />
@@ -378,11 +391,10 @@ const Drivers: React.FC = () => {
         </div>
       )}
 
-      {/* ── Add New Driver Modal ─────────────────────────────────────── */}
+      {/* ── Add New Driver Modal ─────────────────────────────────────────────── */}
       {showAddModal && (
         <div className='fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4'>
           <div className='w-full max-w-sm rounded-xl bg-white shadow-xl'>
-            {/* Modal header */}
             <div className='flex items-center justify-between border-b px-6 py-4'>
               <h2 className='text-lg font-semibold text-gray-800'>
                 Add New Driver
@@ -396,7 +408,6 @@ const Drivers: React.FC = () => {
               </button>
             </div>
 
-            {/* Modal body */}
             <div className='px-6 py-5 space-y-4'>
               {addSuccess ? (
                 <div className='py-8 text-center'>
@@ -407,8 +418,8 @@ const Drivers: React.FC = () => {
                     Driver added successfully!
                   </p>
                   <p className='mt-1 text-sm text-gray-500'>
-                    The driver can now log in with their username or phone
-                    number and password.
+                    The driver can now log in with their username or phone and
+                    password.
                   </p>
                 </div>
               ) : (
@@ -418,13 +429,11 @@ const Drivers: React.FC = () => {
                       {addError}
                     </div>
                   )}
-
                   <p className='text-sm text-gray-500'>
                     Create login credentials for the driver. Their phone number
                     will be visible to customers during delivery.
                   </p>
 
-                  {/* Phone */}
                   <div>
                     <label className='mb-1 block text-sm font-medium text-gray-700'>
                       Phone Number <span className='text-red-500'>*</span>
@@ -437,14 +446,12 @@ const Drivers: React.FC = () => {
                         setAddForm((f) => ({ ...f, phone: e.target.value }))
                       }
                       className='w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none'
-                      autoComplete='off'
                     />
                     <p className='mt-1 text-xs text-gray-400'>
                       Visible to customers on the delivery tracking screen.
                     </p>
                   </div>
 
-                  {/* Username */}
                   <div>
                     <label className='mb-1 block text-sm font-medium text-gray-700'>
                       Username <span className='text-red-500'>*</span>
@@ -462,12 +469,8 @@ const Drivers: React.FC = () => {
                       className='w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none'
                       autoComplete='off'
                     />
-                    <p className='mt-1 text-xs text-gray-400'>
-                      Used to log in to the driver app. No spaces allowed.
-                    </p>
                   </div>
 
-                  {/* Password */}
                   <div>
                     <label className='mb-1 block text-sm font-medium text-gray-700'>
                       Password <span className='text-red-500'>*</span>
@@ -503,7 +506,6 @@ const Drivers: React.FC = () => {
               )}
             </div>
 
-            {/* Modal footer */}
             {!addSuccess && (
               <div className='flex justify-end gap-3 border-t px-6 py-4'>
                 <button
