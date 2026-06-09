@@ -77,20 +77,19 @@ func wsHandler(c *gin.Context, channel string) {
 		send:   make(chan []byte, 256),
 		userID: userID.(primitive.ObjectID),
 		role:   userRole.(string),
+		rooms:  make(map[string]bool), // must be initialized before any JoinRoom call
 	}
 
 	client.hub.register <- client
 
 	switch client.role {
 	case "driver":
-		// Driver joins their personal room and the shared drivers room
 		hub.JoinRoom(client, "drivers")
 		hub.JoinRoom(client, "driver:"+client.userID.Hex())
 	case "customer":
 		hub.JoinRoom(client, "customers")
 		hub.JoinRoom(client, "user:"+client.userID.Hex())
 	case "admin":
-		// Admin joins the "admin" room to receive live driver events
 		hub.JoinRoom(client, "admin")
 	}
 
