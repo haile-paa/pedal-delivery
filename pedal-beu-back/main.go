@@ -504,6 +504,7 @@ func main() {
 				orders.POST("", orderHandler.CreateOrder)
 				orders.GET("", orderHandler.GetCustomerOrders)
 				orders.GET("/health/payment-verification", orderHandler.GetPaymentVerificationHealth)
+				orders.GET("/driver", orderHandler.GetDriverOrders) // must come before /:id
 				orders.GET("/:id", orderHandler.GetOrderByID)
 				orders.POST("/:id/verify-payment", orderHandler.VerifyOrderPayment)
 				orders.POST("/:id/payment-proof", orderHandler.SubmitPaymentProof)

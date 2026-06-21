@@ -61,6 +61,42 @@ const refreshApi = axios.create({
   timeout: 30000,
 });
 
+// Simple pub/sub so screens can react to "session expired" without every
+// API call needing its own try/catch UI logic. Auth screens can subscribe
+// via onSessionExpired() and redirect to login quietly.
+type SessionExpiredListener = () => void;
+const sessionExpiredListeners: SessionExpiredListener[] = [];
+
+export const onSessionExpired = (listener: SessionExpiredListener) => {
+  sessionExpiredListeners.push(listener);
+  return () => {
+    const idx = sessionExpiredListeners.indexOf(listener);
+    if (idx !== -1) sessionExpiredListeners.splice(idx, 1);
+  };
+};
+
+let sessionExpiredNotified = false;
+
+const notifySessionExpired = () => {
+  if (sessionExpiredNotified) return; // avoid firing repeatedly per app session
+  sessionExpiredNotified = true;
+  sessionExpiredListeners.forEach((listener) => {
+    try {
+      listener();
+    } catch (e) {
+      console.log("onSessionExpired listener error:", e);
+    }
+  });
+};
+
+// Marker so calling code can check `error.isSessionExpired` and skip
+// showing a scary error message, since this is an expected condition
+// after the app has been closed for several days.
+const markSessionExpired = (error: any) => {
+  error.isSessionExpired = true;
+  return error;
+};
+
 // Response interceptor with token refresh
 api.interceptors.response.use(
   (response) => {
@@ -81,7 +117,8 @@ api.interceptors.response.use(
             "refreshToken",
             "user",
           ]);
-          return Promise.reject(error);
+          notifySessionExpired();
+          return Promise.reject(markSessionExpired(error));
         }
 
         const response = await refreshApi.post("/auth/refresh", {
@@ -105,7 +142,15 @@ api.interceptors.response.use(
             response.data.refresh_token || response.data.refreshToken;
         }
 
-        if (!newAccessToken) return Promise.reject(error);
+        if (!newAccessToken) {
+          await AsyncStorage.multiRemove([
+            "accessToken",
+            "refreshToken",
+            "user",
+          ]);
+          notifySessionExpired();
+          return Promise.reject(markSessionExpired(error));
+        }
 
         await AsyncStorage.setItem("accessToken", newAccessToken);
         if (newRefreshToken)
@@ -114,12 +159,18 @@ api.interceptors.response.use(
         originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
         return api(originalRequest);
       } catch (refreshError: any) {
-        if (refreshError.response?.status === 401) {
+        // Backend can return 400 ("invalid refresh token") or 401 for an
+        // expired/invalid refresh token — treat both as "please log in again".
+        // This is the common case after the app sits unopened for several days.
+        const status = refreshError.response?.status;
+        if (status === 400 || status === 401 || !refreshError.response) {
           await AsyncStorage.multiRemove([
             "accessToken",
             "refreshToken",
             "user",
           ]);
+          notifySessionExpired();
+          return Promise.reject(markSessionExpired(refreshError));
         }
         return Promise.reject(refreshError);
       }
@@ -498,6 +549,15 @@ export const orderAPI = {
       });
       return response.data; // { orders: [...], pagination: {...} }
     } catch (error: any) {
+      // Session expired (e.g. app unused for several days, refresh token
+      // no longer valid) — this is expected, not a real error. Return an
+      // empty list quietly instead of throwing, so the screen just shows
+      // "no orders" rather than a scary error banner. The session-expired
+      // listener (set up via onSessionExpired) handles redirecting to login.
+      if (error.isSessionExpired) {
+        console.log("getCustomerOrders: session expired, returning empty list");
+        return { orders: [], pagination: { page, limit, total: 0 } };
+      }
       console.log("getCustomerOrders error:", error.message);
       throw new Error(error.response?.data?.error || "Failed to fetch orders");
     }
@@ -512,6 +572,11 @@ export const orderAPI = {
       });
       return response.data; // { orders: [...], pagination: {...} }
     } catch (error: any) {
+      // Same session-expired handling as getCustomerOrders above.
+      if (error.isSessionExpired) {
+        console.log("getDriverOrders: session expired, returning empty list");
+        return { orders: [], pagination: { page, limit, total: 0 } };
+      }
       console.log("getDriverOrders error:", error.message);
       throw new Error(
         error.response?.data?.error || "Failed to fetch driver orders",

@@ -147,8 +147,18 @@ const DriverDashboard: React.FC = () => {
     const token = await AsyncStorage.getItem("accessToken");
     if (!token) return;
 
-    // 1. Connect WebSocket
-    await WebSocketService.connect(token);
+    // 1. Connect WebSocket — now properly waits for the handshake to
+    // finish before resolving, so the status message below is never
+    // sent before the connection is actually open.
+    try {
+      await WebSocketService.connect(token);
+    } catch (e) {
+      console.warn("WebSocket failed to connect, will retry automatically:", e);
+      Alert.alert(
+        "Connection issue",
+        "Couldn't reach the server right now. We'll keep retrying in the background.",
+      );
+    }
 
     // 2. Tell backend the driver is online
     WebSocketService.setOnlineStatus(true);

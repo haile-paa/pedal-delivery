@@ -277,7 +277,46 @@ func (h *OrderHandler) GetCustomerOrders(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
-// @Summary Cancel order
+// GetDriverOrders returns orders assigned to the authenticated driver.
+// GET /api/v1/orders/driver
+func (h *OrderHandler) GetDriverOrders(c *gin.Context) {
+	userID := c.MustGet("userID").(primitive.ObjectID)
+	userRole := c.MustGet("userRole").(string)
+
+	if userRole != "driver" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Only drivers can view their assigned orders"})
+		return
+	}
+
+	page, _ := strconv.ParseInt(c.DefaultQuery("page", "1"), 10, 64)
+	limit, _ := strconv.ParseInt(c.DefaultQuery("limit", "20"), 10, 64)
+
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 || limit > 100 {
+		limit = 20
+	}
+
+	orders, total, err := h.orderService.GetDriverOrders(c.Request.Context(), userID, page, limit)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	response := gin.H{
+		"orders": orders,
+		"pagination": gin.H{
+			"page":  page,
+			"limit": limit,
+			"total": total,
+			"pages": (total + limit - 1) / limit,
+		},
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
 // @Description Cancel an order
 // @Tags orders
 // @Accept json

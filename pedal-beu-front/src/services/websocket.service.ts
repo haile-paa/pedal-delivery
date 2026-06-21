@@ -14,6 +14,15 @@ class WebSocketService {
   private intentionalClose = false;
   private rooms: string[] = [];
 
+  // Tracks the in-flight connection attempt so multiple callers awaiting
+  // connect() all resolve/reject together with the same outcome, and so
+  // we never send a message before the handshake actually completes.
+  private connectPromise: Promise<void> | null = null;
+
+  // Messages queued because they were sent before the socket finished
+  // opening. Flushed the instant handleOpen() fires.
+  private pendingEmits: { type: string; payload: any }[] = [];
+
   private constructor() {}
 
   static getInstance(): WebSocketService {
@@ -23,8 +32,20 @@ class WebSocketService {
     return WebSocketService.instance;
   }
 
-  async connect(token: string) {
-    if (this.ws?.readyState === WebSocket.OPEN) return;
+  // Resolves only once the WebSocket connection is actually OPEN (or
+  // rejects after a timeout / error). Callers should always `await` this
+  // before calling setOnlineStatus() or any other emit() — emitting while
+  // the handshake is still in progress used to silently drop the message.
+  connect(token: string): Promise<void> {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      return Promise.resolve();
+    }
+
+    // Already connecting — return the same in-flight promise instead of
+    // opening a second socket.
+    if (this.connectPromise) {
+      return this.connectPromise;
+    }
 
     this.token = token;
     this.intentionalClose = false;
@@ -32,16 +53,61 @@ class WebSocketService {
     const url = `${this.baseUrl}/ws/orders?token=${token}`;
     console.log(`Connecting to WebSocket: ${url}`);
 
-    try {
-      this.ws = new WebSocket(url);
-      this.ws.onopen = this.handleOpen.bind(this);
-      this.ws.onmessage = this.handleMessage.bind(this);
-      this.ws.onerror = this.handleError.bind(this);
-      this.ws.onclose = this.handleClose.bind(this);
-    } catch (error) {
-      console.error("WebSocket connection error:", error);
-      this.scheduleReconnect();
-    }
+    this.connectPromise = new Promise<void>((resolve, reject) => {
+      let settled = false;
+
+      const timeout = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          this.connectPromise = null;
+          reject(new Error("WebSocket connection timed out"));
+        }
+      }, 10000);
+
+      try {
+        this.ws = new WebSocket(url);
+
+        this.ws.onopen = () => {
+          clearTimeout(timeout);
+          this.handleOpen();
+          if (!settled) {
+            settled = true;
+            this.connectPromise = null;
+            resolve();
+          }
+        };
+
+        this.ws.onmessage = this.handleMessage.bind(this);
+
+        this.ws.onerror = (event) => {
+          this.handleError(event);
+          if (!settled) {
+            settled = true;
+            clearTimeout(timeout);
+            this.connectPromise = null;
+            reject(new Error("WebSocket connection error"));
+          }
+        };
+
+        this.ws.onclose = (event) => {
+          this.handleClose(event);
+          if (!settled) {
+            settled = true;
+            clearTimeout(timeout);
+            this.connectPromise = null;
+            reject(new Error(`WebSocket closed before opening: ${event.code}`));
+          }
+        };
+      } catch (error) {
+        clearTimeout(timeout);
+        this.connectPromise = null;
+        console.error("WebSocket connection error:", error);
+        this.scheduleReconnect();
+        reject(error);
+      }
+    });
+
+    return this.connectPromise;
   }
 
   private handleOpen() {
@@ -56,6 +122,13 @@ class WebSocketService {
       else if (type === "driver")
         this.emit("join:driver_room", { driverId: id });
     });
+
+    // Flush anything that was queued while we were still connecting
+    if (this.pendingEmits.length > 0) {
+      const queued = this.pendingEmits;
+      this.pendingEmits = [];
+      queued.forEach(({ type, payload }) => this.emit(type, payload));
+    }
   }
 
   private handleMessage(event: WebSocketMessageEvent) {
@@ -86,7 +159,7 @@ class WebSocketService {
     if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout);
     this.reconnectTimeout = setTimeout(() => {
       this.reconnectAttempts++;
-      if (this.token) this.connect(this.token);
+      if (this.token) this.connect(this.token).catch(() => {});
     }, delay);
   }
 
@@ -108,13 +181,25 @@ class WebSocketService {
     if (callbacks) callbacks.forEach((cb) => cb(data));
   }
 
+  // If the socket isn't open yet (still connecting), the message is queued
+  // and flushed automatically in handleOpen() instead of being silently
+  // dropped. This is the actual fix for "online button doesn't show up
+  // on the admin site" — the status message used to be sent before the
+  // handshake finished and was lost.
   emit(type: string, payload: any): boolean {
-    if (this.ws?.readyState !== WebSocket.OPEN) {
-      console.warn("Cannot emit: WebSocket not connected");
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type, data: payload }));
+      return true;
+    }
+
+    if (this.ws?.readyState === WebSocket.CONNECTING) {
+      console.log(`Queuing "${type}" until WebSocket finishes connecting`);
+      this.pendingEmits.push({ type, payload });
       return false;
     }
-    this.ws.send(JSON.stringify({ type, data: payload }));
-    return true;
+
+    console.warn(`Cannot emit "${type}": WebSocket not connected`);
+    return false;
   }
 
   joinOrderRoom(orderId: string) {
@@ -151,6 +236,8 @@ class WebSocketService {
 
   disconnect() {
     this.intentionalClose = true;
+    this.connectPromise = null;
+    this.pendingEmits = [];
     if (this.ws) {
       this.ws.close();
       this.ws = null;
