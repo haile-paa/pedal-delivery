@@ -504,7 +504,7 @@ func main() {
 				orders.POST("", orderHandler.CreateOrder)
 				orders.GET("", orderHandler.GetCustomerOrders)
 				orders.GET("/health/payment-verification", orderHandler.GetPaymentVerificationHealth)
-				orders.GET("/driver", orderHandler.GetDriverOrders) // must come before /:id
+				orders.GET("/driver", orderHandler.GetDriverOrders) // must be before /:id
 				orders.GET("/:id", orderHandler.GetOrderByID)
 				orders.POST("/:id/verify-payment", orderHandler.VerifyOrderPayment)
 				orders.POST("/:id/payment-proof", orderHandler.SubmitPaymentProof)
@@ -518,6 +518,7 @@ func main() {
 			{
 				driver.GET("/orders/available", orderHandler.GetAvailableOrders)
 				driver.POST("/orders/:id/accept", orderHandler.AcceptOrder)
+				driver.POST("/orders/:id/reject", orderHandler.RejectOrder)
 			}
 
 			restaurantAdmin := protected.Group("/restaurants")

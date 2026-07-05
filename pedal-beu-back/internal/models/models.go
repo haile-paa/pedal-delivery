@@ -279,9 +279,12 @@ type Order struct {
 	Rating              *OrderRating         `bson:"rating,omitempty" json:"rating,omitempty"`
 	IsScheduled         bool                 `bson:"is_scheduled" json:"is_scheduled"`
 	ScheduledFor        *time.Time           `bson:"scheduled_for,omitempty" json:"scheduled_for,omitempty"`
-	Cancellation        *CancellationInfo    `bson:"cancellation,omitempty" json:"cancellation,omitempty"`
-	CreatedAt           time.Time            `bson:"created_at" json:"created_at"`
-	UpdatedAt           time.Time            `bson:"updated_at" json:"updated_at"`
+	CancellationInfo    *CancellationInfo    `bson:"cancellation,omitempty" json:"cancellation,omitempty"`
+	// Drivers who rejected this order — excluded from their available-orders
+	// list so they don't keep seeing an order they've already declined.
+	RejectedByDrivers []primitive.ObjectID `bson:"rejected_by_drivers,omitempty" json:"rejected_by_drivers,omitempty"`
+	CreatedAt         time.Time            `bson:"created_at" json:"created_at"`
+	UpdatedAt         time.Time            `bson:"updated_at" json:"updated_at"`
 }
 
 type PaymentVerification struct {

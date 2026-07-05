@@ -105,6 +105,24 @@ func (c *Client) handleMessage(msg map[string]interface{}) {
 			c.handleDriverStatus(data)
 		}
 
+	// Driver sends this after successfully accepting an order via REST.
+	// Backend rebroadcasts order:taken to all other drivers so they remove
+	// the order from their available-orders list without needing to refresh.
+	case "driver:accepted":
+		if c.role == "driver" {
+			orderID, _ := data["orderId"].(string)
+			driverID, _ := data["driverId"].(string)
+			if orderID != "" {
+				hub.BroadcastToRoom("drivers", WebSocketEvent{
+					Type: "order:taken",
+					Data: map[string]interface{}{
+						"orderId":  orderID,
+						"driverId": driverID,
+					},
+				})
+			}
+		}
+
 	// Driver sends this periodically while online with their GPS coordinates.
 	// Persists location to DB and broadcasts to the "admin" room.
 	case "driver_location":

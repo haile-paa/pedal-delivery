@@ -12,9 +12,9 @@ import {
   Platform,
   AppState,
   ActivityIndicator,
-  Linking,
   type AppStateStatus,
 } from "react-native";
+import * as Location from "expo-location";
 import { colors } from "../../theme/colors";
 import { useRouter } from "expo-router";
 import WebSocketService from "../../services/websocket.service";
@@ -243,42 +243,38 @@ const AvailableOrdersScreen: React.FC = () => {
   };
 
   const getDriverLocation = async () => {
-    return new Promise<void>((resolve) => {
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          (position) => {
-            const { latitude, longitude } = position.coords;
-            setDriverLocation({ latitude, longitude });
-
-            // Send initial location via WebSocket
-            if (isOnline) {
-              WebSocketService.updateDriverLocation({
-                lat: latitude,
-                lng: longitude,
-              });
-            }
-            resolve();
-          },
-          (error) => {
-            console.error("Location error:", error);
-            resolve(); // Continue without location
-          },
-          { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 },
-        );
-      } else {
-        resolve(); // Continue without location
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        console.warn("Location permission denied");
+        return;
       }
-    });
+      const pos = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+      const { latitude, longitude } = pos.coords;
+      setDriverLocation({ latitude, longitude });
+      if (isOnline) {
+        WebSocketService.sendDriverLocation(latitude, longitude);
+      }
+    } catch (error) {
+      console.error("Location error:", error);
+    }
   };
 
   const startLocationUpdates = () => {
     if (locationInterval.current) clearInterval(locationInterval.current);
-    locationInterval.current = setInterval(() => {
-      if (driverLocation && isOnline) {
-        WebSocketService.updateDriverLocation({
-          lat: driverLocation.latitude,
-          lng: driverLocation.longitude,
+    locationInterval.current = setInterval(async () => {
+      if (!isOnline) return;
+      try {
+        const pos = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
         });
+        const { latitude, longitude } = pos.coords;
+        setDriverLocation({ latitude, longitude });
+        WebSocketService.sendDriverLocation(latitude, longitude);
+      } catch (e) {
+        // location temporarily unavailable — skip this tick
       }
     }, 10000); // every 10 seconds
   };

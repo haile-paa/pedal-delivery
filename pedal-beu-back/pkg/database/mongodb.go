@@ -149,6 +149,19 @@ func createIndexes(ctx context.Context) {
 		Keys: map[string]interface{}{"created_at": -1},
 	})
 
+	// Required for FindAvailableOrders' $near query against restaurant
+	// location. Without this index MongoDB rejects the $near query entirely
+	// (drivers' "available orders nearby" screen would fail every call).
+	collections.Orders.Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys: map[string]interface{}{"restaurant.location": "2dsphere"},
+	})
+
+	// Required for filtering available orders by delivery destination too,
+	// in case nearby-to-customer queries are added later.
+	collections.Orders.Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys: map[string]interface{}{"delivery_info.address.location": "2dsphere"},
+	})
+
 	collections.Orders.Indexes().CreateOne(ctx, mongo.IndexModel{
 		Keys: map[string]interface{}{
 			"status":      1,

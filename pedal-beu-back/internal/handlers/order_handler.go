@@ -89,7 +89,11 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
 		return
 	}
 
-	// Broadcast new order to all drivers (no location filtering)
+	// Broadcast new order to the "drivers" room.
+	// Only drivers who are online and within range will see it —
+	// the AvailableOrdersScreen fetches via REST with geo filtering;
+	// the WebSocket push is just a "hey, refresh" signal so they
+	// know to call fetchAvailableOrders() immediately.
 	if websocket.GlobalHub != nil {
 		websocket.GlobalHub.BroadcastToRoom("drivers", websocket.WebSocketEvent{
 			Type: "order:new",
@@ -277,46 +281,7 @@ func (h *OrderHandler) GetCustomerOrders(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
-// GetDriverOrders returns orders assigned to the authenticated driver.
-// GET /api/v1/orders/driver
-func (h *OrderHandler) GetDriverOrders(c *gin.Context) {
-	userID := c.MustGet("userID").(primitive.ObjectID)
-	userRole := c.MustGet("userRole").(string)
-
-	if userRole != "driver" {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Only drivers can view their assigned orders"})
-		return
-	}
-
-	page, _ := strconv.ParseInt(c.DefaultQuery("page", "1"), 10, 64)
-	limit, _ := strconv.ParseInt(c.DefaultQuery("limit", "20"), 10, 64)
-
-	if page < 1 {
-		page = 1
-	}
-	if limit < 1 || limit > 100 {
-		limit = 20
-	}
-
-	orders, total, err := h.orderService.GetDriverOrders(c.Request.Context(), userID, page, limit)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	response := gin.H{
-		"orders": orders,
-		"pagination": gin.H{
-			"page":  page,
-			"limit": limit,
-			"total": total,
-			"pages": (total + limit - 1) / limit,
-		},
-	}
-
-	c.JSON(http.StatusOK, response)
-}
-
+// @Summary Cancel order
 // @Description Cancel an order
 // @Tags orders
 // @Accept json
@@ -423,8 +388,6 @@ func (h *OrderHandler) GetAvailableOrders(c *gin.Context) {
 	userID := c.MustGet("userID").(primitive.ObjectID)
 	userRole := c.MustGet("userRole").(string)
 
-	_ = userID // Mark as used for now
-
 	if userRole != "driver" {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Only drivers can view available orders"})
 		return
@@ -449,13 +412,78 @@ func (h *OrderHandler) GetAvailableOrders(c *gin.Context) {
 		Coordinates: []float64{lng, lat},
 	}
 
-	orders, err := h.orderService.GetAvailableOrders(c.Request.Context(), location, radius)
+	// Pass driverID so rejected orders are excluded from this driver's list
+	orders, err := h.orderService.GetAvailableOrders(c.Request.Context(), userID, location, radius)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusOK, orders)
+}
+
+// RejectOrder lets a driver decline an order without affecting other drivers.
+// The order stays available; only this driver won't see it again.
+// POST /api/v1/driver/orders/:id/reject
+func (h *OrderHandler) RejectOrder(c *gin.Context) {
+	driverID := c.MustGet("userID").(primitive.ObjectID)
+	userRole := c.MustGet("userRole").(string)
+
+	if userRole != "driver" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Only drivers can reject orders"})
+		return
+	}
+
+	orderID, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid order ID"})
+		return
+	}
+
+	if err := h.orderService.RejectOrder(c.Request.Context(), orderID, driverID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Order rejected"})
+}
+
+// GetDriverOrders returns orders assigned to the authenticated driver.
+// GET /api/v1/orders/driver
+func (h *OrderHandler) GetDriverOrders(c *gin.Context) {
+	userID := c.MustGet("userID").(primitive.ObjectID)
+	userRole := c.MustGet("userRole").(string)
+
+	if userRole != "driver" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Only drivers can view their assigned orders"})
+		return
+	}
+
+	page, _ := strconv.ParseInt(c.DefaultQuery("page", "1"), 10, 64)
+	limit, _ := strconv.ParseInt(c.DefaultQuery("limit", "20"), 10, 64)
+
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 || limit > 100 {
+		limit = 20
+	}
+
+	orders, total, err := h.orderService.GetDriverOrders(c.Request.Context(), userID, page, limit)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"orders": orders,
+		"pagination": gin.H{
+			"page":  page,
+			"limit": limit,
+			"total": total,
+			"pages": (total + limit - 1) / limit,
+		},
+	})
 }
 
 // @Summary Accept order by driver

@@ -21,7 +21,8 @@ type OrderService interface {
 	GetRestaurantOrders(ctx context.Context, restaurantID primitive.ObjectID, page, limit int64) ([]models.Order, int64, error)
 	UpdateOrderStatus(ctx context.Context, orderID primitive.ObjectID, status models.OrderStatus, actorID primitive.ObjectID, actorRole string) error
 	AssignDriver(ctx context.Context, orderID, driverID primitive.ObjectID) error
-	GetAvailableOrders(ctx context.Context, driverLocation models.GeoLocation, radius float64) ([]models.Order, error)
+	RejectOrder(ctx context.Context, orderID, driverID primitive.ObjectID) error
+	GetAvailableOrders(ctx context.Context, driverID primitive.ObjectID, driverLocation models.GeoLocation, radius float64) ([]models.Order, error)
 	CancelOrder(ctx context.Context, orderID primitive.ObjectID, userID primitive.ObjectID, userRole, reason string) error
 	RateOrder(ctx context.Context, orderID primitive.ObjectID, rating *models.OrderRating) error
 	CalculateDeliveryFee(ctx context.Context, restaurantLocation, deliveryLocation models.GeoLocation) (float64, error)
@@ -329,8 +330,12 @@ func (s *orderService) AssignDriver(ctx context.Context, orderID, driverID primi
 	return s.orderRepo.AssignDriver(ctx, orderID, driverID)
 }
 
-func (s *orderService) GetAvailableOrders(ctx context.Context, driverLocation models.GeoLocation, radius float64) ([]models.Order, error) {
-	return s.orderRepo.FindAvailableOrders(ctx, driverLocation, radius)
+func (s *orderService) RejectOrder(ctx context.Context, orderID, driverID primitive.ObjectID) error {
+	return s.orderRepo.RejectOrder(ctx, orderID, driverID)
+}
+
+func (s *orderService) GetAvailableOrders(ctx context.Context, driverID primitive.ObjectID, driverLocation models.GeoLocation, radius float64) ([]models.Order, error) {
+	return s.orderRepo.FindAvailableOrders(ctx, driverID, driverLocation, radius)
 }
 
 func (s *orderService) CancelOrder(ctx context.Context, orderID primitive.ObjectID, userID primitive.ObjectID, userRole, reason string) error {

@@ -214,6 +214,14 @@ const formatPhoneNumber = (phone: string): string => {
 
 // ==================== AUTH API ====================
 
+// The backend sends tokens as snake_case { access_token, refresh_token }.
+// Some paths may send camelCase { accessToken, refreshToken }.
+// This helper normalises both so storage always works regardless of backend casing.
+const extractTokens = (tokens: any) => ({
+  accessToken: tokens?.access_token || tokens?.accessToken || "",
+  refreshToken: tokens?.refresh_token || tokens?.refreshToken || "",
+});
+
 export const authAPI = {
   sendOTP: async (
     phone: string,
@@ -245,10 +253,11 @@ export const authAPI = {
         ...data,
         phone: formatPhoneNumber(data.phone),
       });
-      if (response.data.user && response.data.tokens) {
+      const t = extractTokens(response.data.tokens);
+      if (response.data.user && t.accessToken) {
         await AsyncStorage.multiSet([
-          ["accessToken", response.data.tokens.accessToken],
-          ["refreshToken", response.data.tokens.refreshToken],
+          ["accessToken", t.accessToken],
+          ["refreshToken", t.refreshToken],
           ["user", JSON.stringify(response.data.user)],
         ]);
       }
@@ -271,10 +280,11 @@ export const authAPI = {
       const response = await api.post("/auth/login-otp", {
         phone: formatPhoneNumber(phone),
       });
-      if (response.data.user && response.data.tokens) {
+      const t = extractTokens(response.data.tokens);
+      if (response.data.user && t.accessToken) {
         await AsyncStorage.multiSet([
-          ["accessToken", response.data.tokens.accessToken],
-          ["refreshToken", response.data.tokens.refreshToken],
+          ["accessToken", t.accessToken],
+          ["refreshToken", t.refreshToken],
           ["user", JSON.stringify(response.data.user)],
         ]);
       }
@@ -297,10 +307,11 @@ export const authAPI = {
         phone: formatPhoneNumber(data.phone),
         password: data.password,
       });
-      if (response.data.user && response.data.tokens) {
+      const t = extractTokens(response.data.tokens);
+      if (response.data.user && t.accessToken) {
         await AsyncStorage.multiSet([
-          ["accessToken", response.data.tokens.accessToken],
-          ["refreshToken", response.data.tokens.refreshToken],
+          ["accessToken", t.accessToken],
+          ["refreshToken", t.refreshToken],
           ["user", JSON.stringify(response.data.user)],
         ]);
       }
@@ -327,10 +338,11 @@ export const authAPI = {
         login: data.login.trim(),
         password: data.password,
       });
-      if (response.data.user && response.data.tokens) {
+      const t = extractTokens(response.data.tokens);
+      if (response.data.user && t.accessToken) {
         await AsyncStorage.multiSet([
-          ["accessToken", response.data.tokens.accessToken],
-          ["refreshToken", response.data.tokens.refreshToken],
+          ["accessToken", t.accessToken],
+          ["refreshToken", t.refreshToken],
           ["user", JSON.stringify(response.data.user)],
         ]);
       }

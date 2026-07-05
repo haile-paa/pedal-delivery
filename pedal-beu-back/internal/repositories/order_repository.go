@@ -23,9 +23,10 @@ type OrderRepository interface {
 	FindByCustomerID(ctx context.Context, customerID primitive.ObjectID, pagination Pagination) ([]models.Order, int64, error)
 	FindByDriverID(ctx context.Context, driverID primitive.ObjectID, pagination Pagination) ([]models.Order, int64, error)
 	FindByRestaurantID(ctx context.Context, restaurantID primitive.ObjectID, pagination Pagination) ([]models.Order, int64, error)
-	FindAvailableOrders(ctx context.Context, location models.GeoLocation, radius float64) ([]models.Order, error)
+	FindAvailableOrders(ctx context.Context, driverID primitive.ObjectID, location models.GeoLocation, radius float64) ([]models.Order, error)
 	UpdateStatus(ctx context.Context, orderID primitive.ObjectID, status models.OrderStatus, actorID primitive.ObjectID, actorType string) error
 	AssignDriver(ctx context.Context, orderID, driverID primitive.ObjectID) error
+	RejectOrder(ctx context.Context, orderID, driverID primitive.ObjectID) error
 	UpdateTimeline(ctx context.Context, orderID primitive.ObjectID, event models.OrderEvent) error
 	AddRating(ctx context.Context, orderID primitive.ObjectID, rating models.OrderRating) error
 	UpdatePaymentStatus(ctx context.Context, orderID primitive.ObjectID, status string) error
@@ -195,10 +196,12 @@ func (r *orderRepository) FindByRestaurantID(ctx context.Context, restaurantID p
 	return orders, total, nil
 }
 
-func (r *orderRepository) FindAvailableOrders(ctx context.Context, location models.GeoLocation, radius float64) ([]models.Order, error) {
+func (r *orderRepository) FindAvailableOrders(ctx context.Context, driverID primitive.ObjectID, location models.GeoLocation, radius float64) ([]models.Order, error) {
 	filter := bson.M{
 		"status":    models.OrderAccepted,
 		"driver_id": nil,
+		// Exclude orders this specific driver already rejected
+		"rejected_by_drivers": bson.M{"$ne": driverID},
 		"restaurant.location": bson.M{
 			"$near": bson.M{
 				"$geometry":    location,
@@ -217,6 +220,29 @@ func (r *orderRepository) FindAvailableOrders(ctx context.Context, location mode
 		return nil, err
 	}
 	return orders, nil
+}
+
+// RejectOrder adds the driver to the order's rejected_by_drivers list.
+// The order stays available for other drivers — only this driver won't see it again.
+func (r *orderRepository) RejectOrder(ctx context.Context, orderID, driverID primitive.ObjectID) error {
+	result, err := r.collection.UpdateOne(
+		ctx,
+		bson.M{
+			"_id":    orderID,
+			"status": models.OrderAccepted,
+		},
+		bson.M{
+			"$addToSet": bson.M{"rejected_by_drivers": driverID},
+			"$set":      bson.M{"updated_at": time.Now()},
+		},
+	)
+	if err != nil {
+		return err
+	}
+	if result.MatchedCount == 0 {
+		return errors.New("order not found or no longer available")
+	}
+	return nil
 }
 
 func (r *orderRepository) UpdateStatus(ctx context.Context, orderID primitive.ObjectID, status models.OrderStatus, actorID primitive.ObjectID, actorType string) error {
@@ -249,13 +275,18 @@ func (r *orderRepository) AssignDriver(ctx context.Context, orderID, driverID pr
 		Notes:     "Driver assigned",
 	}
 	update := bson.M{
-		"$set":  bson.M{"driver_id": driverID, "status": models.OrderAccepted, "updated_at": time.Now()},
+		"$set":  bson.M{"driver_id": driverID, "updated_at": time.Now()},
 		"$push": bson.M{"timeline": event},
 	}
+	// IMPORTANT: this filter must match the status that FindAvailableOrders
+	// queries for (models.OrderAccepted = restaurant has accepted, ready for
+	// driver pickup). It previously checked models.OrderPending, which no
+	// order in the available-orders list ever has — so every accept attempt
+	// failed with "order not available or already assigned" for every driver.
 	filter := bson.M{
 		"_id":       orderID,
 		"driver_id": nil,
-		"status":    models.OrderPending,
+		"status":    models.OrderAccepted,
 	}
 	result, err := r.collection.UpdateOne(ctx, filter, update)
 	if err != nil {

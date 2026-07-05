@@ -55,14 +55,20 @@ const RegisterScreen: React.FC = () => {
       if (response.success && response.user && response.tokens) {
         console.log("✅ Registration successful, logging in...");
 
-        // Backend returns snake_case tokens
+        // Backend sends snake_case tokens: { access_token, refresh_token }
+        // api.ts already stored them — here we just read for dispatch
         const accessToken =
           response.tokens.access_token || response.tokens.accessToken;
         const refreshToken =
           response.tokens.refresh_token || response.tokens.refreshToken;
 
         if (!accessToken) {
-          Alert.alert("Registration Error", "No access token received");
+          console.error("❌ No access token in response:", response.tokens);
+          Alert.alert(
+            "Registration Error",
+            "Registration succeeded but login failed — please log in manually.",
+          );
+          router.replace("/");
           return;
         }
 
