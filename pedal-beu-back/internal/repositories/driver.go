@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/haile-paa/pedal-delivery/internal/models"
@@ -19,6 +20,7 @@ type DriverRepository interface {
 	FindByUserID(ctx context.Context, userID primitive.ObjectID) (*models.Driver, error)
 	Create(ctx context.Context, driver *models.Driver) (*models.Driver, error)
 	UpdateStatus(ctx context.Context, id primitive.ObjectID, status string) error
+	UpdateVehicle(ctx context.Context, id primitive.ObjectID, vehicle models.Vehicle) error
 	UpdateOnlineStatus(ctx context.Context, userID primitive.ObjectID, isOnline bool) error
 	UpdateLocation(ctx context.Context, userID primitive.ObjectID, lng, lat float64) error
 }
@@ -122,6 +124,26 @@ func (r *driverRepository) UpdateStatus(ctx context.Context, id primitive.Object
 		}},
 	)
 	return err
+}
+
+// UpdateVehicle updates the vehicle info (type/model/color/plate) for a
+// driver — used by the admin site's "Edit Driver" action.
+func (r *driverRepository) UpdateVehicle(ctx context.Context, id primitive.ObjectID, vehicle models.Vehicle) error {
+	result, err := r.collection.UpdateOne(
+		ctx,
+		bson.M{"_id": id},
+		bson.M{"$set": bson.M{
+			"vehicle":    vehicle,
+			"updated_at": time.Now(),
+		}},
+	)
+	if err != nil {
+		return err
+	}
+	if result.MatchedCount == 0 {
+		return errors.New("driver not found")
+	}
+	return nil
 }
 
 // UpdateOnlineStatus sets is_online for the driver whose user_id matches.

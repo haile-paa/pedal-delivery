@@ -47,6 +47,15 @@ interface AddDriverForm {
   password: string;
 }
 
+interface EditDriverForm {
+  username: string;
+  phone: string;
+  vehicleType: string;
+  vehicleModel: string;
+  vehicleColor: string;
+  vehiclePlate: string;
+}
+
 const emptyForm: AddDriverForm = { phone: "", username: "", password: "" };
 
 const formatCoords = (lat: number, lng: number) =>
@@ -63,6 +72,22 @@ const Drivers: React.FC = () => {
   const [addLoading, setAddLoading] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
   const [addSuccess, setAddSuccess] = useState(false);
+
+  // View details modal
+  const [viewingDriver, setViewingDriver] = useState<Driver | null>(null);
+
+  // Edit modal
+  const [editingDriver, setEditingDriver] = useState<Driver | null>(null);
+  const [editForm, setEditForm] = useState<EditDriverForm>({
+    username: "",
+    phone: "",
+    vehicleType: "",
+    vehicleModel: "",
+    vehicleColor: "",
+    vehiclePlate: "",
+  });
+  const [editLoading, setEditLoading] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
 
   // WebSocket — admin receives live driver_status_update and driver_location_update
@@ -215,6 +240,79 @@ const Drivers: React.FC = () => {
     setAddError(null);
     setAddSuccess(false);
     setShowPassword(false);
+  };
+
+  const openViewModal = (driver: Driver) => {
+    setViewingDriver(driver);
+  };
+
+  const closeViewModal = () => {
+    setViewingDriver(null);
+  };
+
+  const openEditModal = (driver: Driver) => {
+    setEditingDriver(driver);
+    setEditError(null);
+    setEditForm({
+      username: driver.username || "",
+      phone: driver.phone || "",
+      vehicleType: driver.vehicleType || "",
+      vehicleModel: "",
+      vehicleColor: "",
+      vehiclePlate:
+        driver.vehiclePlate && driver.vehiclePlate !== "—"
+          ? driver.vehiclePlate
+          : "",
+    });
+  };
+
+  const closeEditModal = () => {
+    if (editLoading) return;
+    setEditingDriver(null);
+    setEditError(null);
+  };
+
+  const handleEditDriver = async () => {
+    if (!editingDriver) return;
+    setEditError(null);
+
+    const username = editForm.username.trim();
+    if (username && username.length < 3) {
+      setEditError("Username must be at least 3 characters.");
+      return;
+    }
+
+    const phone = editForm.phone.trim();
+    if (phone && !/^\+?[0-9]{7,15}$/.test(phone.replace(/\s/g, ""))) {
+      setEditError("Enter a valid phone number (e.g. +251912345678).");
+      return;
+    }
+
+    setEditLoading(true);
+    try {
+      const response = await driverAPI.update(editingDriver.id, {
+        username: username || undefined,
+        phone: phone || undefined,
+        vehicle: {
+          type: editForm.vehicleType || undefined,
+          model: editForm.vehicleModel || undefined,
+          color: editForm.vehicleColor || undefined,
+          plate: editForm.vehiclePlate || undefined,
+        },
+      });
+      const updated = mapDriver(response.data as BackendDriver);
+      setDrivers((prev) =>
+        prev.map((d) => (d.id === updated.id ? updated : d)),
+      );
+      setEditingDriver(null);
+    } catch (err: any) {
+      setEditError(
+        err?.response?.data?.error ||
+          "Failed to update driver. Please try again.",
+      );
+    } finally {
+      setEditLoading(false);
+    }
   };
 
   const getStatusColor = (status: Driver["status"]) => {
@@ -379,10 +477,16 @@ const Drivers: React.FC = () => {
               </div>
 
               <div className='mt-4 flex justify-end gap-2'>
-                <button className='rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50'>
+                <button
+                  onClick={() => openViewModal(driver)}
+                  className='rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50'
+                >
                   View
                 </button>
-                <button className='rounded bg-blue-600 px-3 py-1 text-sm text-white hover:bg-blue-700'>
+                <button
+                  onClick={() => openEditModal(driver)}
+                  className='rounded bg-blue-600 px-3 py-1 text-sm text-white hover:bg-blue-700'
+                >
                   Edit
                 </button>
               </div>
@@ -527,6 +631,242 @@ const Drivers: React.FC = () => {
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── View Driver Modal ─────────────────────────────────────────────── */}
+      {viewingDriver && (
+        <div className='fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4'>
+          <div className='w-full max-w-md rounded-xl bg-white p-6 shadow-xl'>
+            <div className='mb-4 flex items-center justify-between'>
+              <h3 className='text-lg font-semibold text-gray-900'>
+                Driver Details
+              </h3>
+              <button
+                onClick={closeViewModal}
+                className='rounded-lg p-1 hover:bg-gray-100'
+              >
+                <FiX className='h-5 w-5 text-gray-500' />
+              </button>
+            </div>
+
+            <div className='space-y-3 text-sm'>
+              <div className='flex justify-between'>
+                <span className='text-gray-500'>Name</span>
+                <span className='font-medium text-gray-900'>
+                  {viewingDriver.name}
+                </span>
+              </div>
+              <div className='flex justify-between'>
+                <span className='text-gray-500'>Username</span>
+                <span className='font-medium text-gray-900'>
+                  {viewingDriver.username || "—"}
+                </span>
+              </div>
+              <div className='flex justify-between'>
+                <span className='text-gray-500'>Phone</span>
+                <span className='font-medium text-gray-900'>
+                  {viewingDriver.phone || "—"}
+                </span>
+              </div>
+              <div className='flex justify-between'>
+                <span className='text-gray-500'>Status</span>
+                <span className='font-medium capitalize text-gray-900'>
+                  {viewingDriver.status.replace("_", " ")}
+                </span>
+              </div>
+              <div className='flex justify-between'>
+                <span className='text-gray-500'>Rating</span>
+                <span className='font-medium text-gray-900'>
+                  {viewingDriver.rating.toFixed(1)} / 5.0
+                </span>
+              </div>
+              <div className='flex justify-between'>
+                <span className='text-gray-500'>Deliveries</span>
+                <span className='font-medium text-gray-900'>
+                  {viewingDriver.deliveries}
+                </span>
+              </div>
+              <div className='flex justify-between'>
+                <span className='text-gray-500'>Vehicle</span>
+                <span className='font-medium capitalize text-gray-900'>
+                  {viewingDriver.vehicleType || "—"}
+                  {viewingDriver.vehiclePlate &&
+                    viewingDriver.vehiclePlate !== "—" &&
+                    ` · ${viewingDriver.vehiclePlate}`}
+                </span>
+              </div>
+              <div className='flex justify-between'>
+                <span className='text-gray-500'>Location</span>
+                <span className='font-medium text-gray-900'>
+                  {viewingDriver.location}
+                </span>
+              </div>
+            </div>
+
+            <button
+              onClick={closeViewModal}
+              className='mt-6 w-full rounded-lg border border-gray-300 py-2 text-sm font-medium hover:bg-gray-50'
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Edit Driver Modal ─────────────────────────────────────────────── */}
+      {editingDriver && (
+        <div className='fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4'>
+          <div className='w-full max-w-md rounded-xl bg-white p-6 shadow-xl'>
+            <div className='mb-4 flex items-center justify-between'>
+              <h3 className='text-lg font-semibold text-gray-900'>
+                Edit Driver
+              </h3>
+              <button
+                onClick={closeEditModal}
+                className='rounded-lg p-1 hover:bg-gray-100'
+              >
+                <FiX className='h-5 w-5 text-gray-500' />
+              </button>
+            </div>
+
+            {editError && (
+              <div className='mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700'>
+                {editError}
+              </div>
+            )}
+
+            <div className='space-y-4'>
+              <div>
+                <label className='mb-1 block text-sm font-medium text-gray-700'>
+                  Username
+                </label>
+                <input
+                  type='text'
+                  value={editForm.username}
+                  onChange={(e) =>
+                    setEditForm((f) => ({ ...f, username: e.target.value }))
+                  }
+                  className='w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200'
+                  disabled={editLoading}
+                />
+              </div>
+
+              <div>
+                <label className='mb-1 block text-sm font-medium text-gray-700'>
+                  Phone
+                </label>
+                <input
+                  type='text'
+                  value={editForm.phone}
+                  onChange={(e) =>
+                    setEditForm((f) => ({ ...f, phone: e.target.value }))
+                  }
+                  placeholder='+251912345678'
+                  className='w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200'
+                  disabled={editLoading}
+                />
+              </div>
+
+              <div className='grid grid-cols-2 gap-3'>
+                <div>
+                  <label className='mb-1 block text-sm font-medium text-gray-700'>
+                    Vehicle Type
+                  </label>
+                  <select
+                    value={editForm.vehicleType}
+                    onChange={(e) =>
+                      setEditForm((f) => ({
+                        ...f,
+                        vehicleType: e.target.value,
+                      }))
+                    }
+                    className='w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200'
+                    disabled={editLoading}
+                  >
+                    <option value=''>—</option>
+                    <option value='bicycle'>Bicycle</option>
+                    <option value='motorcycle'>Motorcycle</option>
+                    <option value='car'>Car</option>
+                  </select>
+                </div>
+                <div>
+                  <label className='mb-1 block text-sm font-medium text-gray-700'>
+                    Plate
+                  </label>
+                  <input
+                    type='text'
+                    value={editForm.vehiclePlate}
+                    onChange={(e) =>
+                      setEditForm((f) => ({
+                        ...f,
+                        vehiclePlate: e.target.value,
+                      }))
+                    }
+                    className='w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200'
+                    disabled={editLoading}
+                  />
+                </div>
+              </div>
+
+              <div className='grid grid-cols-2 gap-3'>
+                <div>
+                  <label className='mb-1 block text-sm font-medium text-gray-700'>
+                    Vehicle Model
+                  </label>
+                  <input
+                    type='text'
+                    value={editForm.vehicleModel}
+                    onChange={(e) =>
+                      setEditForm((f) => ({
+                        ...f,
+                        vehicleModel: e.target.value,
+                      }))
+                    }
+                    className='w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200'
+                    disabled={editLoading}
+                  />
+                </div>
+                <div>
+                  <label className='mb-1 block text-sm font-medium text-gray-700'>
+                    Vehicle Color
+                  </label>
+                  <input
+                    type='text'
+                    value={editForm.vehicleColor}
+                    onChange={(e) =>
+                      setEditForm((f) => ({
+                        ...f,
+                        vehicleColor: e.target.value,
+                      }))
+                    }
+                    className='w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200'
+                    disabled={editLoading}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className='mt-6 flex gap-3'>
+              <button
+                onClick={closeEditModal}
+                disabled={editLoading}
+                className='flex-1 rounded-lg border border-gray-300 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50'
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleEditDriver}
+                disabled={editLoading}
+                className='flex flex-1 items-center justify-center gap-2 rounded-lg bg-blue-600 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50'
+              >
+                {editLoading && (
+                  <span className='h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent' />
+                )}
+                {editLoading ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
           </div>
         </div>
       )}

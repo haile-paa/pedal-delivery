@@ -9,6 +9,7 @@ import (
 	"github.com/haile-paa/pedal-delivery/internal/models"
 	"github.com/haile-paa/pedal-delivery/internal/repositories"
 	"github.com/haile-paa/pedal-delivery/pkg/auth"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
@@ -157,7 +158,7 @@ func (h *DriverHandler) CreateDriver(c *gin.Context) {
 		return
 	}
 
-	phone := strings.TrimSpace(req.Phone)
+	phone := normalizePhone(strings.TrimSpace(req.Phone))
 	username := strings.TrimSpace(req.Username)
 
 	if phone == "" {
@@ -254,6 +255,117 @@ func (h *DriverHandler) CreateDriver(c *gin.Context) {
 		"user": gin.H{
 			"name":     username,
 			"phone":    phone,
+			"username": username,
+		},
+	})
+}
+
+// UpdateDriver updates a driver's username, phone, and/or vehicle info.
+// Admin-only — used by the "Edit" action on the admin site's Drivers page.
+// PUT /api/v1/admin/drivers/:id
+func (h *DriverHandler) UpdateDriver(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	objID, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid driver ID"})
+		return
+	}
+
+	var req struct {
+		Username string `json:"username,omitempty"`
+		Phone    string `json:"phone,omitempty"`
+		Vehicle  *struct {
+			Type  string `json:"type,omitempty"`
+			Model string `json:"model,omitempty"`
+			Color string `json:"color,omitempty"`
+			Plate string `json:"plate,omitempty"`
+		} `json:"vehicle,omitempty"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	driver, err := h.driverRepo.FindByID(ctx, objID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Driver not found"})
+		return
+	}
+
+	// Update the linked user's username/phone, if provided
+	if req.Username != "" || req.Phone != "" {
+		update := bson.M{}
+
+		if req.Username != "" {
+			username := strings.TrimSpace(req.Username)
+			existing, _ := h.userRepo.FindByUsername(ctx, username)
+			if existing != nil && existing.ID != driver.UserID {
+				c.JSON(http.StatusConflict, gin.H{"error": "Username already taken. Please choose a different username."})
+				return
+			}
+			update["username"] = username
+		}
+
+		if req.Phone != "" {
+			phone := normalizePhone(strings.TrimSpace(req.Phone))
+			existing, _ := h.userRepo.FindByPhone(ctx, phone)
+			if existing != nil && existing.ID != driver.UserID {
+				c.JSON(http.StatusConflict, gin.H{"error": "A user with this phone number already exists."})
+				return
+			}
+			update["phone"] = phone
+		}
+
+		if err := h.userRepo.Update(ctx, driver.UserID, update); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update driver's account: " + err.Error()})
+			return
+		}
+	}
+
+	// Update vehicle info, if provided
+	if req.Vehicle != nil {
+		vehicle := models.Vehicle{
+			Type:  req.Vehicle.Type,
+			Model: req.Vehicle.Model,
+			Color: req.Vehicle.Color,
+			Plate: req.Vehicle.Plate,
+		}
+		if err := h.driverRepo.UpdateVehicle(ctx, objID, vehicle); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update vehicle info: " + err.Error()})
+			return
+		}
+	}
+
+	// Return the fresh driver record
+	updatedDriver, err := h.driverRepo.FindByID(ctx, objID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Driver updated but failed to reload"})
+		return
+	}
+
+	var userName, userPhone, username string
+	if updatedDriver.UserID != primitive.NilObjectID {
+		user, err := h.userRepo.FindByID(ctx, updatedDriver.UserID)
+		if err == nil && user != nil {
+			userName = userDisplayName(user)
+			userPhone = user.Phone
+			username = user.Username
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"id":          updatedDriver.ID.Hex(),
+		"user_id":     updatedDriver.UserID.Hex(),
+		"status":      updatedDriver.Status,
+		"vehicle":     updatedDriver.Vehicle,
+		"rating":      updatedDriver.Rating,
+		"total_trips": updatedDriver.TotalTrips,
+		"is_online":   updatedDriver.IsOnline,
+		"user": gin.H{
+			"name":     userName,
+			"phone":    userPhone,
 			"username": username,
 		},
 	})

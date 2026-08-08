@@ -167,6 +167,19 @@ export const driverAPI = {
   getById: (id: string) => api.get(`/admin/drivers/${id}`),
   create: (data: { phone: string; username: string; password: string }) =>
     api.post("/admin/drivers", data),
+  update: (
+    id: string,
+    data: {
+      username?: string;
+      phone?: string;
+      vehicle?: {
+        type?: string;
+        model?: string;
+        color?: string;
+        plate?: string;
+      };
+    },
+  ) => api.put(`/admin/drivers/${id}`, data),
   updateStatus: (id: string, status: string) =>
     api.put(`/admin/drivers/${id}/status`, { status }),
 };

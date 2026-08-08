@@ -14,7 +14,6 @@ import RestaurantDetail from "./components/Dashboard/RestaurantDetail";
 import AddMenuItem from "./pages/AddMenuItem";
 import Drivers from "./pages/Drivers";
 import Orders from "./pages/Orders";
-``;
 // import Analytics from "./pages/Analytics";
 import Settings from "./pages/Settings";
 import Layout from "./components/Layout/Layout";
