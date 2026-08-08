@@ -15,7 +15,6 @@ import (
 	"github.com/haile-paa/pedal-delivery/internal/services"
 	"github.com/haile-paa/pedal-delivery/pkg/auth"
 	"github.com/haile-paa/pedal-delivery/pkg/email"
-
 	// "github.com/haile-paa/pedal-delivery/pkg/sms" // PHONE VERIFICATION (commented out — switched to email verification)
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
@@ -214,7 +213,9 @@ func (h *AuthHandler) SendOTP(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "OTP sent successfully",
 		"role":    req.Role,
-		"otp":     otp, // Remove in production
+		// "otp": otp, // no longer returned to the client — Brevo actually
+		// delivers the email now, so leaking the code in the API response
+		// would defeat the point of verification. Still logged server-side above.
 	})
 }
 
@@ -332,7 +333,7 @@ func (h *AuthHandler) RegisterDriver(c *gin.Context) {
 			"username": user.Username,
 			"role":     user.Role.Type,
 		},
-		"otp": otp, // Remove in production
+		// "otp": otp, // no longer returned to the client — see SendOTP for why
 	})
 }
 
@@ -627,8 +628,49 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	response := gin.H{
-		"message": "Registration successful",
+	// Admins are verified immediately (see auth_service.go), so they can log
+	// straight in with the tokens Register already issued.
+	if user.Role.Type == "admin" {
+		c.JSON(http.StatusCreated, gin.H{
+			"message": "Registration successful",
+			"user": gin.H{
+				"id":        user.ID,
+				"phone":     user.Phone,
+				"email":     user.Email,
+				"role":      user.Role.Type,
+				"firstName": user.Profile.FirstName,
+			},
+			"tokens": tokens,
+		})
+		return
+	}
+
+	// Customers/drivers are created unverified — send the verification OTP
+	// now and let the app finish sign-in via /verify-otp (see
+	// EmailVerificationScreen.tsx), instead of handing out tokens here.
+	otp := generateOTP()
+	otpMutex.Lock()
+	otpStore[req.Email] = OTPData{
+		Code:      otp,
+		ExpiresAt: time.Now().Add(5 * time.Minute),
+	}
+	otpMutex.Unlock()
+
+	if h.emailClient != nil {
+		resp, sendErr := h.emailClient.SendOTPEmail(req.Email, otp)
+		if sendErr != nil {
+			log.Printf("❌ Failed to send verification email: %v", sendErr)
+		} else {
+			log.Printf("✅ Verification email sent successfully to: %s", resp.To)
+		}
+	} else {
+		log.Println("⚠️ Email client not configured, OTP not sent via email")
+	}
+
+	log.Println("✅ User registered (pending verification). OTP for", req.Email, "=", otp)
+
+	c.JSON(http.StatusCreated, gin.H{
+		"message": "Registration successful. We sent a verification code to your email.",
 		"user": gin.H{
 			"id":        user.ID,
 			"phone":     user.Phone,
@@ -636,10 +678,8 @@ func (h *AuthHandler) Register(c *gin.Context) {
 			"role":      user.Role.Type,
 			"firstName": user.Profile.FirstName,
 		},
-		"tokens": tokens,
-	}
-
-	c.JSON(http.StatusCreated, response)
+		// no "tokens" here on purpose — the app must call /verify-otp first
+	})
 }
 
 // @Summary Login with OTP
@@ -827,10 +867,9 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 		}
 	}
 
-	// In production, don't return OTP in response
+	// OTP not returned to the client — Brevo actually delivers the email now
 	c.JSON(http.StatusOK, gin.H{
 		"message": "OTP sent to email",
-		"otp":     otp, // Remove this in production
 	})
 }
 

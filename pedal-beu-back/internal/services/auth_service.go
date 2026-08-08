@@ -167,13 +167,16 @@ func (s *authService) Register(ctx context.Context, req *models.RegisterRequest)
 		}
 
 		// Determine password - auto-generate for drivers if not provided
+		// (kept for reference/revert — Password is now `required` in RegisterRequest,
+		// so this fallback should rarely trigger, except via the generic driver role
+		// on this endpoint, which the app doesn't currently use — see RegisterDriver instead)
 		password := req.Password
 		if password == "" {
 			if req.Role == "driver" {
 				password = generateSecurePassword()
 			} else {
-				// For customers using OTP-only, create a placeholder
-				password = "otp_only_auth_" + normalizedPhone
+				// password = "otp_only_auth_" + normalizedPhone // PHONE VERIFICATION (commented out — password is now required at registration)
+				password = generateSecurePassword()
 			}
 		}
 
@@ -193,10 +196,11 @@ func (s *authService) Register(ctx context.Context, req *models.RegisterRequest)
 
 		// Create user
 		user := &models.User{
-			Phone:      normalizedPhone,
-			Email:      req.Email,
-			Password:   hashedPassword,
-			IsVerified: true, // Verified via OTP
+			Phone:    normalizedPhone,
+			Email:    req.Email,
+			Password: hashedPassword,
+			// IsVerified: true, // PHONE VERIFICATION (commented out — used to assume the OTP step already ran before /register was called)
+			IsVerified: false, // account is verified via a follow-up email-OTP step — see auth_handler.go Register()
 			Role: models.UserRole{
 				Type:        req.Role,
 				Permissions: permissions,

@@ -27,16 +27,47 @@ const RegisterScreen: React.FC = () => {
   }>();
   const { dispatch } = useAppState();
 
-  const phone = params.phone || "";
   const role = params.role || "customer";
 
   const [firstName, setFirstName] = useState("");
-  const [email, setEmail] = useState(params.email || ""); // pre-filled from the email verification step
+  const [phoneNumber, setPhoneNumber] = useState(params.phone || "");
+  const [email, setEmail] = useState(params.email || "");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const validatePhoneNumber = (phone: string): boolean => {
+    const cleaned = phone.replace(/\D/g, "");
+    return cleaned.length === 9;
+  };
+
+  const validateEmail = (value: string): boolean => {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+  };
 
   const handleRegister = async () => {
     if (!firstName.trim()) {
       Alert.alert("Error", "Please enter your first name");
+      return;
+    }
+
+    if (!phoneNumber.trim() || !validatePhoneNumber(phoneNumber)) {
+      Alert.alert("Error", "Enter a valid 9-digit phone number like 912345678");
+      return;
+    }
+
+    if (!email.trim() || !validateEmail(email)) {
+      Alert.alert("Error", "Please enter a valid email address");
+      return;
+    }
+
+    if (!password.trim() || password.length < 6) {
+      Alert.alert("Error", "Password must be at least 6 characters");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      Alert.alert("Error", "Passwords do not match");
       return;
     }
 
@@ -45,52 +76,47 @@ const RegisterScreen: React.FC = () => {
 
     try {
       const response = await authAPI.register({
-        phone,
+        phone: phoneNumber,
         first_name: firstName.trim(),
-        email: email.trim() || undefined,
+        email: email.trim().toLowerCase(),
+        password,
         role,
       });
 
       console.log("📋 Register response object:", response);
 
-      if (response.success && response.user && response.tokens) {
-        console.log("✅ Registration successful, logging in...");
-
-        // Backend sends snake_case tokens: { access_token, refresh_token }
-        // api.ts already stored them — here we just read for dispatch
+      if (response.success && response.user) {
+        // Admins are verified immediately and come back with usable tokens.
+        // Customers/drivers are unverified — the backend already sent an OTP
+        // email, so send them to the verification screen instead of logging
+        // them straight in.
         const accessToken =
-          response.tokens.access_token || response.tokens.accessToken;
-        const refreshToken =
-          response.tokens.refresh_token || response.tokens.refreshToken;
+          response.tokens?.access_token || response.tokens?.accessToken;
 
-        if (!accessToken) {
-          console.error("❌ No access token in response:", response.tokens);
-          Alert.alert(
-            "Registration Error",
-            "Registration succeeded but login failed — please log in manually.",
-          );
-          router.replace("/");
+        if (accessToken) {
+          const userRole = response.user.role as "customer" | "driver";
+          dispatch({
+            type: "LOGIN_SUCCESS",
+            payload: {
+              user: response.user,
+              token: accessToken,
+              role: userRole,
+            },
+          });
+          const targetRoute =
+            userRole === "driver" ? "/(driver)/dashboard" : "/(customer)/home";
+          router.replace(targetRoute);
           return;
         }
 
-        // Update app state - ensure role is only customer or driver
-        const userRole = response.user.role as "customer" | "driver";
-
-        dispatch({
-          type: "LOGIN_SUCCESS",
-          payload: {
-            user: response.user,
-            token: accessToken,
-            role: userRole,
+        router.push({
+          pathname: "/(auth)/email-verification",
+          params: {
+            role,
+            phone: phoneNumber,
+            email: email.trim().toLowerCase(),
           },
         });
-
-        // Navigate to appropriate home screen
-        const targetRoute =
-          userRole === "driver" ? "/(driver)/dashboard" : "/(customer)/home";
-
-        console.log(`🚗 Navigating to ${targetRoute}`);
-        router.replace(targetRoute);
       } else {
         console.error("❌ Registration response indicates failure:", response);
         Alert.alert(
@@ -125,9 +151,22 @@ const RegisterScreen: React.FC = () => {
         contentContainerStyle={styles.formContainer}
         keyboardShouldPersistTaps='handled'
       >
-        <View style={styles.phoneDisplay}>
-          <Text style={styles.phoneLabel}>Phone Number</Text>
-          <Text style={styles.phoneValue}>+251 {phone}</Text>
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Phone Number *</Text>
+          <View style={styles.phoneRow}>
+            <Text style={styles.phonePrefix}>+251</Text>
+            <TextInput
+              style={styles.phoneInputField}
+              placeholder='912345678'
+              value={phoneNumber}
+              onChangeText={(text) =>
+                setPhoneNumber(text.replace(/[^0-9]/g, ""))
+              }
+              editable={!loading}
+              keyboardType='number-pad'
+              maxLength={9}
+            />
+          </View>
         </View>
 
         <View style={styles.inputGroup}>
@@ -144,7 +183,7 @@ const RegisterScreen: React.FC = () => {
         </View>
 
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Email</Text>
+          <Text style={styles.label}>Email *</Text>
           <TextInput
             style={styles.input}
             placeholder='your.email@example.com'
@@ -154,6 +193,33 @@ const RegisterScreen: React.FC = () => {
             keyboardType='email-address'
             autoCapitalize='none'
             autoCorrect={false}
+          />
+          <Text style={styles.hint}>
+            We'll send a verification code to this email
+          </Text>
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Password *</Text>
+          <TextInput
+            style={styles.input}
+            placeholder='At least 6 characters'
+            value={password}
+            onChangeText={setPassword}
+            editable={!loading}
+            secureTextEntry
+          />
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Confirm Password *</Text>
+          <TextInput
+            style={styles.input}
+            placeholder='Re-enter your password'
+            value={confirmPassword}
+            onChangeText={setConfirmPassword}
+            editable={!loading}
+            secureTextEntry
           />
         </View>
 
@@ -239,6 +305,32 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "600",
     color: colors.gray900,
+  },
+  phoneRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.gray300,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+  },
+  phonePrefix: {
+    fontSize: 16,
+    color: colors.gray600,
+    marginRight: 8,
+    fontWeight: "600",
+  },
+  phoneInputField: {
+    flex: 1,
+    paddingVertical: 14,
+    fontSize: 16,
+    color: colors.gray900,
+  },
+  hint: {
+    fontSize: 12,
+    color: colors.gray500,
+    marginTop: 6,
   },
   inputGroup: {
     marginBottom: 20,

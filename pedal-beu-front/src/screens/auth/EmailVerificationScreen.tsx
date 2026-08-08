@@ -65,22 +65,24 @@ const EmailVerificationScreen: React.FC = () => {
   };
 
   const handleOtpChange = (text: string, index: number) => {
-    if (text.length > 1) {
-      const pastedOtp = text.split("").slice(0, 6);
+    const digitsOnly = text.replace(/[^0-9]/g, "");
+
+    if (digitsOnly.length > 1) {
+      const pastedOtp = digitsOnly.split("").slice(0, 6 - index);
       const newOtp = [...otp];
       pastedOtp.forEach((char, idx) => {
         if (index + idx < 6) newOtp[index + idx] = char;
       });
       setOtp(newOtp);
-      const nextIndex = index + pastedOtp.length;
-      if (nextIndex < 6) inputRefs.current[nextIndex]?.focus();
+      const nextIndex = Math.min(index + pastedOtp.length, 5);
+      inputRefs.current[nextIndex]?.focus();
       return;
     }
 
     const newOtp = [...otp];
-    newOtp[index] = text;
+    newOtp[index] = digitsOnly;
     setOtp(newOtp);
-    if (text && index < 5) inputRefs.current[index + 1]?.focus();
+    if (digitsOnly && index < 5) inputRefs.current[index + 1]?.focus();
   };
 
   const handleKeyPress = (e: any, index: number) => {
@@ -192,24 +194,9 @@ const EmailVerificationScreen: React.FC = () => {
 
       const data = await res.json();
       if (res.ok) {
-        if (data.otp) {
-          Alert.alert("OTP Sent Successfully", `Your OTP is: ${data.otp}`, [
-            {
-              text: "OK",
-              onPress: () => {
-                const otpDigits = data.otp.split("");
-                if (otpDigits.length === 6) {
-                  setOtp(otpDigits);
-                  setTimeout(() => {
-                    inputRefs.current[0]?.focus();
-                  }, 100);
-                }
-              },
-            },
-          ]);
-        } else {
-          Alert.alert("Success", "OTP resent successfully!");
-        }
+        // The backend no longer returns the raw OTP in the response (it's
+        // actually delivered by email now), so there's nothing to show here.
+        Alert.alert("Success", "A new code was sent to your email!");
         setResendTimer(30);
       } else {
         Alert.alert(
@@ -224,11 +211,11 @@ const EmailVerificationScreen: React.FC = () => {
 
   const handleShowOtpAgain = () => {
     Alert.alert(
-      "Get OTP Again",
-      "Would you like to see the OTP again? This will resend a new OTP.",
+      "Resend Code",
+      "We'll send a new verification code to your email.",
       [
         { text: "Cancel", style: "cancel" },
-        { text: "Resend & Show", onPress: handleResendOtp },
+        { text: "Resend", onPress: handleResendOtp },
       ],
     );
   };
@@ -278,7 +265,8 @@ const EmailVerificationScreen: React.FC = () => {
             onChangeText={(text) => handleOtpChange(text, index)}
             onKeyPress={(e) => handleKeyPress(e, index)}
             keyboardType='number-pad'
-            maxLength={1}
+            maxLength={6}
+            textContentType='oneTimeCode'
             selectTextOnFocus
             autoFocus={index === 0}
           />

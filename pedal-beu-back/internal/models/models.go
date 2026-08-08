@@ -324,10 +324,10 @@ type CancellationInfo struct {
 // Request/Response DTOs
 type RegisterRequest struct {
 	Phone     string `json:"phone" binding:"required"`
-	Email     string `json:"email,omitempty" binding:"omitempty,email"`
+	Email     string `json:"email" binding:"required,email"` // now required — used to send the verification OTP
 	FirstName string `json:"first_name"`
 	Role      string `json:"role" binding:"required,oneof=customer driver admin"` // Added admin
-	Password  string `json:"password,omitempty"`                                  // Optional, will be auto-generated for drivers
+	Password  string `json:"password" binding:"required,min=6"`                   // now required for the phone+password sign-in flow
 }
 
 type LoginRequest struct {

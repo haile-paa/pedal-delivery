@@ -26,14 +26,18 @@ import { colors } from "../../theme/colors";
 import AnimatedButton from "../../components/ui/AnimatedButton";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Location from "expo-location"; // ✅ Import Location
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useAppState } from "../../context/AppStateContext";
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
 
 const WelcomeScreen: React.FC = () => {
   const router = useRouter();
+  const { dispatch } = useAppState();
   const [showPhoneScreen, setShowPhoneScreen] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState("");
-  const [email, setEmail] = useState(""); // EMAIL VERIFICATION — used for OTP instead of phone
+  const [password, setPassword] = useState(""); // used for the phone+password Sign In flow
+  const [email, setEmail] = useState(""); // kept for the old email+phone-first flow — see below (commented out)
   const [loading, setLoading] = useState(false);
 
   const handlePhoneNumberChange = useCallback((text: string) => {
@@ -104,7 +108,7 @@ const WelcomeScreen: React.FC = () => {
     }
   };
 
-  const handleContinueAsCustomer = async () => {
+  const handleSignIn = async () => {
     Keyboard.dismiss();
 
     if (!phoneNumber.trim()) {
@@ -117,31 +121,29 @@ const WelcomeScreen: React.FC = () => {
       return;
     }
 
-    // PHONE VERIFICATION (commented out — switched to email verification)
-    // if (!validatePhoneNumber(phoneNumber)) { ... }
-
-    if (!email.trim()) {
-      Alert.alert("Error", "Please enter your email address");
-      return;
-    }
-
-    if (!validateEmail(email)) {
-      Alert.alert("Error", "Enter a valid email address");
+    if (!password.trim()) {
+      Alert.alert("Error", "Please enter your password");
       return;
     }
 
     setLoading(true);
 
     try {
+      let normalizedPhone = phoneNumber.trim();
+      if (normalizedPhone.startsWith("9")) {
+        normalizedPhone = `+251${normalizedPhone}`;
+      } else if (normalizedPhone.startsWith("0")) {
+        normalizedPhone = `+251${normalizedPhone.substring(1)}`;
+      }
+
       const res = await fetch(
-        "https://pedal-delivery-back.onrender.com/api/v1/auth/send-otp",
+        "https://pedal-delivery-back.onrender.com/api/v1/auth/login",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            // phone: phoneNumber, // PHONE VERIFICATION (commented out — switched to email verification)
-            email: email.trim().toLowerCase(),
-            role: "customer",
+            phone: normalizedPhone,
+            password,
           }),
         },
       );
@@ -149,19 +151,37 @@ const WelcomeScreen: React.FC = () => {
       const data = await res.json();
 
       if (res.ok) {
-        // ✅ Request location permission in the background (doesn't block navigation)
-        requestLocationPermission();
+        const { accessToken, refreshToken } = data.tokens || {};
 
-        router.push({
-          pathname: "/(auth)/email-verification",
-          params: {
-            role: "customer",
-            phone: phoneNumber,
-            email: email.trim().toLowerCase(),
+        if (!accessToken) {
+          Alert.alert("Error", "Sign in failed. Please try again.");
+          return;
+        }
+
+        await AsyncStorage.setItem("accessToken", accessToken);
+        if (refreshToken) {
+          await AsyncStorage.setItem("refreshToken", refreshToken);
+        }
+        await AsyncStorage.setItem("user", JSON.stringify(data.user));
+
+        dispatch({
+          type: "LOGIN_SUCCESS",
+          payload: {
+            user: data.user,
+            token: accessToken,
+            role: data.user.role,
           },
         });
+
+        requestLocationPermission();
+
+        if (data.user.role === "driver") {
+          router.replace("/(driver)/dashboard");
+        } else {
+          router.replace("/(customer)/home");
+        }
       } else {
-        Alert.alert("Error", data.message || "Failed to send OTP");
+        Alert.alert("Error", data.error || "Invalid phone number or password");
       }
     } catch (err) {
       Alert.alert("Error", "Server error. Try again.");
@@ -170,73 +190,137 @@ const WelcomeScreen: React.FC = () => {
     }
   };
 
-  const handleDriverButton = async () => {
-    if (!phoneNumber.trim()) {
-      Alert.alert("Error", "Please enter your phone number first");
-      return;
-    }
-
-    if (!validatePhoneNumber(phoneNumber)) {
-      Alert.alert("Error", "Enter valid 9-digit number like 912345678");
-      return;
-    }
-
-    if (!email.trim()) {
-      Alert.alert("Error", "Please enter your email address first");
-      return;
-    }
-
-    if (!validateEmail(email)) {
-      Alert.alert("Error", "Enter a valid email address");
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      const res = await fetch(
-        "https://pedal-delivery-back.onrender.com/api/v1/auth/send-otp",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            // phone: phoneNumber, // PHONE VERIFICATION (commented out — switched to email verification)
-            email: email.trim().toLowerCase(),
-            role: "driver",
-          }),
-        },
-      );
-
-      const data = await res.json();
-
-      if (res.ok) {
-        router.push({
-          pathname: "/(auth)/email-verification",
-          params: {
-            role: "driver",
-            phone: phoneNumber,
-            email: email.trim().toLowerCase(),
-          },
-        });
-      } else {
-        if (data.error && data.error.includes("not registered")) {
-          router.push({
-            pathname: "/(auth)/driver-form",
-            params: { phone: phoneNumber, email: email.trim().toLowerCase() },
-          });
-        } else {
-          Alert.alert("Error", data.message || "Failed to send OTP");
-        }
-      }
-    } catch (err) {
-      router.push({
-        pathname: "/(auth)/driver-form",
-        params: { phone: phoneNumber, email: email.trim().toLowerCase() },
-      });
-    } finally {
-      setLoading(false);
-    }
+  const goToRegister = () => {
+    Keyboard.dismiss();
+    router.push({
+      pathname: "/(auth)/register",
+      params: { role: "customer" },
+    });
   };
+
+  const goToDriverForm = () => {
+    Keyboard.dismiss();
+    router.push({
+      pathname: "/(auth)/driver-form",
+      params: {},
+    });
+  };
+
+  // OLD FLOW (commented out — replaced by the phone+password Sign In above,
+  // plus a direct link to the register screen for new users). Kept for
+  // reference/revert rather than deleted.
+  //
+  // const handleContinueAsCustomer = async () => {
+  //   Keyboard.dismiss();
+  //   if (!phoneNumber.trim()) {
+  //     Alert.alert("Error", "Please enter your phone number");
+  //     return;
+  //   }
+  //   if (!validatePhoneNumber(phoneNumber)) {
+  //     Alert.alert("Error", "Enter valid 9-digit number like 912345678");
+  //     return;
+  //   }
+  //   if (!email.trim()) {
+  //     Alert.alert("Error", "Please enter your email address");
+  //     return;
+  //   }
+  //   if (!validateEmail(email)) {
+  //     Alert.alert("Error", "Enter a valid email address");
+  //     return;
+  //   }
+  //   setLoading(true);
+  //   try {
+  //     const res = await fetch(
+  //       "https://pedal-delivery-back.onrender.com/api/v1/auth/send-otp",
+  //       {
+  //         method: "POST",
+  //         headers: { "Content-Type": "application/json" },
+  //         body: JSON.stringify({
+  //           email: email.trim().toLowerCase(),
+  //           role: "customer",
+  //         }),
+  //       },
+  //     );
+  //     const data = await res.json();
+  //     if (res.ok) {
+  //       requestLocationPermission();
+  //       router.push({
+  //         pathname: "/(auth)/email-verification",
+  //         params: {
+  //           role: "customer",
+  //           phone: phoneNumber,
+  //           email: email.trim().toLowerCase(),
+  //         },
+  //       });
+  //     } else {
+  //       Alert.alert("Error", data.message || "Failed to send OTP");
+  //     }
+  //   } catch (err) {
+  //     Alert.alert("Error", "Server error. Try again.");
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
+  //
+  // const handleDriverButton = async () => {
+  //   if (!phoneNumber.trim()) {
+  //     Alert.alert("Error", "Please enter your phone number first");
+  //     return;
+  //   }
+  //   if (!validatePhoneNumber(phoneNumber)) {
+  //     Alert.alert("Error", "Enter valid 9-digit number like 912345678");
+  //     return;
+  //   }
+  //   if (!email.trim()) {
+  //     Alert.alert("Error", "Please enter your email address first");
+  //     return;
+  //   }
+  //   if (!validateEmail(email)) {
+  //     Alert.alert("Error", "Enter a valid email address");
+  //     return;
+  //   }
+  //   setLoading(true);
+  //   try {
+  //     const res = await fetch(
+  //       "https://pedal-delivery-back.onrender.com/api/v1/auth/send-otp",
+  //       {
+  //         method: "POST",
+  //         headers: { "Content-Type": "application/json" },
+  //         body: JSON.stringify({
+  //           email: email.trim().toLowerCase(),
+  //           role: "driver",
+  //         }),
+  //       },
+  //     );
+  //     const data = await res.json();
+  //     if (res.ok) {
+  //       router.push({
+  //         pathname: "/(auth)/email-verification",
+  //         params: {
+  //           role: "driver",
+  //           phone: phoneNumber,
+  //           email: email.trim().toLowerCase(),
+  //         },
+  //       });
+  //     } else {
+  //       if (data.error && data.error.includes("not registered")) {
+  //         router.push({
+  //           pathname: "/(auth)/driver-form",
+  //           params: { phone: phoneNumber, email: email.trim().toLowerCase() },
+  //         });
+  //       } else {
+  //         Alert.alert("Error", data.message || "Failed to send OTP");
+  //       }
+  //     }
+  //   } catch (err) {
+  //     router.push({
+  //       pathname: "/(auth)/driver-form",
+  //       params: { phone: phoneNumber, email: email.trim().toLowerCase() },
+  //     });
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
 
   // Animated styles
   const logoAnimatedStyle = useAnimatedStyle(() => ({
@@ -276,33 +360,10 @@ const WelcomeScreen: React.FC = () => {
               <Text style={styles.backButtonText}>←</Text>
             </TouchableOpacity>
 
-            {/* Driver Button */}
-            <View style={styles.driverTopButtonContainer}>
-              <TouchableOpacity
-                style={styles.driverTopButton}
-                onPress={handleDriverButton}
-                disabled={loading}
-              >
-                <LinearGradient
-                  colors={["#FF6B6B", "#FF8E53"]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={[
-                    styles.driverTopButtonGradient,
-                    loading && styles.buttonDisabled,
-                  ]}
-                >
-                  <Text style={styles.driverTopButtonText}>
-                    🚗 If you are a driver
-                  </Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            </View>
-
             <View style={styles.titleContainer}>
-              <Text style={styles.phoneTitle}>Enter Your Phone Number</Text>
+              <Text style={styles.phoneTitle}>Welcome Back</Text>
               <Text style={styles.phoneSubtitle}>
-                For customers only. Drivers should use the button above.
+                Sign in with your phone number and password
               </Text>
             </View>
 
@@ -322,74 +383,80 @@ const WelcomeScreen: React.FC = () => {
                   maxLength={9}
                   autoFocus={true}
                   editable={!loading}
-                  returnKeyType='done'
+                  returnKeyType='next'
                   clearButtonMode='while-editing'
                   keyboardAppearance='light'
-                  onBlur={() => Keyboard.dismiss()}
                 />
               </View>
-
-              <Text style={styles.phoneHint}>
-                Enter your 9-digit phone number starting with 9
-              </Text>
             </View>
 
-            {/* EMAIL VERIFICATION — email input added, used for OTP instead of phone */}
             <View style={styles.phoneInputContainer}>
               <View style={styles.phoneInputWrapper}>
                 <TextInput
                   style={styles.phoneInput}
-                  placeholder='you@example.com'
+                  placeholder='Password'
                   placeholderTextColor={colors.gray400}
-                  value={email}
-                  onChangeText={handleEmailChange}
-                  keyboardType='email-address'
-                  autoCapitalize='none'
-                  autoCorrect={false}
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry
                   editable={!loading}
                   returnKeyType='done'
-                  clearButtonMode='while-editing'
                   keyboardAppearance='light'
                   onBlur={() => Keyboard.dismiss()}
+                  onSubmitEditing={handleSignIn}
                 />
               </View>
-
-              <Text style={styles.phoneHint}>
-                We'll send your verification code to this email
-              </Text>
             </View>
 
             <View style={styles.nextButtonContainer}>
               <TouchableOpacity
                 style={[
-                  styles.nextButtonArrow,
+                  styles.signInButton,
                   (!validatePhoneNumber(phoneNumber) ||
-                    !validateEmail(email) ||
+                    !password.trim() ||
                     loading) &&
                     styles.nextButtonDisabled,
                 ]}
-                onPress={handleContinueAsCustomer}
+                onPress={handleSignIn}
                 disabled={
-                  !validatePhoneNumber(phoneNumber) ||
-                  !validateEmail(email) ||
-                  loading
+                  !validatePhoneNumber(phoneNumber) || !password.trim() || loading
                 }
               >
                 <LinearGradient
                   colors={["#667eea", "#764ba2"]}
                   style={[
-                    styles.nextButtonArrowGradient,
+                    styles.signInButtonGradient,
                     loading && styles.buttonDisabled,
                   ]}
                 >
-                  <Text style={styles.nextButtonArrowText}>
-                    {loading ? "..." : "→"}
+                  <Text style={styles.signInButtonText}>
+                    {loading ? "Signing in..." : "Sign In"}
                   </Text>
                 </LinearGradient>
               </TouchableOpacity>
-
-              <Text style={styles.nextButtonLabel}>Continue as Customer</Text>
             </View>
+
+            <View style={styles.dividerContainer}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>OR</Text>
+              <View style={styles.dividerLine} />
+            </View>
+
+            <TouchableOpacity
+              style={styles.createAccountButton}
+              onPress={goToRegister}
+              disabled={loading}
+            >
+              <Text style={styles.createAccountButtonText}>
+                Create New Account
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={goToDriverForm} disabled={loading}>
+              <Text style={styles.driverLinkText}>
+                🚗 Register as a driver instead
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
       ) : (
@@ -642,6 +709,67 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.7,
+  },
+  signInButton: {
+    width: "100%",
+    maxWidth: 350,
+    borderRadius: 16,
+    overflow: "hidden",
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  signInButtonGradient: {
+    paddingVertical: 18,
+    alignItems: "center",
+  },
+  signInButtonText: {
+    color: colors.white,
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  dividerContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    width: "100%",
+    maxWidth: 350,
+    alignSelf: "center",
+    marginVertical: 24,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.gray300,
+  },
+  dividerText: {
+    marginHorizontal: 12,
+    fontSize: 13,
+    fontWeight: "600",
+    color: colors.gray500,
+  },
+  createAccountButton: {
+    width: "100%",
+    maxWidth: 350,
+    alignSelf: "center",
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: colors.primary,
+    paddingVertical: 16,
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  createAccountButtonText: {
+    color: colors.primary,
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  driverLinkText: {
+    textAlign: "center",
+    fontSize: 14,
+    color: colors.gray600,
+    fontWeight: "500",
   },
 });
 
