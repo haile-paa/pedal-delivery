@@ -24,7 +24,6 @@ import (
 	"github.com/haile-paa/pedal-delivery/internal/websocket"
 	"github.com/haile-paa/pedal-delivery/pkg/database"
 	"github.com/haile-paa/pedal-delivery/pkg/email"
-
 	// "github.com/haile-paa/pedal-delivery/pkg/sms" // PHONE VERIFICATION (commented out — switched to email verification)
 
 	"github.com/gin-gonic/gin"
@@ -172,18 +171,33 @@ func main() {
 	// 	log.Println("⚠️ Twilio credentials not configured – SMS will fail")
 	// }
 
+	// Raw-SMTP client construction — kept for reference/revert. Render's free
+	// tier blocks outbound SMTP ports (25/465/587), so this will time out
+	// there even with correct credentials. See pkg/email/client.go.
+	// var emailClient *email.Client
+	// if cfg.SMTP.Host != "" && cfg.SMTP.Username != "" && cfg.SMTP.Password != "" {
+	// 	emailClient = email.NewSMTPClient(
+	// 		cfg.SMTP.Host,
+	// 		cfg.SMTP.Port,
+	// 		cfg.SMTP.Username,
+	// 		cfg.SMTP.Password,
+	// 		cfg.SMTP.From,
+	// 	)
+	// 	log.Println("✅ Email client initialized (SMTP)")
+	// } else {
+	// 	log.Println("⚠️ SMTP credentials not configured – verification emails will fail")
+	// }
+
 	var emailClient *email.Client
-	if cfg.SMTP.Host != "" && cfg.SMTP.Username != "" && cfg.SMTP.Password != "" {
+	if cfg.Brevo.APIKey != "" && cfg.Brevo.FromEmail != "" {
 		emailClient = email.NewClient(
-			cfg.SMTP.Host,
-			cfg.SMTP.Port,
-			cfg.SMTP.Username,
-			cfg.SMTP.Password,
-			cfg.SMTP.From,
+			cfg.Brevo.APIKey,
+			cfg.Brevo.FromEmail,
+			cfg.Brevo.FromName,
 		)
-		log.Println("✅ Email client initialized (SMTP)")
+		log.Println("✅ Email client initialized (Brevo API)")
 	} else {
-		log.Println("⚠️ SMTP credentials not configured – verification emails will fail")
+		log.Println("⚠️ Brevo credentials not configured – verification emails will fail")
 	}
 
 	// Initialize services
@@ -210,8 +224,8 @@ func main() {
 
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
-			"status":     "healthy",
-			"timestamp":  time.Now().Unix(),
+			"status":      "healthy",
+			"timestamp":   time.Now().Unix(),
 			"cloudinary": cld != nil,
 			// "sms_enabled": smsClient != nil, // PHONE VERIFICATION (commented out — switched to email verification)
 			"email_enabled": emailClient != nil,
