@@ -4,6 +4,7 @@ import { authAPI } from "../services/api";
 interface AuthContextType {
   user: any | null;
   loading: boolean;
+  login: (phone: string, password: string) => Promise<void>;
   sendOTP: (phone: string, role?: string) => Promise<void>;
   verifyOTP: (phone: string, code: string, role?: string) => Promise<void>;
   logout: () => void;
@@ -34,6 +35,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       console.error("Auth check error:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const login = async (phone: string, password: string) => {
+    try {
+      // Normalize phone number for Ethiopia
+      let normalizedPhone = phone.trim();
+      if (!normalizedPhone.startsWith("+")) {
+        if (normalizedPhone.startsWith("0")) {
+          normalizedPhone = "+251" + normalizedPhone.substring(1);
+        } else if (
+          normalizedPhone.startsWith("9") &&
+          normalizedPhone.length === 9
+        ) {
+          normalizedPhone = "+251" + normalizedPhone;
+        } else {
+          normalizedPhone = "+" + normalizedPhone;
+        }
+      }
+
+      const response = await authAPI.login(normalizedPhone, password);
+
+      const { tokens, user: userData } = response.data;
+
+      localStorage.setItem("admin_token", tokens.accessToken);
+      localStorage.setItem("admin_refresh_token", tokens.refreshToken);
+      localStorage.setItem("admin_user", JSON.stringify(userData));
+
+      setUser(userData);
+    } catch (error: any) {
+      throw new Error(error.response?.data?.error || "Login failed");
     }
   };
 
@@ -114,6 +146,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       value={{
         user,
         loading,
+        login,
         sendOTP,
         verifyOTP,
         logout,

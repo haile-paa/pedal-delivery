@@ -84,6 +84,10 @@ api.interceptors.response.use(
 
 // Auth API
 export const authAPI = {
+  login: (phone: string, password: string) =>
+    api.post("/auth/login", { phone, password }),
+  // PHONE VERIFICATION (commented out — OTP now requires email; sendOTP/verifyOTP left as-is
+  // in case email-based OTP login is wired up for the admin site later)
   sendOTP: (phone: string, role: string = "admin") =>
     api.post("/auth/send-otp", { phone, role }),
   verifyOTP: (phone: string, code: string, role: string = "admin") =>

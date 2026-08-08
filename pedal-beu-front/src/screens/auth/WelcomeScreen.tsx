@@ -33,11 +33,16 @@ const WelcomeScreen: React.FC = () => {
   const router = useRouter();
   const [showPhoneScreen, setShowPhoneScreen] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState("");
+  const [email, setEmail] = useState(""); // EMAIL VERIFICATION — used for OTP instead of phone
   const [loading, setLoading] = useState(false);
 
   const handlePhoneNumberChange = useCallback((text: string) => {
     const cleaned = text.replace(/[^0-9]/g, "");
     setPhoneNumber(cleaned);
+  }, []);
+
+  const handleEmailChange = useCallback((text: string) => {
+    setEmail(text.trim());
   }, []);
 
   // Animation values for welcome screen
@@ -81,6 +86,10 @@ const WelcomeScreen: React.FC = () => {
     return cleaned.length === 9;
   };
 
+  const validateEmail = (value: string): boolean => {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+  };
+
   // ✅ Function to request location permission (runs in background)
   const requestLocationPermission = async () => {
     try {
@@ -108,6 +117,19 @@ const WelcomeScreen: React.FC = () => {
       return;
     }
 
+    // PHONE VERIFICATION (commented out — switched to email verification)
+    // if (!validatePhoneNumber(phoneNumber)) { ... }
+
+    if (!email.trim()) {
+      Alert.alert("Error", "Please enter your email address");
+      return;
+    }
+
+    if (!validateEmail(email)) {
+      Alert.alert("Error", "Enter a valid email address");
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -117,7 +139,8 @@ const WelcomeScreen: React.FC = () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            phone: phoneNumber,
+            // phone: phoneNumber, // PHONE VERIFICATION (commented out — switched to email verification)
+            email: email.trim().toLowerCase(),
             role: "customer",
           }),
         },
@@ -130,10 +153,11 @@ const WelcomeScreen: React.FC = () => {
         requestLocationPermission();
 
         router.push({
-          pathname: "/(auth)/phone-verification",
+          pathname: "/(auth)/email-verification",
           params: {
             role: "customer",
             phone: phoneNumber,
+            email: email.trim().toLowerCase(),
           },
         });
       } else {
@@ -157,6 +181,16 @@ const WelcomeScreen: React.FC = () => {
       return;
     }
 
+    if (!email.trim()) {
+      Alert.alert("Error", "Please enter your email address first");
+      return;
+    }
+
+    if (!validateEmail(email)) {
+      Alert.alert("Error", "Enter a valid email address");
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -166,7 +200,8 @@ const WelcomeScreen: React.FC = () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            phone: phoneNumber,
+            // phone: phoneNumber, // PHONE VERIFICATION (commented out — switched to email verification)
+            email: email.trim().toLowerCase(),
             role: "driver",
           }),
         },
@@ -176,17 +211,18 @@ const WelcomeScreen: React.FC = () => {
 
       if (res.ok) {
         router.push({
-          pathname: "/(auth)/phone-verification",
+          pathname: "/(auth)/email-verification",
           params: {
             role: "driver",
             phone: phoneNumber,
+            email: email.trim().toLowerCase(),
           },
         });
       } else {
         if (data.error && data.error.includes("not registered")) {
           router.push({
             pathname: "/(auth)/driver-form",
-            params: { phone: phoneNumber },
+            params: { phone: phoneNumber, email: email.trim().toLowerCase() },
           });
         } else {
           Alert.alert("Error", data.message || "Failed to send OTP");
@@ -195,7 +231,7 @@ const WelcomeScreen: React.FC = () => {
     } catch (err) {
       router.push({
         pathname: "/(auth)/driver-form",
-        params: { phone: phoneNumber },
+        params: { phone: phoneNumber, email: email.trim().toLowerCase() },
       });
     } finally {
       setLoading(false);
@@ -298,15 +334,46 @@ const WelcomeScreen: React.FC = () => {
               </Text>
             </View>
 
+            {/* EMAIL VERIFICATION — email input added, used for OTP instead of phone */}
+            <View style={styles.phoneInputContainer}>
+              <View style={styles.phoneInputWrapper}>
+                <TextInput
+                  style={styles.phoneInput}
+                  placeholder='you@example.com'
+                  placeholderTextColor={colors.gray400}
+                  value={email}
+                  onChangeText={handleEmailChange}
+                  keyboardType='email-address'
+                  autoCapitalize='none'
+                  autoCorrect={false}
+                  editable={!loading}
+                  returnKeyType='done'
+                  clearButtonMode='while-editing'
+                  keyboardAppearance='light'
+                  onBlur={() => Keyboard.dismiss()}
+                />
+              </View>
+
+              <Text style={styles.phoneHint}>
+                We'll send your verification code to this email
+              </Text>
+            </View>
+
             <View style={styles.nextButtonContainer}>
               <TouchableOpacity
                 style={[
                   styles.nextButtonArrow,
-                  (!validatePhoneNumber(phoneNumber) || loading) &&
+                  (!validatePhoneNumber(phoneNumber) ||
+                    !validateEmail(email) ||
+                    loading) &&
                     styles.nextButtonDisabled,
                 ]}
                 onPress={handleContinueAsCustomer}
-                disabled={!validatePhoneNumber(phoneNumber) || loading}
+                disabled={
+                  !validatePhoneNumber(phoneNumber) ||
+                  !validateEmail(email) ||
+                  loading
+                }
               >
                 <LinearGradient
                   colors={["#667eea", "#764ba2"]}

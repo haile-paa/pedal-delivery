@@ -19,14 +19,18 @@ import (
 type AuthService interface {
 	Register(ctx context.Context, req *models.RegisterRequest) (*models.User, *auth.TokenPair, error)
 	Login(ctx context.Context, req *models.LoginRequest) (*models.User, *auth.TokenPair, error)
-	LoginWithOTP(ctx context.Context, phone string) (*models.User, *auth.TokenPair, error) // Changed back to 2 params
-	VerifyOTP(ctx context.Context, phone, code string) error
-	GenerateOTP(ctx context.Context, phone string) (string, error)
+	LoginWithOTP(ctx context.Context, phone string) (*models.User, *auth.TokenPair, error) // PHONE VERIFICATION (commented out of use — kept for reference/revert)
+	LoginWithOTPByEmail(ctx context.Context, email string) (*models.User, *auth.TokenPair, error)
+	VerifyOTP(ctx context.Context, phone, code string) error // PHONE VERIFICATION (commented out of use — kept for reference/revert)
+	VerifyOTPByEmail(ctx context.Context, email, code string) error
+	GenerateOTP(ctx context.Context, phone string) (string, error) // PHONE VERIFICATION (commented out of use — kept for reference/revert)
+	GenerateOTPByEmail(ctx context.Context, email string) (string, error)
 	RefreshToken(ctx context.Context, refreshToken string) (*auth.TokenPair, error)
 	GetProfile(ctx context.Context, userID primitive.ObjectID) (*models.User, error)
 	UpdateProfile(ctx context.Context, userID primitive.ObjectID, req *models.UpdateProfileRequest) error
 	SwitchRole(ctx context.Context, userID primitive.ObjectID, newRole string) error
-	ForgotPassword(ctx context.Context, phone string) (string, error)
+	ForgotPassword(ctx context.Context, phone string) (string, error) // PHONE VERIFICATION (commented out of use — kept for reference/revert)
+	ForgotPasswordByEmail(ctx context.Context, email string) (string, error)
 	ResetPassword(ctx context.Context, req *models.ResetPasswordRequest) error
 	Logout(ctx context.Context, userID primitive.ObjectID) error
 	RegisterDriver(ctx context.Context, req *models.RegisterDriverRequest) (*models.User, error)
@@ -377,6 +381,69 @@ func (s *authService) LoginWithOTP(ctx context.Context, phone string) (*models.U
 	return userObj, tokenPair, nil
 }
 
+// LoginWithOTPByEmail method (OTP-based login via email — replaces LoginWithOTP as the active path)
+func (s *authService) LoginWithOTPByEmail(ctx context.Context, email string) (*models.User, *auth.TokenPair, error) {
+	normalizedEmail := strings.ToLower(strings.TrimSpace(email))
+
+	// Try to find user first
+	user, err := s.userRepo.FindByEmail(ctx, normalizedEmail)
+	if err == nil {
+		// User found
+		if !user.IsVerified {
+			return nil, nil, errors.New("account not verified")
+		}
+
+		tokenPair, err := auth.GenerateToken(user)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		_ = s.userRepo.UpdateLastLogin(ctx, user.ID)
+
+		return user, tokenPair, nil
+	}
+
+	// If not found as user, try admin
+	admin, adminErr := s.adminRepo.FindByEmail(ctx, normalizedEmail)
+	if adminErr != nil {
+		return nil, nil, errors.New("user not found")
+	}
+
+	if !admin.IsActive {
+		return nil, nil, errors.New("admin account is deactivated")
+	}
+
+	if !admin.IsVerified {
+		return nil, nil, errors.New("admin account not verified")
+	}
+
+	userObj := &models.User{
+		ID:    admin.ID,
+		Phone: admin.Phone,
+		Email: admin.Email,
+		Role: models.UserRole{
+			Type:        "admin",
+			Permissions: []string{"*"},
+		},
+		Profile: models.UserProfile{
+			FirstName: admin.FirstName,
+			LastName:  admin.LastName,
+		},
+		IsVerified: admin.IsVerified,
+		CreatedAt:  admin.CreatedAt,
+		UpdatedAt:  admin.UpdatedAt,
+	}
+
+	tokenPair, err := auth.GenerateToken(userObj)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	_ = s.adminRepo.UpdateLastLogin(ctx, admin.ID)
+
+	return userObj, tokenPair, nil
+}
+
 // Generate secure password
 func generateSecurePassword() string {
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*"
@@ -437,6 +504,49 @@ func (s *authService) VerifyOTP(ctx context.Context, phone, code string) error {
 	return nil
 }
 
+// VerifyOTPByEmail verifies an OTP for a user looked up by email (replaces VerifyOTP as the active path)
+func (s *authService) VerifyOTPByEmail(ctx context.Context, email, code string) error {
+	normalizedEmail := strings.ToLower(strings.TrimSpace(email))
+
+	// Try to find user first
+	user, err := s.userRepo.FindByEmail(ctx, normalizedEmail)
+	if err != nil {
+		// If not found in users, try admins
+		_, adminErr := s.adminRepo.FindByEmail(ctx, normalizedEmail)
+		if adminErr != nil {
+			return errors.New("user not found")
+		}
+
+		// Admin OTP verification logic (if needed)
+		return nil
+	}
+
+	// User OTP verification
+	if user.OTP == nil {
+		return errors.New("no OTP requested")
+	}
+
+	if user.OTP.Code != code {
+		user.OTP.Attempts++
+		if user.OTP.Attempts >= 3 {
+			_ = s.userRepo.Update(ctx, user.ID, bson.M{"otp": nil})
+			return errors.New("too many failed attempts. Please request a new OTP")
+		}
+		_ = s.userRepo.Update(ctx, user.ID, bson.M{"otp": user.OTP})
+		return errors.New("invalid OTP code")
+	}
+
+	if user.OTP.ExpiresAt.Before(time.Now()) {
+		return errors.New("OTP expired")
+	}
+
+	if err := s.userRepo.VerifyEmail(ctx, normalizedEmail); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (s *authService) GenerateOTP(ctx context.Context, phone string) (string, error) {
 	// Generate 6-digit OTP
 	otpCode := fmt.Sprintf("%06d", rand.Intn(1000000))
@@ -457,6 +567,33 @@ func (s *authService) GenerateOTP(ctx context.Context, phone string) (string, er
 
 	// Save OTP to user
 	if err := s.userRepo.UpdateOTP(ctx, phone, otpCode); err != nil {
+		return "", err
+	}
+
+	return otpCode, nil
+}
+
+// GenerateOTPByEmail generates and stores a 6-digit OTP for a user looked up by email
+// (replaces GenerateOTP as the active path).
+func (s *authService) GenerateOTPByEmail(ctx context.Context, email string) (string, error) {
+	normalizedEmail := strings.ToLower(strings.TrimSpace(email))
+	otpCode := fmt.Sprintf("%06d", rand.Intn(1000000))
+
+	// Try to find user first
+	_, err := s.userRepo.FindByEmail(ctx, normalizedEmail)
+	if err != nil {
+		// If not found in users, try admins
+		_, adminErr := s.adminRepo.FindByEmail(ctx, normalizedEmail)
+		if adminErr != nil {
+			return "", errors.New("user not found")
+		}
+
+		// For admin, we might handle OTP differently
+		return otpCode, nil
+	}
+
+	// Save OTP to user
+	if err := s.userRepo.UpdateOTPByEmail(ctx, normalizedEmail, otpCode); err != nil {
 		return "", err
 	}
 
@@ -617,20 +754,52 @@ func (s *authService) ForgotPassword(ctx context.Context, phone string) (string,
 	return otp, nil
 }
 
+// ForgotPasswordByEmail generates a reset OTP sent via email (replaces ForgotPassword as the active path)
+func (s *authService) ForgotPasswordByEmail(ctx context.Context, email string) (string, error) {
+	normalizedEmail := strings.ToLower(strings.TrimSpace(email))
+
+	user, err := s.userRepo.FindByEmail(ctx, normalizedEmail)
+	if err != nil {
+		_, adminErr := s.adminRepo.FindByEmail(ctx, normalizedEmail)
+		if adminErr != nil {
+			return "", errors.New("user not found")
+		}
+
+		return s.GenerateOTPByEmail(ctx, normalizedEmail)
+	}
+
+	if !user.IsVerified {
+		return "", errors.New("account not verified")
+	}
+
+	otp, err := s.GenerateOTPByEmail(ctx, normalizedEmail)
+	if err != nil {
+		return "", err
+	}
+
+	return otp, nil
+}
+
 func (s *authService) ResetPassword(ctx context.Context, req *models.ResetPasswordRequest) error {
-	// Normalize phone number
-	normalizedPhone := normalizePhone(req.Phone)
+	// PHONE VERIFICATION (commented out — switched to email verification)
+	// normalizedPhone := normalizePhone(req.Phone)
+	// if err := s.VerifyOTP(ctx, normalizedPhone, req.OTP); err != nil {
+	// 	return errors.New("invalid OTP")
+	// }
+	// user, err := s.userRepo.FindByPhone(ctx, normalizedPhone)
+
+	normalizedEmail := strings.ToLower(strings.TrimSpace(req.Email))
 
 	// Verify OTP first
-	if err := s.VerifyOTP(ctx, normalizedPhone, req.OTP); err != nil {
+	if err := s.VerifyOTPByEmail(ctx, normalizedEmail, req.OTP); err != nil {
 		return errors.New("invalid OTP")
 	}
 
 	// Try to find user first
-	user, err := s.userRepo.FindByPhone(ctx, normalizedPhone)
+	user, err := s.userRepo.FindByEmail(ctx, normalizedEmail)
 	if err != nil {
 		// If not found in users, try admins
-		admin, adminErr := s.adminRepo.FindByPhone(ctx, normalizedPhone)
+		admin, adminErr := s.adminRepo.FindByEmail(ctx, normalizedEmail)
 		if adminErr != nil {
 			return errors.New("user not found")
 		}

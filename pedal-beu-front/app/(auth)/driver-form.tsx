@@ -17,8 +17,10 @@ const DriverFormScreen: React.FC = () => {
   const router = useRouter();
   const params = useLocalSearchParams();
   const initialPhone = (params.phone as string) || "";
+  const initialEmail = (params.email as string) || "";
 
   const [phoneNumber, setPhoneNumber] = useState(initialPhone);
+  const [email, setEmail] = useState(initialEmail); // EMAIL VERIFICATION — required for OTP verification
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -27,6 +29,10 @@ const DriverFormScreen: React.FC = () => {
   const validatePhoneNumber = (phone: string): boolean => {
     const cleaned = phone.replace(/\D/g, "");
     return cleaned.length === 9;
+  };
+
+  const validateEmail = (value: string): boolean => {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
   };
 
   const handleDriverRegistration = async () => {
@@ -39,7 +45,7 @@ const DriverFormScreen: React.FC = () => {
     if (!validatePhoneNumber(phoneNumber)) {
       Alert.alert(
         "Error",
-        "Please enter a valid 9-digit phone number (e.g., 912345678)"
+        "Please enter a valid 9-digit phone number (e.g., 912345678)",
       );
       return;
     }
@@ -47,6 +53,17 @@ const DriverFormScreen: React.FC = () => {
     // Validate username
     if (!username.trim()) {
       Alert.alert("Error", "Please enter the username provided by manager");
+      return;
+    }
+
+    // Validate email (used for OTP verification)
+    if (!email.trim()) {
+      Alert.alert("Error", "Please enter your email address");
+      return;
+    }
+
+    if (!validateEmail(email)) {
+      Alert.alert("Error", "Enter a valid email address");
       return;
     }
 
@@ -77,10 +94,11 @@ const DriverFormScreen: React.FC = () => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             phone: phoneNumber,
+            email: email.trim().toLowerCase(),
             username: username.trim(),
             password: password.trim(),
           }),
-        }
+        },
       );
 
       const registerData = await registerRes.json();
@@ -93,18 +111,24 @@ const DriverFormScreen: React.FC = () => {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              phone: phoneNumber,
+              // phone: phoneNumber, // PHONE VERIFICATION (commented out — switched to email verification)
+              email: email.trim().toLowerCase(),
               role: "driver",
             }),
-          }
+          },
         );
 
         const otpData = await otpRes.json();
 
         if (otpRes.ok) {
-          router.push(
-            `/(auth)/phone-verification?role=driver&phone=${phoneNumber}`
-          );
+          router.push({
+            pathname: "/(auth)/email-verification",
+            params: {
+              role: "driver",
+              phone: phoneNumber,
+              email: email.trim().toLowerCase(),
+            },
+          });
         } else {
           Alert.alert("Error", otpData.message || "Failed to send OTP");
         }
@@ -176,6 +200,25 @@ const DriverFormScreen: React.FC = () => {
           </Text>
         </View>
 
+        {/* Email Input — used to send/verify the OTP */}
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Email Address</Text>
+          <TextInput
+            style={styles.input}
+            placeholder='you@example.com'
+            placeholderTextColor={colors.gray400}
+            value={email}
+            onChangeText={(text) => setEmail(text.trim())}
+            editable={!loading}
+            autoCapitalize='none'
+            autoCorrect={false}
+            keyboardType='email-address'
+          />
+          <Text style={styles.hint}>
+            We'll send your verification code to this email
+          </Text>
+        </View>
+
         {/* Password Input */}
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Password</Text>
@@ -214,6 +257,7 @@ const DriverFormScreen: React.FC = () => {
             styles.registerButton,
             (!phoneNumber.trim() ||
               !username.trim() ||
+              !email.trim() ||
               !password.trim() ||
               !confirmPassword.trim() ||
               loading) &&
@@ -223,6 +267,7 @@ const DriverFormScreen: React.FC = () => {
           disabled={
             !phoneNumber.trim() ||
             !username.trim() ||
+            !email.trim() ||
             !password.trim() ||
             !confirmPassword.trim() ||
             loading
@@ -235,7 +280,7 @@ const DriverFormScreen: React.FC = () => {
             style={styles.registerButtonGradient}
           >
             <Text style={styles.registerButtonText}>
-              {loading ? "Processing..." : "Register & Verify Phone"}
+              {loading ? "Processing..." : "Register & Verify Email"}
             </Text>
           </LinearGradient>
         </TouchableOpacity>

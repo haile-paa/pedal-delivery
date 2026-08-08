@@ -14,7 +14,8 @@ type Config struct {
 	Redis    RedisConfig    `mapstructure:"redis"`
 	AWS      AWSConfig      `mapstructure:"aws"`
 	JWT      JWTConfig      `mapstructure:"jwt"`
-	Twilio   TwilioConfig   `mapstructure:"twilio"`
+	Twilio   TwilioConfig   `mapstructure:"twilio"` // PHONE VERIFICATION (commented out of use — kept for reference/revert, see main.go)
+	SMTP     SMTPConfig     `mapstructure:"smtp"`    // used for email verification (replaces Twilio/SMS OTP delivery)
 	Shipday  ShipdayConfig  `mapstructure:"shipday"`
 }
 
@@ -22,6 +23,16 @@ type TwilioConfig struct {
 	AccountSID  string `mapstructure:"account_sid"`
 	AuthToken   string `mapstructure:"auth_token"`
 	PhoneNumber string `mapstructure:"phone_number"`
+}
+
+// SMTPConfig holds credentials for the email client used to send
+// verification OTPs (replaces TwilioConfig/SMS as the verification channel).
+type SMTPConfig struct {
+	Host     string `mapstructure:"host"`
+	Port     string `mapstructure:"port"`
+	Username string `mapstructure:"username"`
+	Password string `mapstructure:"password"`
+	From     string `mapstructure:"from"`
 }
 
 type ShipdayConfig struct {
@@ -85,9 +96,16 @@ func Load() *Config {
 		_ = viper.BindEnv("redis.url", "REDIS_URL")
 		_ = viper.BindEnv("redis.password", "REDIS_PASSWORD")
 		_ = viper.BindEnv("redis.db", "REDIS_DB")
+		// PHONE VERIFICATION (commented out of use — kept for reference/revert)
 		_ = viper.BindEnv("twilio.account_sid", "TWILIO_ACCOUNT_SID")
 		_ = viper.BindEnv("twilio.auth_token", "TWILIO_AUTH_TOKEN")
 		_ = viper.BindEnv("twilio.phone_number", "TWILIO_PHONE_NUMBER")
+		// Email verification (active) — SMTP settings
+		_ = viper.BindEnv("smtp.host", "SMTP_HOST")
+		_ = viper.BindEnv("smtp.port", "SMTP_PORT")
+		_ = viper.BindEnv("smtp.username", "SMTP_USERNAME")
+		_ = viper.BindEnv("smtp.password", "SMTP_PASSWORD")
+		_ = viper.BindEnv("smtp.from", "SMTP_FROM")
 		_ = viper.BindEnv("cloudinary.cloud_name", "CLOUDINARY_CLOUD_NAME")
 		_ = viper.BindEnv("cloudinary.api_key", "CLOUDINARY_API_KEY")
 		_ = viper.BindEnv("cloudinary.api_secret", "CLOUDINARY_API_SECRET")
@@ -103,6 +121,7 @@ func Load() *Config {
 		viper.SetDefault("jwt.expire_hours", 24*time.Hour)
 		viper.SetDefault("jwt.refresh_exp_hours", 168*time.Hour)
 		viper.SetDefault("shipday.base_url", "https://api.shipday.com")
+		viper.SetDefault("smtp.port", "587")
 
 		if err := viper.ReadInConfig(); err != nil {
 			log.Printf("Error reading config file: %v", err)

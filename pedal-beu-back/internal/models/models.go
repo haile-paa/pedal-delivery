@@ -336,11 +336,15 @@ type LoginRequest struct {
 	OTP      string `json:"otp,omitempty"`
 }
 type LoginWithOTPRequest struct {
-	Phone string `json:"phone" binding:"required"`
+	// Phone string `json:"phone" binding:"required"` // PHONE VERIFICATION (commented out — switched to email verification)
+	Phone string `json:"phone,omitempty"`
+	Email string `json:"email" binding:"required,email"`
 }
 
 type VerifyOTPRequest struct {
-	Phone string `json:"phone" binding:"required"`
+	// Phone string `json:"phone" binding:"required"` // PHONE VERIFICATION (commented out — switched to email verification)
+	Phone string `json:"phone,omitempty"`
+	Email string `json:"email" binding:"required,email"`
 	Code  string `json:"code" binding:"required"`
 	Role  string `json:"role" binding:"required,oneof=customer driver admin"` // Added admin
 }
@@ -350,11 +354,15 @@ type RefreshTokenRequest struct {
 }
 
 type ForgotPasswordRequest struct {
-	Phone string `json:"phone" binding:"required"`
+	// Phone string `json:"phone" binding:"required"` // PHONE VERIFICATION (commented out — switched to email verification)
+	Phone string `json:"phone,omitempty"`
+	Email string `json:"email" binding:"required,email"`
 }
 
 type ResetPasswordRequest struct {
-	Phone       string `json:"phone" binding:"required"`
+	// Phone       string `json:"phone" binding:"required"` // PHONE VERIFICATION (commented out — switched to email verification)
+	Phone       string `json:"phone,omitempty"`
+	Email       string `json:"email" binding:"required,email"`
 	OTP         string `json:"otp" binding:"required"`
 	NewPassword string `json:"new_password" binding:"required,min=6"`
 }
@@ -440,13 +448,16 @@ type DriverApplicationRequest struct {
 // RegisterDriverRequest for driver registration with manager credentials
 type RegisterDriverRequest struct {
 	Phone    string `json:"phone" binding:"required"`
+	Email    string `json:"email" binding:"required,email"` // used to send the verification OTP (was Phone/SMS — see auth_handler.go)
 	Username string `json:"username" binding:"required"`
 	Password string `json:"password" binding:"required,min=6"`
 }
 
 // SendOTPRequest for sending OTP with role
 type SendOTPRequest struct {
-	Phone string `json:"phone" binding:"required"`
+	// Phone string `json:"phone" binding:"required"` // PHONE VERIFICATION (commented out — switched to email verification)
+	Phone string `json:"phone,omitempty"`
+	Email string `json:"email" binding:"required,email"`
 	Role  string `json:"role" binding:"required,oneof=customer driver admin"` // Added admin
 }
 

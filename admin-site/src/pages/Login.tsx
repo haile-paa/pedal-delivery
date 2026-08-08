@@ -7,16 +7,23 @@ import { useAuth } from "../contexts/AuthContext";
 
 interface PhoneFormData {
   phone: string;
+  password: string;
 }
 
 interface OTPFormData {
   otp: string;
 }
 
+// Demo admin credentials — register this account once via:
+//   POST {API_URL}/auth/register  { phone, password, first_name, role: "admin" }
+// See the note below the login form for the exact command.
+const DEMO_ADMIN_PHONE = "0911223344";
+const DEMO_ADMIN_PASSWORD = "Demo@12345";
+
 const Login: React.FC = () => {
-  const { sendOTP, verifyOTP } = useAuth();
+  const { login } = useAuth(); // PHONE VERIFICATION (commented out below) — const { sendOTP, verifyOTP } = useAuth();
   const navigate = useNavigate();
-  const [step, setStep] = useState<"phone" | "otp">("phone");
+  const [step] = useState<"phone" | "otp">("phone"); // OTP step kept for future email-OTP support, currently unused
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -28,6 +35,7 @@ const Login: React.FC = () => {
   const phoneForm = useForm<PhoneFormData>({
     defaultValues: {
       phone: "",
+      password: "",
     },
   });
 
@@ -45,13 +53,18 @@ const Login: React.FC = () => {
     }
   }, [countdown]);
 
-  const handleSendOTP = async (data: PhoneFormData) => {
+  const fillDemoCredentials = () => {
+    phoneForm.setValue("phone", DEMO_ADMIN_PHONE);
+    phoneForm.setValue("password", DEMO_ADMIN_PASSWORD);
+  };
+
+  // Active login path: phone + password (no OTP/email needed)
+  const handleLogin = async (data: PhoneFormData) => {
     try {
       setLoading(true);
       setError("");
       setSuccess("");
 
-      // Validate phone number
       const phoneRegex = /^(?:\+251|0)?9\d{8}$/;
       if (!phoneRegex.test(data.phone)) {
         setError(
@@ -60,76 +73,108 @@ const Login: React.FC = () => {
         return;
       }
 
-      await sendOTP(data.phone, "admin");
+      if (!data.password) {
+        setError("Please enter your password");
+        return;
+      }
 
+      await login(data.phone, data.password);
       setPhone(data.phone);
-      // Remove unused setOtpSent call
-      // setOtpSent(true);
-      setStep("otp");
-      setCountdown(60); // 60 seconds countdown
-      setSuccess("OTP sent successfully! Check your phone for the code.");
-
-      // Store in local storage for verification
-      localStorage.setItem("pending_phone", data.phone);
+      navigate("/dashboard");
     } catch (err: any) {
-      setError(err.message || "Failed to send OTP. Please try again.");
+      setError(err.message || "Failed to sign in. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
+  // PHONE VERIFICATION (commented out — OTP now requires email, see auth_handler.go).
+  // Kept here in case email-based OTP login gets wired up for the admin site later.
+  // const handleSendOTP = async (data: PhoneFormData) => {
+  //   try {
+  //     setLoading(true);
+  //     setError("");
+  //     setSuccess("");
+  //
+  //     // Validate phone number
+  //     const phoneRegex = /^(?:\+251|0)?9\d{8}$/;
+  //     if (!phoneRegex.test(data.phone)) {
+  //       setError(
+  //         "Please enter a valid Ethiopian phone number (e.g., 0912345678)",
+  //       );
+  //       return;
+  //     }
+  //
+  //     await sendOTP(data.phone, "admin");
+  //
+  //     setPhone(data.phone);
+  //     setStep("otp");
+  //     setCountdown(60); // 60 seconds countdown
+  //     setSuccess("OTP sent successfully! Check your phone for the code.");
+  //
+  //     // Store in local storage for verification
+  //     localStorage.setItem("pending_phone", data.phone);
+  //   } catch (err: any) {
+  //     setError(err.message || "Failed to send OTP. Please try again.");
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
+
   const handleVerifyOTP = async (data: OTPFormData) => {
-    try {
-      setLoading(true);
-      setError("");
-
-      const pendingPhone = localStorage.getItem("pending_phone") || phone;
-
-      if (!pendingPhone) {
-        setError("Phone number not found. Please start over.");
-        setStep("phone");
-        return;
-      }
-
-      await verifyOTP(pendingPhone, data.otp, "admin");
-
-      // Redirect to dashboard
-      navigate("/dashboard");
-    } catch (err: any) {
-      setError(err.message || "Invalid OTP. Please try again.");
-    } finally {
-      setLoading(false);
-    }
+    // PHONE VERIFICATION (commented out — OTP now requires email)
+    // try {
+    //   setLoading(true);
+    //   setError("");
+    //
+    //   const pendingPhone = localStorage.getItem("pending_phone") || phone;
+    //
+    //   if (!pendingPhone) {
+    //     setError("Phone number not found. Please start over.");
+    //     setStep("phone");
+    //     return;
+    //   }
+    //
+    //   await verifyOTP(pendingPhone, data.otp, "admin");
+    //
+    //   // Redirect to dashboard
+    //   navigate("/dashboard");
+    // } catch (err: any) {
+    //   setError(err.message || "Invalid OTP. Please try again.");
+    // } finally {
+    //   setLoading(false);
+    // }
+    void data;
   };
 
   const handleResendOTP = async () => {
-    if (countdown > 0) return;
-
-    try {
-      setLoading(true);
-      setError("");
-
-      const pendingPhone = localStorage.getItem("pending_phone") || phone;
-
-      if (!pendingPhone) {
-        setError("Phone number not found. Please enter your phone again.");
-        setStep("phone");
-        return;
-      }
-
-      await sendOTP(pendingPhone, "admin");
-
-      setCountdown(60);
-      setSuccess("OTP resent successfully!");
-    } catch (err: any) {
-      setError(err.message || "Failed to resend OTP. Please try again.");
-    } finally {
-      setLoading(false);
-    }
+    // PHONE VERIFICATION (commented out — OTP now requires email)
+    // if (countdown > 0) return;
+    //
+    // try {
+    //   setLoading(true);
+    //   setError("");
+    //
+    //   const pendingPhone = localStorage.getItem("pending_phone") || phone;
+    //
+    //   if (!pendingPhone) {
+    //     setError("Phone number not found. Please enter your phone again.");
+    //     setStep("phone");
+    //     return;
+    //   }
+    //
+    //   await sendOTP(pendingPhone, "admin");
+    //
+    //   setCountdown(60);
+    //   setSuccess("OTP resent successfully!");
+    // } catch (err: any) {
+    //   setError(err.message || "Failed to resend OTP. Please try again.");
+    // } finally {
+    //   setLoading(false);
+    // }
   };
 
   const handleBackToPhone = () => {
-    setStep("phone");
     setError("");
     setSuccess("");
     phoneForm.reset();
@@ -203,9 +248,9 @@ const Login: React.FC = () => {
               )}
 
               {step === "phone" ? (
-                // Phone Number Form
+                // Phone Number + Password Form (active login path)
                 <form
-                  onSubmit={phoneForm.handleSubmit(handleSendOTP)}
+                  onSubmit={phoneForm.handleSubmit(handleLogin)}
                   className='mt-8 space-y-6'
                 >
                   <div>
@@ -244,13 +289,49 @@ const Login: React.FC = () => {
                     </p>
                   </div>
 
+                  <div>
+                    <label className='block text-sm font-medium text-gray-700'>
+                      Password *
+                    </label>
+                    <input
+                      {...phoneForm.register("password", {
+                        required: "Password is required",
+                      })}
+                      type='password'
+                      className={`mt-1 block w-full rounded-lg border px-4 py-3 ${
+                        phoneForm.formState.errors.password
+                          ? "border-red-300"
+                          : "border-gray-300"
+                      } focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200`}
+                      placeholder='••••••••'
+                    />
+                    {phoneForm.formState.errors.password && (
+                      <p className='mt-1 text-sm text-red-600'>
+                        {phoneForm.formState.errors.password.message}
+                      </p>
+                    )}
+                  </div>
+
                   <button
                     type='submit'
                     disabled={loading}
                     className='w-full rounded-lg bg-blue-600 py-3 font-medium text-white hover:bg-blue-700 disabled:opacity-50'
                   >
-                    {loading ? "Sending OTP..." : "Send OTP"}
+                    {loading ? "Signing in..." : "Sign In"}
                   </button>
+
+                  <button
+                    type='button'
+                    onClick={fillDemoCredentials}
+                    className='w-full rounded-lg border border-dashed border-gray-300 py-2 text-sm font-medium text-gray-500 hover:bg-gray-50'
+                  >
+                    Use demo admin credentials
+                  </button>
+                  <p className='text-center text-xs text-gray-400'>
+                    Demo login: {DEMO_ADMIN_PHONE} / {DEMO_ADMIN_PASSWORD}
+                    <br />
+                    (register this account once via the backend — see README)
+                  </p>
                 </form>
               ) : (
                 // OTP Verification Form

@@ -22,6 +22,7 @@ const RegisterScreen: React.FC = () => {
   const router = useRouter();
   const params = useLocalSearchParams<{
     phone: string;
+    email: string;
     role: "customer" | "driver";
   }>();
   const { dispatch } = useAppState();
@@ -30,7 +31,7 @@ const RegisterScreen: React.FC = () => {
   const role = params.role || "customer";
 
   const [firstName, setFirstName] = useState("");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(params.email || ""); // pre-filled from the email verification step
   const [loading, setLoading] = useState(false);
 
   const handleRegister = async () => {
@@ -143,7 +144,7 @@ const RegisterScreen: React.FC = () => {
         </View>
 
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Email (Optional)</Text>
+          <Text style={styles.label}>Email</Text>
           <TextInput
             style={styles.input}
             placeholder='your.email@example.com'

@@ -20,7 +20,8 @@ type AdminRepository interface {
 	FindByPhone(ctx context.Context, phone string) (*models.Admin, error)
 	FindByEmail(ctx context.Context, email string) (*models.Admin, error)
 	Update(ctx context.Context, id primitive.ObjectID, update interface{}) error
-	VerifyPhone(ctx context.Context, phone string) error
+	VerifyPhone(ctx context.Context, phone string) error // PHONE VERIFICATION (commented out of use — kept for reference/revert)
+	VerifyEmail(ctx context.Context, email string) error
 	UpdateLastLogin(ctx context.Context, id primitive.ObjectID) error
 }
 
@@ -165,6 +166,26 @@ func (r *adminRepository) VerifyPhone(ctx context.Context, phone string) error {
 	}
 
 	result, err := r.collection.UpdateOne(ctx, bson.M{"phone": phone}, update)
+	if err != nil {
+		return err
+	}
+
+	if result.MatchedCount == 0 {
+		return errors.New("admin not found")
+	}
+
+	return nil
+}
+
+func (r *adminRepository) VerifyEmail(ctx context.Context, email string) error {
+	update := bson.M{
+		"$set": bson.M{
+			"is_verified": true,
+			"updated_at":  time.Now(),
+		},
+	}
+
+	result, err := r.collection.UpdateOne(ctx, bson.M{"email": email}, update)
 	if err != nil {
 		return err
 	}

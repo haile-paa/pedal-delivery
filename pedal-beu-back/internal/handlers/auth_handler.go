@@ -14,7 +14,9 @@ import (
 	"github.com/haile-paa/pedal-delivery/internal/repositories"
 	"github.com/haile-paa/pedal-delivery/internal/services"
 	"github.com/haile-paa/pedal-delivery/pkg/auth"
-	"github.com/haile-paa/pedal-delivery/pkg/sms"
+	"github.com/haile-paa/pedal-delivery/pkg/email"
+
+	// "github.com/haile-paa/pedal-delivery/pkg/sms" // PHONE VERIFICATION (commented out — switched to email verification)
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
@@ -38,17 +40,18 @@ var adminRepo repositories.AdminRepository
 
 type AuthHandler struct {
 	authService services.AuthService
-	smsClient   *sms.Client
+	// smsClient   *sms.Client // PHONE VERIFICATION (commented out — switched to email verification)
+	emailClient *email.Client
 }
 
 func SetAdminRepository(repo repositories.AdminRepository) {
 	adminRepo = repo
 }
 
-func NewAuthHandler(authService services.AuthService, smsClient *sms.Client) *AuthHandler {
+func NewAuthHandler(authService services.AuthService, emailClient *email.Client) *AuthHandler {
 	return &AuthHandler{
 		authService: authService,
-		smsClient:   smsClient,
+		emailClient: emailClient,
 	}
 }
 
@@ -95,12 +98,51 @@ func normalizePhone(phone string) string {
 // ✅ OTP HANDLERS (methods)
 // ===============================
 
-// @Summary Send OTP
-// @Description Send OTP to phone number for verification
+// @Summary Login with phone and password
+// @Description Login using phone number and password. Works for customers, drivers, and admins.
 // @Tags authentication
 // @Accept json
 // @Produce json
-// @Param request body models.SendOTPRequest true "Phone and role"
+// @Param request body models.LoginRequest true "Phone and password"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Router /api/v1/auth/login [post]
+func (h *AuthHandler) Login(c *gin.Context) {
+	var req models.LoginRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	user, tokens, err := h.authService.Login(c.Request.Context(), &req)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Login successful",
+		"user": gin.H{
+			"id":        user.ID,
+			"phone":     user.Phone,
+			"email":     user.Email,
+			"username":  user.Username,
+			"firstName": user.Profile.FirstName,
+			"role":      user.Role.Type,
+		},
+		"tokens": gin.H{
+			"accessToken":  tokens.AccessToken,
+			"refreshToken": tokens.RefreshToken,
+		},
+	})
+}
+
+// @Summary Send OTP
+// @Description Send OTP to email address for verification
+// @Tags authentication
+// @Accept json
+// @Produce json
+// @Param request body models.SendOTPRequest true "Email and role"
 // @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} map[string]interface{}
 // @Router /api/v1/auth/send-otp [post]
@@ -111,55 +153,63 @@ func (h *AuthHandler) SendOTP(c *gin.Context) {
 		return
 	}
 
-	// Normalize phone number
-	normalizedPhone := normalizePhone(req.Phone)
-	log.Printf("🔍 SendOTP: Original phone: %s, Normalized: %s", req.Phone, normalizedPhone)
+	// PHONE VERIFICATION (commented out — switched to email verification)
+	// normalizedPhone := normalizePhone(req.Phone)
+	// log.Printf("🔍 SendOTP: Original phone: %s, Normalized: %s", req.Phone, normalizedPhone)
+
+	normalizedEmail := strings.ToLower(strings.TrimSpace(req.Email))
+	log.Printf("🔍 SendOTP: Email: %s", normalizedEmail)
 
 	otp := generateOTP()
 
 	// Check if user exists (important for drivers)
 	if req.Role == "driver" {
-		user, err := userRepo.FindByPhone(c.Request.Context(), normalizedPhone)
+		user, err := userRepo.FindByEmail(c.Request.Context(), normalizedEmail)
 		if err != nil || user == nil {
-			// Also try with original phone
-			user, err = userRepo.FindByPhone(c.Request.Context(), req.Phone)
-			if err != nil || user == nil {
-				c.JSON(http.StatusBadRequest, gin.H{
-					"error": "Driver not registered. Please register first with manager credentials",
-				})
-				return
-			}
+			// PHONE VERIFICATION (commented out — used to also try phone lookup)
+			// user, err = userRepo.FindByPhone(c.Request.Context(), req.Phone)
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Driver not registered. Please register first with manager credentials",
+			})
+			return
 		}
 	}
 
-	// Store OTP in memory - store with both formats
+	// Store OTP in memory, keyed by email
 	otpMutex.Lock()
-	otpStore[req.Phone] = OTPData{
-		Code:      otp,
-		ExpiresAt: time.Now().Add(5 * time.Minute),
-	}
-	otpStore[normalizedPhone] = OTPData{
+	otpStore[normalizedEmail] = OTPData{
 		Code:      otp,
 		ExpiresAt: time.Now().Add(5 * time.Minute),
 	}
 	otpMutex.Unlock()
 
-	// Send SMS via provider
-	// Updated message format
-	message := fmt.Sprintf("Welcome to Pedal Delivery! Your OTP is: %s. Valid for 5 minutes.", otp)
-	if h.smsClient != nil {
-		resp, err := h.smsClient.SendSMS(normalizedPhone, message)
+	// PHONE VERIFICATION (commented out — used to send OTP via SMS/Twilio)
+	// message := fmt.Sprintf("Welcome to Pedal Delivery! Your OTP is: %s. Valid for 5 minutes.", otp)
+	// if h.smsClient != nil {
+	// 	resp, err := h.smsClient.SendSMS(normalizedPhone, message)
+	// 	if err != nil {
+	// 		log.Printf("❌ Failed to send SMS: %v", err)
+	// 	} else {
+	// 		log.Printf("✅ SMS sent successfully, message_id: %s", resp.Response.MessageID)
+	// 	}
+	// } else {
+	// 	log.Println("⚠️ SMS client not configured, OTP not sent via SMS")
+	// }
+
+	// Send OTP via email
+	if h.emailClient != nil {
+		resp, err := h.emailClient.SendOTPEmail(normalizedEmail, otp)
 		if err != nil {
-			log.Printf("❌ Failed to send SMS: %v", err)
+			log.Printf("❌ Failed to send verification email: %v", err)
 		} else {
-			log.Printf("✅ SMS sent successfully, message_id: %s", resp.Response.MessageID)
+			log.Printf("✅ Verification email sent successfully to: %s", resp.To)
 		}
 	} else {
-		log.Println("⚠️ SMS client not configured, OTP not sent via SMS")
+		log.Println("⚠️ Email client not configured, OTP not sent via email")
 	}
 
 	// TEMP: LOG OTP (remove in production)
-	log.Println("✅ OTP for", req.Phone, "=", otp, "for role:", req.Role)
+	log.Println("✅ OTP for", normalizedEmail, "=", otp, "for role:", req.Role)
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "OTP sent successfully",
@@ -184,14 +234,24 @@ func (h *AuthHandler) RegisterDriver(c *gin.Context) {
 		return
 	}
 
-	// Normalize phone number
+	// Normalize phone number (still stored on the user record as a contact number)
 	normalizedPhone := normalizePhone(req.Phone)
+	normalizedEmail := strings.ToLower(strings.TrimSpace(req.Email))
 
 	// Check if phone already registered
 	existingUser, _ := userRepo.FindByPhone(c.Request.Context(), normalizedPhone)
 	if existingUser != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Phone number already registered",
+		})
+		return
+	}
+
+	// Check if email already registered
+	existingByEmail, _ := userRepo.FindByEmail(c.Request.Context(), normalizedEmail)
+	if existingByEmail != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Email already registered",
 		})
 		return
 	}
@@ -206,6 +266,7 @@ func (h *AuthHandler) RegisterDriver(c *gin.Context) {
 	// Create driver user
 	user := &models.User{
 		Phone:      normalizedPhone,
+		Email:      normalizedEmail,
 		Username:   req.Username,
 		Password:   hashedPassword,
 		IsVerified: false, // Will be verified via OTP
@@ -226,36 +287,48 @@ func (h *AuthHandler) RegisterDriver(c *gin.Context) {
 		return
 	}
 
-	// Generate OTP for verification
+	// Generate OTP for verification, keyed by email
 	otp := generateOTP()
 	otpMutex.Lock()
-	otpStore[normalizedPhone] = OTPData{
+	otpStore[normalizedEmail] = OTPData{
 		Code:      otp,
 		ExpiresAt: time.Now().Add(5 * time.Minute),
 	}
 	otpMutex.Unlock()
 
-	// Send SMS
-	// Updated message format
-	message := fmt.Sprintf("Welcome to Pedal Delivery! Your OTP is: %s. Valid for 5 minutes.", otp)
-	if h.smsClient != nil {
-		resp, err := h.smsClient.SendSMS(normalizedPhone, message)
+	// PHONE VERIFICATION (commented out — used to send OTP via SMS/Twilio)
+	// message := fmt.Sprintf("Welcome to Pedal Delivery! Your OTP is: %s. Valid for 5 minutes.", otp)
+	// if h.smsClient != nil {
+	// 	resp, err := h.smsClient.SendSMS(normalizedPhone, message)
+	// 	if err != nil {
+	// 		log.Printf("❌ Failed to send SMS: %v", err)
+	// 	} else {
+	// 		log.Printf("✅ SMS sent successfully, message_id: %s", resp.Response.MessageID)
+	// 	}
+	// } else {
+	// 	log.Println("⚠️ SMS client not configured, OTP not sent via SMS")
+	// }
+
+	// Send OTP via email
+	if h.emailClient != nil {
+		resp, err := h.emailClient.SendOTPEmail(normalizedEmail, otp)
 		if err != nil {
-			log.Printf("❌ Failed to send SMS: %v", err)
+			log.Printf("❌ Failed to send verification email: %v", err)
 		} else {
-			log.Printf("✅ SMS sent successfully, message_id: %s", resp.Response.MessageID)
+			log.Printf("✅ Verification email sent successfully to: %s", resp.To)
 		}
 	} else {
-		log.Println("⚠️ SMS client not configured, OTP not sent via SMS")
+		log.Println("⚠️ Email client not configured, OTP not sent via email")
 	}
 
-	log.Println("✅ Driver registered. OTP for", normalizedPhone, "=", otp)
+	log.Println("✅ Driver registered. OTP for", normalizedEmail, "=", otp)
 
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "Driver registered successfully. OTP sent for verification",
 		"user": gin.H{
 			"id":       user.ID,
 			"phone":    user.Phone,
+			"email":    user.Email,
 			"username": user.Username,
 			"role":     user.Role.Type,
 		},
@@ -274,7 +347,9 @@ func (h *AuthHandler) RegisterDriver(c *gin.Context) {
 // @Router /api/v1/auth/verify-otp [post]
 func VerifyOTPOnly(c *gin.Context) {
 	var req struct {
-		Phone string `json:"phone" binding:"required"`
+		// Phone string `json:"phone" binding:"required"` // PHONE VERIFICATION (commented out — switched to email verification)
+		Phone string `json:"phone,omitempty"`
+		Email string `json:"email" binding:"required,email"`
 		Code  string `json:"code" binding:"required"`
 		Role  string `json:"role" binding:"required"`
 	}
@@ -284,19 +359,19 @@ func VerifyOTPOnly(c *gin.Context) {
 		return
 	}
 
-	// Normalize phone number
-	normalizedPhone := normalizePhone(req.Phone)
-	log.Printf("🔍 VerifyOTPOnly: Original phone: %s, Normalized: %s, Role: %s", req.Phone, normalizedPhone, req.Role)
+	// PHONE VERIFICATION (commented out — switched to email verification)
+	// normalizedPhone := normalizePhone(req.Phone)
+	// log.Printf("🔍 VerifyOTPOnly: Original phone: %s, Normalized: %s, Role: %s", req.Phone, normalizedPhone, req.Role)
 
-	// Check OTP from memory store - try both formats
+	normalizedEmail := strings.ToLower(strings.TrimSpace(req.Email))
+	log.Printf("🔍 VerifyOTPOnly: Email: %s, Role: %s", normalizedEmail, req.Role)
+
+	// Check OTP from memory store, keyed by email
 	var data OTPData
 	var exists bool
 
 	otpMutex.Lock()
-	data, exists = otpStore[req.Phone]
-	if !exists {
-		data, exists = otpStore[normalizedPhone]
-	}
+	data, exists = otpStore[normalizedEmail]
 	otpMutex.Unlock()
 
 	log.Printf("🔍 OTP exists: %v", exists)
@@ -308,8 +383,7 @@ func VerifyOTPOnly(c *gin.Context) {
 
 	if time.Now().After(data.ExpiresAt) {
 		otpMutex.Lock()
-		delete(otpStore, req.Phone)
-		delete(otpStore, normalizedPhone)
+		delete(otpStore, normalizedEmail)
 		otpMutex.Unlock()
 
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "OTP expired"})
@@ -323,8 +397,7 @@ func VerifyOTPOnly(c *gin.Context) {
 
 	// ✅ Delete OTP after verification
 	otpMutex.Lock()
-	delete(otpStore, req.Phone)
-	delete(otpStore, normalizedPhone)
+	delete(otpStore, normalizedEmail)
 	otpMutex.Unlock()
 
 	ctx := c.Request.Context()
@@ -333,27 +406,23 @@ func VerifyOTPOnly(c *gin.Context) {
 	switch req.Role {
 	case "admin":
 		// Check if admin exists
-		admin, err := adminRepo.FindByPhone(ctx, normalizedPhone)
+		admin, err := adminRepo.FindByEmail(ctx, normalizedEmail)
 		if err != nil {
-			// Try original phone
-			admin, err = adminRepo.FindByPhone(ctx, req.Phone)
-			if err != nil {
-				log.Printf("🔍 Admin not found for phone: %s", req.Phone)
-				c.JSON(http.StatusOK, gin.H{
-					"message": "OTP verified successfully",
-					"exists":  false,
-					"role":    req.Role,
-				})
-				return
-			}
+			log.Printf("🔍 Admin not found for email: %s", normalizedEmail)
+			c.JSON(http.StatusOK, gin.H{
+				"message": "OTP verified successfully",
+				"exists":  false,
+				"role":    req.Role,
+			})
+			return
 		}
 
-		log.Printf("🔍 Admin found: ID=%s, Phone=%s, Verified=%v", admin.ID.Hex(), admin.Phone, admin.IsVerified)
+		log.Printf("🔍 Admin found: ID=%s, Email=%s, Verified=%v", admin.ID.Hex(), admin.Email, admin.IsVerified)
 
 		// Mark as verified if not already
 		if !admin.IsVerified {
-			if err := adminRepo.VerifyPhone(ctx, admin.Phone); err != nil {
-				log.Printf("🔍 Error verifying admin phone: %v", err)
+			if err := adminRepo.VerifyEmail(ctx, admin.Email); err != nil {
+				log.Printf("🔍 Error verifying admin email: %v", err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify admin"})
 				return
 			}
@@ -408,13 +477,7 @@ func VerifyOTPOnly(c *gin.Context) {
 		var user *models.User
 		var err error
 
-		// Try normalized phone first
-		user, err = userRepo.FindByPhone(ctx, normalizedPhone)
-		if err != nil {
-			log.Printf("🔍 User not found with normalized phone: %s, trying original...", normalizedPhone)
-			// Try original phone
-			user, err = userRepo.FindByPhone(ctx, req.Phone)
-		}
+		user, err = userRepo.FindByEmail(ctx, normalizedEmail)
 
 		if err != nil {
 			log.Printf("🔍 User not found: %v", err)
@@ -424,7 +487,7 @@ func VerifyOTPOnly(c *gin.Context) {
 				return
 			}
 
-			log.Printf("🔍 Returning exists=false for phone: %s", req.Phone)
+			log.Printf("🔍 Returning exists=false for email: %s", normalizedEmail)
 			c.JSON(http.StatusOK, gin.H{
 				"message": "OTP verified successfully",
 				"exists":  false,
@@ -433,13 +496,13 @@ func VerifyOTPOnly(c *gin.Context) {
 			return
 		}
 
-		log.Printf("🔍 User found: ID=%s, Phone=%s, Verified=%v", user.ID.Hex(), user.Phone, user.IsVerified)
+		log.Printf("🔍 User found: ID=%s, Email=%s, Verified=%v", user.ID.Hex(), user.Email, user.IsVerified)
 
 		// User exists - mark as verified
 		if !user.IsVerified {
 			log.Printf("🔍 Marking user as verified")
-			if err := userRepo.VerifyPhone(ctx, user.Phone); err != nil {
-				log.Printf("🔍 Error verifying phone: %v", err)
+			if err := userRepo.VerifyEmail(ctx, user.Email); err != nil {
+				log.Printf("🔍 Error verifying email: %v", err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify user"})
 				return
 			}
@@ -542,6 +605,19 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		}
 	}
 
+	// Check if email already registered (email is now the verified/verification channel)
+	if req.Email != "" {
+		normalizedEmail := strings.ToLower(strings.TrimSpace(req.Email))
+		if existingByEmail, _ := userRepo.FindByEmail(c.Request.Context(), normalizedEmail); existingByEmail != nil {
+			log.Printf("🔍 User already exists with email: %s", normalizedEmail)
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Email already registered",
+			})
+			return
+		}
+		req.Email = normalizedEmail
+	}
+
 	// Update the phone in request to normalized version
 	req.Phone = normalizedPhone
 
@@ -567,11 +643,11 @@ func (h *AuthHandler) Register(c *gin.Context) {
 }
 
 // @Summary Login with OTP
-// @Description Login using phone number (after OTP verification)
+// @Description Login using email address (after OTP verification)
 // @Tags authentication
 // @Accept json
 // @Produce json
-// @Param request body models.LoginWithOTPRequest true "Phone number"
+// @Param request body models.LoginWithOTPRequest true "Email address"
 // @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} map[string]interface{}
 // @Router /api/v1/auth/login-otp [post]
@@ -582,17 +658,23 @@ func (h *AuthHandler) LoginWithOTP(c *gin.Context) {
 		return
 	}
 
-	// Normalize phone number
-	normalizedPhone := normalizePhone(req.Phone)
+	// PHONE VERIFICATION (commented out — switched to email verification)
+	// normalizedPhone := normalizePhone(req.Phone)
+	// user, tokens, err := h.authService.LoginWithOTP(c.Request.Context(), normalizedPhone)
+	// if err != nil {
+	// 	// Try with original phone if normalized fails
+	// 	user, tokens, err = h.authService.LoginWithOTP(c.Request.Context(), req.Phone)
+	// 	if err != nil {
+	// 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	// 		return
+	// 	}
+	// }
 
-	user, tokens, err := h.authService.LoginWithOTP(c.Request.Context(), normalizedPhone)
+	normalizedEmail := strings.ToLower(strings.TrimSpace(req.Email))
+	user, tokens, err := h.authService.LoginWithOTPByEmail(c.Request.Context(), normalizedEmail)
 	if err != nil {
-		// Try with original phone if normalized fails
-		user, tokens, err = h.authService.LoginWithOTP(c.Request.Context(), req.Phone)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
 	}
 
 	response := gin.H{
@@ -611,7 +693,7 @@ func (h *AuthHandler) LoginWithOTP(c *gin.Context) {
 }
 
 // @Summary Verify OTP
-// @Description Verify phone number with OTP
+// @Description Verify email address with OTP
 // @Tags authentication
 // @Accept json
 // @Produce json
@@ -626,13 +708,15 @@ func (h *AuthHandler) VerifyOTP(c *gin.Context) {
 		return
 	}
 
-	err := h.authService.VerifyOTP(c.Request.Context(), req.Phone, req.Code)
+	// PHONE VERIFICATION (commented out — switched to email verification)
+	// err := h.authService.VerifyOTP(c.Request.Context(), req.Phone, req.Code)
+	err := h.authService.VerifyOTPByEmail(c.Request.Context(), req.Email, req.Code)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Phone number verified successfully"})
+	c.JSON(http.StatusOK, gin.H{"message": "Email address verified successfully"})
 }
 
 // @Summary Refresh access token
@@ -716,7 +800,7 @@ func (h *AuthHandler) UpdateProfile(c *gin.Context) {
 // @Tags authentication
 // @Accept json
 // @Produce json
-// @Param request body models.ForgotPasswordRequest true "Phone number"
+// @Param request body models.ForgotPasswordRequest true "Email address"
 // @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} map[string]interface{}
 // @Router /api/v1/auth/forgot-password [post]
@@ -727,15 +811,25 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 		return
 	}
 
-	otp, err := h.authService.ForgotPassword(c.Request.Context(), req.Phone)
+	normalizedEmail := strings.ToLower(strings.TrimSpace(req.Email))
+
+	// PHONE VERIFICATION (commented out — switched to email verification)
+	// otp, err := h.authService.ForgotPassword(c.Request.Context(), req.Phone)
+	otp, err := h.authService.ForgotPasswordByEmail(c.Request.Context(), normalizedEmail)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
+	if h.emailClient != nil {
+		if _, sendErr := h.emailClient.SendOTPEmail(normalizedEmail, otp); sendErr != nil {
+			log.Printf("❌ Failed to send password reset email: %v", sendErr)
+		}
+	}
+
 	// In production, don't return OTP in response
 	c.JSON(http.StatusOK, gin.H{
-		"message": "OTP sent to phone",
+		"message": "OTP sent to email",
 		"otp":     otp, // Remove this in production
 	})
 }

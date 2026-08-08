@@ -218,14 +218,16 @@ const AvailableOrdersScreen: React.FC = () => {
     try {
       setLoading(true);
 
-      // Get driver location
-      await getDriverLocation();
+      // Get driver location — capture the returned value directly since
+      // React state (setDriverLocation) won't have flushed by the time
+      // the next line runs.
+      const location = await getDriverLocation();
 
       // Connect to WebSocket
       await connectWebSocket();
 
-      // Fetch available orders
-      await fetchAvailableOrders();
+      // Fetch available orders using the location we just got
+      await fetchAvailableOrders(location);
 
       // Fetch driver stats
       await fetchDriverStats();
@@ -242,12 +244,15 @@ const AvailableOrdersScreen: React.FC = () => {
     }
   };
 
-  const getDriverLocation = async () => {
+  const getDriverLocation = async (): Promise<{
+    latitude: number;
+    longitude: number;
+  } | null> => {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
         console.warn("Location permission denied");
-        return;
+        return null;
       }
       const pos = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.High,
@@ -257,8 +262,14 @@ const AvailableOrdersScreen: React.FC = () => {
       if (isOnline) {
         WebSocketService.sendDriverLocation(latitude, longitude);
       }
+      // Return the value directly so callers don't have to wait on React
+      // state (setDriverLocation above hasn't flushed by the time this
+      // function returns), which was why fetchAvailableOrders used to run
+      // with a stale null driverLocation right after this call.
+      return { latitude, longitude };
     } catch (error) {
       console.error("Location error:", error);
+      return null;
     }
   };
 
@@ -288,8 +299,6 @@ const AvailableOrdersScreen: React.FC = () => {
         return;
       }
 
-      WebSocketService.connect(token);
-
       WebSocketService.on("connect", () => {
         console.log("Driver WebSocket connected");
         setIsOnline(true);
@@ -303,6 +312,11 @@ const AvailableOrdersScreen: React.FC = () => {
       WebSocketService.on("order:new", handleNewOrder);
       WebSocketService.on("order:cancelled", handleOrderCancelled);
       WebSocketService.on("order:taken", handleOrderTaken);
+
+      // connect() now returns a real promise that resolves once the
+      // handshake actually completes — awaiting it here prevents any
+      // race where messages are sent before the socket is open.
+      await WebSocketService.connect(token);
     } catch (error) {
       console.error("WebSocket connection error:", error);
     }
@@ -388,14 +402,24 @@ const AvailableOrdersScreen: React.FC = () => {
     }
   };
 
-  const fetchAvailableOrders = async () => {
+  const fetchAvailableOrders = async (
+    locationOverride?: { latitude: number; longitude: number } | null,
+  ) => {
     try {
       const token = await AsyncStorage.getItem("accessToken");
-      if (!driverLocation) {
+
+      // Prefer the location passed in directly (e.g. right after
+      // getDriverLocation() resolves) over the driverLocation state, since
+      // state updates from setDriverLocation() haven't necessarily flushed
+      // yet when this is called right after getDriverLocation().
+      const loc = locationOverride ?? driverLocation;
+
+      if (!loc) {
         console.warn("Driver location not available yet");
         return;
       }
-      const { latitude, longitude } = driverLocation;
+
+      const { latitude, longitude } = loc;
       const url = `https://pedal-delivery-back.onrender.com/api/v1/driver/orders/available?lat=${latitude}&lng=${longitude}&radius=5000`;
       const response = await fetch(url, {
         headers: {
@@ -407,22 +431,27 @@ const AvailableOrdersScreen: React.FC = () => {
       const data = await response.json();
 
       if (response.ok) {
-        const orders = (data as BackendOrder[]).map((order) => {
+        // Backend returns null (not []) when there are no matching orders —
+        // guard against that before mapping, which was causing
+        // "Cannot read property 'map' of null".
+        const rawOrders: BackendOrder[] = Array.isArray(data) ? data : [];
+
+        const orders = rawOrders.map((order) => {
           const mapped = mapBackendOrder(order);
-          if (driverLocation) {
-            const dist = calculateDistance(
-              driverLocation.latitude,
-              driverLocation.longitude,
-              mapped.restaurantLocation.latitude,
-              mapped.restaurantLocation.longitude,
-            );
-            mapped.distance = `${dist.toFixed(1)} km`;
-          }
+          const dist = calculateDistance(
+            latitude,
+            longitude,
+            mapped.restaurantLocation.latitude,
+            mapped.restaurantLocation.longitude,
+          );
+          mapped.distance = `${dist.toFixed(1)} km`;
           return mapped;
         });
         setAvailableOrders(orders);
       } else {
-        throw new Error(data.message || "Failed to fetch orders");
+        throw new Error(
+          data?.error || data?.message || "Failed to fetch orders",
+        );
       }
     } catch (error) {
       console.error("Fetch orders error:", error);
@@ -502,11 +531,8 @@ const AvailableOrdersScreen: React.FC = () => {
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([
-      getDriverLocation(),
-      fetchAvailableOrders(),
-      fetchDriverStats(),
-    ]);
+    const location = await getDriverLocation();
+    await Promise.all([fetchAvailableOrders(location), fetchDriverStats()]);
     setRefreshing(false);
   };
 

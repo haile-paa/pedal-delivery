@@ -22,8 +22,10 @@ type UserRepository interface {
 	FindByEmail(ctx context.Context, email string) (*models.User, error)
 	FindByUsername(ctx context.Context, username string) (*models.User, error)
 	Update(ctx context.Context, id primitive.ObjectID, update interface{}) error
-	UpdateOTP(ctx context.Context, phone, otpCode string) error
-	VerifyPhone(ctx context.Context, phone string) error
+	UpdateOTP(ctx context.Context, phone, otpCode string) error // PHONE VERIFICATION (commented out of use — kept for reference/revert)
+	UpdateOTPByEmail(ctx context.Context, email, otpCode string) error
+	VerifyPhone(ctx context.Context, phone string) error // PHONE VERIFICATION (commented out of use — kept for reference/revert)
+	VerifyEmail(ctx context.Context, email string) error
 	AddAddress(ctx context.Context, userID primitive.ObjectID, address *models.Address) error
 	UpdateAddress(ctx context.Context, userID, addressID primitive.ObjectID, update interface{}) error
 	DeleteAddress(ctx context.Context, userID, addressID primitive.ObjectID) error
@@ -186,6 +188,54 @@ func (r *userRepository) UpdateOTP(ctx context.Context, phone, otpCode string) e
 	}
 
 	result, err := r.collection.UpdateOne(ctx, bson.M{"phone": phone}, update)
+	if err != nil {
+		return err
+	}
+
+	if result.MatchedCount == 0 {
+		return errors.New("user not found")
+	}
+
+	return nil
+}
+
+func (r *userRepository) UpdateOTPByEmail(ctx context.Context, email, otpCode string) error {
+	expiresAt := time.Now().Add(10 * time.Minute)
+	otp := models.OTP{
+		Code:      otpCode,
+		ExpiresAt: expiresAt,
+		Attempts:  0,
+	}
+
+	update := bson.M{
+		"$set": bson.M{
+			"otp":        otp,
+			"updated_at": time.Now(),
+		},
+	}
+
+	result, err := r.collection.UpdateOne(ctx, bson.M{"email": email}, update)
+	if err != nil {
+		return err
+	}
+
+	if result.MatchedCount == 0 {
+		return errors.New("user not found")
+	}
+
+	return nil
+}
+
+func (r *userRepository) VerifyEmail(ctx context.Context, email string) error {
+	update := bson.M{
+		"$set": bson.M{
+			"is_verified": true,
+			"otp":         nil,
+			"updated_at":  time.Now(),
+		},
+	}
+
+	result, err := r.collection.UpdateOne(ctx, bson.M{"email": email}, update)
 	if err != nil {
 		return err
 	}

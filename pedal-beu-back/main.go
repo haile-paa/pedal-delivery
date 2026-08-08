@@ -23,7 +23,9 @@ import (
 	"github.com/haile-paa/pedal-delivery/internal/services"
 	"github.com/haile-paa/pedal-delivery/internal/websocket"
 	"github.com/haile-paa/pedal-delivery/pkg/database"
-	"github.com/haile-paa/pedal-delivery/pkg/sms"
+	"github.com/haile-paa/pedal-delivery/pkg/email"
+
+	// "github.com/haile-paa/pedal-delivery/pkg/sms" // PHONE VERIFICATION (commented out — switched to email verification)
 
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
@@ -157,16 +159,31 @@ func main() {
 	restaurantRepo := repositories.NewRestaurantRepository()
 	driverRepo := repositories.NewDriverRepository()
 
-	var smsClient *sms.Client
-	if cfg.Twilio.AccountSID != "" && cfg.Twilio.AuthToken != "" && cfg.Twilio.PhoneNumber != "" {
-		smsClient = sms.NewClient(
-			cfg.Twilio.AccountSID,
-			cfg.Twilio.AuthToken,
-			cfg.Twilio.PhoneNumber,
+	// PHONE VERIFICATION (commented out — switched to email verification, see below)
+	// var smsClient *sms.Client
+	// if cfg.Twilio.AccountSID != "" && cfg.Twilio.AuthToken != "" && cfg.Twilio.PhoneNumber != "" {
+	// 	smsClient = sms.NewClient(
+	// 		cfg.Twilio.AccountSID,
+	// 		cfg.Twilio.AuthToken,
+	// 		cfg.Twilio.PhoneNumber,
+	// 	)
+	// 	log.Println("✅ SMS client initialized (Twilio)")
+	// } else {
+	// 	log.Println("⚠️ Twilio credentials not configured – SMS will fail")
+	// }
+
+	var emailClient *email.Client
+	if cfg.SMTP.Host != "" && cfg.SMTP.Username != "" && cfg.SMTP.Password != "" {
+		emailClient = email.NewClient(
+			cfg.SMTP.Host,
+			cfg.SMTP.Port,
+			cfg.SMTP.Username,
+			cfg.SMTP.Password,
+			cfg.SMTP.From,
 		)
-		log.Println("✅ SMS client initialized (Twilio)")
+		log.Println("✅ Email client initialized (SMTP)")
 	} else {
-		log.Println("⚠️ Twilio credentials not configured – SMS will fail")
+		log.Println("⚠️ SMTP credentials not configured – verification emails will fail")
 	}
 
 	// Initialize services
@@ -175,7 +192,7 @@ func main() {
 	restaurantService := services.NewRestaurantService(restaurantRepo)
 
 	// Initialize handlers
-	authHandler := handlers.NewAuthHandler(authService, smsClient)
+	authHandler := handlers.NewAuthHandler(authService, emailClient)
 	orderHandler := handlers.NewOrderHandler(orderService)
 	restaurantHandler := handlers.NewRestaurantHandler(restaurantService)
 	adminHandler := handlers.NewAdminHandler(orderRepo, restaurantRepo, driverRepo, adminRepo)
@@ -193,11 +210,12 @@ func main() {
 
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
-			"status":      "healthy",
-			"timestamp":   time.Now().Unix(),
-			"cloudinary":  cld != nil,
-			"sms_enabled": smsClient != nil,
-			"environment": cfg.Server.Environment,
+			"status":     "healthy",
+			"timestamp":  time.Now().Unix(),
+			"cloudinary": cld != nil,
+			// "sms_enabled": smsClient != nil, // PHONE VERIFICATION (commented out — switched to email verification)
+			"email_enabled": emailClient != nil,
+			"environment":   cfg.Server.Environment,
 		})
 	})
 
@@ -211,6 +229,7 @@ func main() {
 			auth.POST("/verify-otp", handlers.VerifyOTPOnly)
 			auth.POST("/register-driver", authHandler.RegisterDriver)
 			auth.POST("/register", authHandler.Register)
+			auth.POST("/login", authHandler.Login) // phone + password login (customers, drivers, admins)
 			auth.POST("/login-otp", authHandler.LoginWithOTP)
 			auth.POST("/driver-login", authHandler.DriverLogin) // username+password login for drivers
 			auth.POST("/refresh", authHandler.RefreshToken)
