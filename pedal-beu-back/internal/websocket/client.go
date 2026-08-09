@@ -39,6 +39,9 @@ type Client struct {
 
 func (c *Client) readPump() {
 	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("recovered from panic in websocket readPump: %v", r)
+		}
 		c.hub.unregister <- c
 		c.conn.Close()
 	}()
@@ -257,6 +260,9 @@ func (c *Client) sendJSON(v interface{}) {
 func (c *Client) writePump() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("recovered from panic in websocket writePump: %v", r)
+		}
 		ticker.Stop()
 		c.conn.Close()
 	}()

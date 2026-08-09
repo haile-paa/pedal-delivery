@@ -39,62 +39,77 @@ func NewHub() *Hub {
 
 func (h *Hub) Run() {
 	for {
-		select {
-		case client := <-h.register:
-			h.mu.Lock()
-			h.clients[client] = true
-			client.rooms = make(map[string]bool)
-			log.Printf("Client registered: userID=%s, role=%s", client.userID.Hex(), client.role)
-			h.mu.Unlock()
+		h.runOnce()
+	}
+}
 
-		case client := <-h.unregister:
-			h.mu.Lock()
-			if _, ok := h.clients[client]; ok {
-				delete(h.clients, client)
-				close(client.send)
-				// Remove client from all rooms
-				for room := range client.rooms {
-					delete(h.rooms[room], client)
-					if len(h.rooms[room]) == 0 {
-						delete(h.rooms, room)
-					}
+// runOnce processes exactly one hub event (register/unregister/broadcast)
+// with panic recovery, so a bug handling one client/event can never crash
+// the whole server — it just logs and the loop continues. Without this,
+// an unrecovered panic here kills the entire Go process, since this
+// goroutine isn't covered by gin's HTTP-level Recovery middleware.
+func (h *Hub) runOnce() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("recovered from panic in websocket hub: %v", r)
+		}
+	}()
+
+	select {
+	case client := <-h.register:
+		h.mu.Lock()
+		h.clients[client] = true
+		client.rooms = make(map[string]bool)
+		log.Printf("Client registered: userID=%s, role=%s", client.userID.Hex(), client.role)
+		h.mu.Unlock()
+
+	case client := <-h.unregister:
+		h.mu.Lock()
+		if _, ok := h.clients[client]; ok {
+			delete(h.clients, client)
+			close(client.send)
+			// Remove client from all rooms
+			for room := range client.rooms {
+				delete(h.rooms[room], client)
+				if len(h.rooms[room]) == 0 {
+					delete(h.rooms, room)
 				}
-				log.Printf("Client unregistered: userID=%s", client.userID.Hex())
 			}
-			h.mu.Unlock()
+			log.Printf("Client unregistered: userID=%s", client.userID.Hex())
+		}
+		h.mu.Unlock()
 
-		case event := <-h.broadcast:
-			h.mu.RLock()
-			// If event contains a "room" field in Data, send only to that room
-			if dataMap, ok := event.Data.(map[string]interface{}); ok {
-				if roomVal, exists := dataMap["room"]; exists {
-					roomName, ok := roomVal.(string)
-					if ok && roomName != "" {
-						// Send to specific room
-						if clients, exists := h.rooms[roomName]; exists {
-							for client := range clients {
-								select {
-								case client.send <- h.serializeEvent(event):
-								default:
-									go h.unregisterClient(client)
-								}
+	case event := <-h.broadcast:
+		h.mu.RLock()
+		// If event contains a "room" field in Data, send only to that room
+		if dataMap, ok := event.Data.(map[string]interface{}); ok {
+			if roomVal, exists := dataMap["room"]; exists {
+				roomName, ok := roomVal.(string)
+				if ok && roomName != "" {
+					// Send to specific room
+					if clients, exists := h.rooms[roomName]; exists {
+						for client := range clients {
+							select {
+							case client.send <- h.serializeEvent(event):
+							default:
+								go h.unregisterClient(client)
 							}
 						}
-						h.mu.RUnlock()
-						continue
 					}
+					h.mu.RUnlock()
+					return
 				}
 			}
-			// Broadcast to all clients (fallback)
-			for client := range h.clients {
-				select {
-				case client.send <- h.serializeEvent(event):
-				default:
-					go h.unregisterClient(client)
-				}
-			}
-			h.mu.RUnlock()
 		}
+		// Broadcast to all clients (fallback)
+		for client := range h.clients {
+			select {
+			case client.send <- h.serializeEvent(event):
+			default:
+				go h.unregisterClient(client)
+			}
+		}
+		h.mu.RUnlock()
 	}
 }
 
@@ -200,11 +215,12 @@ func (h *Hub) HandleNewMessage(message *models.ChatMessage) {
 	h.BroadcastToRoom("order:"+message.OrderID.Hex(), event)
 }
 
-// SetupWebSocketRoutes registers WebSocket endpoints and initializes the global hub.
+// SetupWebSocketRoutes registers WebSocket endpoints.
+// The Hub itself is created once in handler.go's init() (as `hub`/GlobalHub);
+// this must NOT create a second Hub, or broadcasts via GlobalHub (e.g. new
+// order notifications in order_handler.go) end up in an empty hub that no
+// real client is registered with. See handler.go.
 func SetupWebSocketRoutes(router *gin.RouterGroup, authMiddleware gin.HandlerFunc) {
-	GlobalHub = NewHub()
-	go GlobalHub.Run()
-
 	ws := router.Group("/ws")
 	ws.Use(authMiddleware)
 	{
