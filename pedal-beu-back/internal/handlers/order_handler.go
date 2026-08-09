@@ -22,6 +22,26 @@ func NewOrderHandler(orderService services.OrderService) *OrderHandler {
 	}
 }
 
+// GetDriverStats returns the current driver's delivery/earnings/rating stats.
+// GET /api/v1/driver/stats
+func (h *OrderHandler) GetDriverStats(c *gin.Context) {
+	userID := c.MustGet("userID").(primitive.ObjectID)
+	userRole := c.MustGet("userRole").(string)
+
+	if userRole != "driver" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Only drivers can view their stats"})
+		return
+	}
+
+	stats, err := h.orderService.GetDriverStats(c.Request.Context(), userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, stats)
+}
+
 // GetAllOrders returns all orders with pagination (admin only)
 // @Summary Get all orders
 // @Tags admin

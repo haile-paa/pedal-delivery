@@ -24,7 +24,6 @@ import (
 	"github.com/haile-paa/pedal-delivery/internal/websocket"
 	"github.com/haile-paa/pedal-delivery/pkg/database"
 	"github.com/haile-paa/pedal-delivery/pkg/email"
-
 	// "github.com/haile-paa/pedal-delivery/pkg/sms" // PHONE VERIFICATION (commented out — switched to email verification)
 
 	"github.com/gin-gonic/gin"
@@ -225,8 +224,8 @@ func main() {
 
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
-			"status":     "healthy",
-			"timestamp":  time.Now().Unix(),
+			"status":      "healthy",
+			"timestamp":   time.Now().Unix(),
 			"cloudinary": cld != nil,
 			// "sms_enabled": smsClient != nil, // PHONE VERIFICATION (commented out — switched to email verification)
 			"email_enabled": emailClient != nil,
@@ -554,6 +553,7 @@ func main() {
 				driver.GET("/orders/available", orderHandler.GetAvailableOrders)
 				driver.POST("/orders/:id/accept", orderHandler.AcceptOrder)
 				driver.POST("/orders/:id/reject", orderHandler.RejectOrder)
+				driver.GET("/stats", orderHandler.GetDriverStats)
 			}
 
 			restaurantAdmin := protected.Group("/restaurants")

@@ -88,7 +88,7 @@ const DriverFormScreen: React.FC = () => {
     try {
       // First, register the driver with username/password
       const registerRes = await fetch(
-        "http://192.168.1.3:8080/api/v1/auth/register-driver",
+        "https://pedal-delivery-back.onrender.com/api/v1/auth/register-driver",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -106,7 +106,7 @@ const DriverFormScreen: React.FC = () => {
       if (registerRes.ok) {
         // Then send OTP for verification
         const otpRes = await fetch(
-          "http://192.168.1.3:8080/api/v1/auth/send-otp",
+          "https://pedal-delivery-back.onrender.com/api/v1/auth/send-otp",
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },

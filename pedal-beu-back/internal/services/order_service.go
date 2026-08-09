@@ -10,6 +10,7 @@ import (
 	"github.com/haile-paa/pedal-delivery/internal/models"
 	"github.com/haile-paa/pedal-delivery/internal/repositories"
 
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
@@ -32,6 +33,7 @@ type OrderService interface {
 	SubmitPaymentProof(ctx context.Context, orderID primitive.ObjectID, customerID primitive.ObjectID, req *models.SubmitPaymentProofRequest) (*models.Order, error)
 	ReviewPaymentProof(ctx context.Context, orderID primitive.ObjectID, adminID primitive.ObjectID, req *models.ReviewPaymentProofRequest) (*models.Order, error)
 	GetPaymentVerificationHealth(ctx context.Context) map[string]interface{}
+	GetDriverStats(ctx context.Context, driverID primitive.ObjectID) (map[string]interface{}, error)
 }
 
 type orderService struct {
@@ -447,4 +449,86 @@ func (s *orderService) GetAllOrders(ctx context.Context, page, limit int64) ([]m
 		SortDir: -1,
 	}
 	return s.orderRepo.GetAllOrders(ctx, pagination)
+}
+
+// GetDriverStats computes a driver's delivery/earnings/rating stats live
+// from their order history. Backs GET /api/v1/driver/stats — used by
+// DriverDashboard, DriverProfileScreen, and AvailableOrdersScreen in the app.
+func (s *orderService) GetDriverStats(ctx context.Context, driverID primitive.ObjectID) (map[string]interface{}, error) {
+	orders, _, err := s.orderRepo.FindByDriverID(ctx, driverID, repositories.Pagination{
+		Page:    1,
+		Limit:   10000,
+		SortBy:  "created_at",
+		SortDir: -1,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now()
+	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	startOfWeek := startOfDay.AddDate(0, 0, -int(now.Weekday()))
+	startOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+
+	var totalDeliveries int
+	var totalEarnings, todayEarnings, weekEarnings, monthEarnings float64
+	var ratingSum, ratingCount int
+
+	for _, o := range orders {
+		if o.Status == models.OrderDelivered {
+			totalDeliveries++
+			fee := o.TotalAmount.DeliveryFee
+			totalEarnings += fee
+			if o.UpdatedAt.After(startOfDay) {
+				todayEarnings += fee
+			}
+			if o.UpdatedAt.After(startOfWeek) {
+				weekEarnings += fee
+			}
+			if o.UpdatedAt.After(startOfMonth) {
+				monthEarnings += fee
+			}
+		}
+		if o.Rating != nil && o.Rating.DeliveryRating > 0 {
+			ratingSum += o.Rating.DeliveryRating
+			ratingCount++
+		}
+	}
+
+	// Acceptance rate: orders this driver ended up assigned to vs. orders
+	// they were offered and rejected (tracked in rejected_by_drivers).
+	acceptedCount := int64(len(orders))
+	rejectedCount, err := s.orderRepo.CountOrders(ctx, bson.M{"rejected_by_drivers": driverID})
+	if err != nil {
+		rejectedCount = 0
+	}
+	acceptanceRate := 100.0
+	if acceptedCount+rejectedCount > 0 {
+		acceptanceRate = float64(acceptedCount) / float64(acceptedCount+rejectedCount) * 100
+	}
+
+	averageRating := 5.0
+	if ratingCount > 0 {
+		averageRating = float64(ratingSum) / float64(ratingCount)
+	}
+
+	averageEarnings := 0.0
+	if totalDeliveries > 0 {
+		averageEarnings = totalEarnings / float64(totalDeliveries)
+	}
+
+	return map[string]interface{}{
+		"totalDeliveries": totalDeliveries,
+		"averageRating":   averageRating,
+		"rating":          averageRating, // DriverProfileScreen reads this key
+		"averageEarnings": averageEarnings,
+		"acceptanceRate":  acceptanceRate,
+		"todayEarnings":   todayEarnings,
+		"weekEarnings":    weekEarnings,
+		"earnings": map[string]interface{}{
+			"total":     totalEarnings,
+			"thisMonth": monthEarnings,
+			"today":     todayEarnings,
+		},
+	}, nil
 }
