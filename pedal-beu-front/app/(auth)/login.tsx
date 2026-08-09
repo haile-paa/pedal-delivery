@@ -1,3 +1,9 @@
+// NOTE: This screen is superseded by the phone+password Sign In flow now
+// built into WelcomeScreen.tsx (see /(auth)/welcome). It's no longer linked
+// to from anywhere in the app (both callers now redirect to /(auth)/welcome
+// instead) and has known bugs (authAPI.forgotPassword doesn't exist,
+// user.is_approved isn't a real field on User) — kept here rather than
+// deleted, but not recommended for active use.
 import React, { useState } from "react";
 import {
   View,
@@ -15,6 +21,7 @@ import { colors } from "../../src/theme/colors";
 import { authAPI } from "../../lib/api";
 import { LinearGradient } from "expo-linear-gradient";
 import { useAppState } from "../../src/context/AppStateContext";
+import { API_BASE_URL } from "../../src/utils/constants";
 
 const LoginScreen: React.FC = () => {
   const router = useRouter();
@@ -59,32 +66,33 @@ const LoginScreen: React.FC = () => {
         password,
       });
 
-      if (response.success) {
+      if (response.success && response.user && response.tokens) {
         const { user, tokens } = response;
+        const accessToken = tokens.accessToken || tokens.access_token;
 
-        // Update app state
+        if (!accessToken) {
+          Alert.alert("Error", "Login succeeded but no token was returned.");
+          return;
+        }
+
+        // Update app state — this screen only supports customer/driver
+        // (matches the rest of the mobile app's role scope; admins sign in
+        // through the admin site instead).
+        const userRole = user.role === "driver" ? "driver" : "customer";
+
         dispatch({
           type: "LOGIN_SUCCESS",
           payload: {
             user,
-            token: tokens.access_token,
-            role: user.role,
+            token: accessToken,
+            role: userRole,
           },
         });
 
         // Navigate based on role
-        if (user.role === "driver") {
-          if (!user.is_approved) {
-            // Driver needs approval
-            router.push({
-              pathname: "/(driver)/pending" as any,
-              params: { isPending: true } as any,
-            });
-          } else {
-            router.push("/(driver)/dashboard" as any);
-          }
+        if (userRole === "driver") {
+          router.push("/(driver)/dashboard" as any);
         } else {
-          // Customer
           router.push("/(customer)/home" as any);
         }
       } else {
@@ -101,24 +109,37 @@ const LoginScreen: React.FC = () => {
   const handleForgotPassword = () => {
     Alert.prompt(
       "Forgot Password",
-      "Enter your phone number to reset password:",
+      "Enter your email address to reset your password:",
       [
         { text: "Cancel", style: "cancel" },
         {
           text: "Send OTP",
           onPress: (value?: string) => {
             if (value) {
-              // Use async function inside
               (async () => {
                 try {
-                  const response = await authAPI.forgotPassword(value);
-                  if (response.success) {
-                    Alert.alert("Success", "OTP sent to reset password", [
-                      { text: "OK" },
-                    ]);
+                  const res = await fetch(
+                    `${API_BASE_URL}/auth/forgot-password`,
+                    {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ email: value }),
+                    },
+                  );
+                  const data = await res.json();
+                  if (res.ok) {
+                    Alert.alert(
+                      "Success",
+                      "A reset code was sent to your email.",
+                    );
+                  } else {
+                    Alert.alert(
+                      "Error",
+                      data.error || "Failed to send reset code",
+                    );
                   }
                 } catch (error: any) {
-                  Alert.alert("Error", error.message || "Failed to send OTP");
+                  Alert.alert("Error", "Server error. Please try again.");
                 }
               })();
             }
@@ -126,8 +147,8 @@ const LoginScreen: React.FC = () => {
         },
       ],
       "plain-text",
-      phone,
-      "numeric"
+      "",
+      "email-address",
     );
   };
 

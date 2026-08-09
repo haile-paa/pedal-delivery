@@ -16,6 +16,7 @@ import * as Location from "expo-location";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import WebSocketService from "../../services/websocket.service";
+import { API_BASE_URL } from "../../utils/constants";
 
 interface Coordinates {
   latitude: number;
@@ -177,17 +178,14 @@ const NavigationScreen: React.FC = () => {
             // Update order status to 'picked_up'
             try {
               const token = await AsyncStorage.getItem("accessToken");
-              await fetch(
-                `https://pedal-delivery-back.onrender.com/api/v1/orders/${params.orderId}/status`,
-                {
-                  method: "PUT",
-                  headers: {
-                    Authorization: `Bearer ${token}`,
-                    "Content-Type": "application/json",
-                  },
-                  body: JSON.stringify({ status: "picked_up" }),
+              await fetch(`${API_BASE_URL}/orders/${params.orderId}/status`, {
+                method: "PUT",
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                  "Content-Type": "application/json",
                 },
-              );
+                body: JSON.stringify({ status: "picked_up" }),
+              });
               // Switch destination to customer
               setDestination(customerLocation);
               setDestinationType("customer");
@@ -205,17 +203,14 @@ const NavigationScreen: React.FC = () => {
           onPress: async () => {
             try {
               const token = await AsyncStorage.getItem("accessToken");
-              await fetch(
-                `https://pedal-delivery-back.onrender.com/api/v1/orders/${params.orderId}/status`,
-                {
-                  method: "PUT",
-                  headers: {
-                    Authorization: `Bearer ${token}`,
-                    "Content-Type": "application/json",
-                  },
-                  body: JSON.stringify({ status: "delivered" }),
+              await fetch(`${API_BASE_URL}/orders/${params.orderId}/status`, {
+                method: "PUT",
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                  "Content-Type": "application/json",
                 },
-              );
+                body: JSON.stringify({ status: "delivered" }),
+              });
               Alert.alert("Delivery Complete", "Thank you for delivering!", [
                 {
                   text: "OK",

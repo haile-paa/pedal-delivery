@@ -12,6 +12,7 @@ import {
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { colors } from "../../src/theme/colors";
+import { API_BASE_URL } from "../../src/utils/constants";
 
 const DriverFormScreen: React.FC = () => {
   const router = useRouter();
@@ -87,36 +88,30 @@ const DriverFormScreen: React.FC = () => {
 
     try {
       // First, register the driver with username/password
-      const registerRes = await fetch(
-        "https://pedal-delivery-back.onrender.com/api/v1/auth/register-driver",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            phone: phoneNumber,
-            email: email.trim().toLowerCase(),
-            username: username.trim(),
-            password: password.trim(),
-          }),
-        },
-      );
+      const registerRes = await fetch(`${API_BASE_URL}/auth/register-driver`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone: phoneNumber,
+          email: email.trim().toLowerCase(),
+          username: username.trim(),
+          password: password.trim(),
+        }),
+      });
 
       const registerData = await registerRes.json();
 
       if (registerRes.ok) {
         // Then send OTP for verification
-        const otpRes = await fetch(
-          "https://pedal-delivery-back.onrender.com/api/v1/auth/send-otp",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              // phone: phoneNumber, // PHONE VERIFICATION (commented out — switched to email verification)
-              email: email.trim().toLowerCase(),
-              role: "driver",
-            }),
-          },
-        );
+        const otpRes = await fetch(`${API_BASE_URL}/auth/send-otp`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            // phone: phoneNumber, // PHONE VERIFICATION (commented out — switched to email verification)
+            email: email.trim().toLowerCase(),
+            role: "driver",
+          }),
+        });
 
         const otpData = await otpRes.json();
 

@@ -20,6 +20,7 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { colors } from "../../theme/colors";
 import { useAppState } from "../../context/AppStateContext";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { API_BASE_URL } from "../../utils/constants";
 
 const { width: screenWidth } = Dimensions.get("window");
 
@@ -103,19 +104,16 @@ const EmailVerificationScreen: React.FC = () => {
     setError(null);
 
     try {
-      const res = await fetch(
-        "https://pedal-delivery-back.onrender.com/api/v1/auth/verify-otp",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            // phone, // PHONE VERIFICATION (commented out — switched to email verification)
-            email,
-            code: otpString,
-            role: role,
-          }),
-        },
-      );
+      const res = await fetch(`${API_BASE_URL}/auth/verify-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          // phone, // PHONE VERIFICATION (commented out — switched to email verification)
+          email,
+          code: otpString,
+          role: role,
+        }),
+      });
 
       const data = await res.json();
 
@@ -179,18 +177,15 @@ const EmailVerificationScreen: React.FC = () => {
     if (resendTimer > 0) return;
 
     try {
-      const res = await fetch(
-        "https://pedal-delivery-back.onrender.com/api/v1/auth/send-otp",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            // phone, // PHONE VERIFICATION (commented out — switched to email verification)
-            email,
-            role,
-          }),
-        },
-      );
+      const res = await fetch(`${API_BASE_URL}/auth/send-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          // phone, // PHONE VERIFICATION (commented out — switched to email verification)
+          email,
+          role,
+        }),
+      });
 
       const data = await res.json();
       if (res.ok) {

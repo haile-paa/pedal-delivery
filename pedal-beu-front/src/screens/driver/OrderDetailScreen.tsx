@@ -14,6 +14,7 @@ import ProgressStepper from "../../components/ui/ProgressStepper";
 import AnimatedButton from "../../components/ui/AnimatedButton";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { API_BASE_URL } from "../../utils/constants";
 
 interface OrderDetails {
   id: string;
@@ -83,12 +84,9 @@ const OrderDetailScreen: React.FC = () => {
     try {
       setLoading(true);
       const token = await AsyncStorage.getItem("accessToken");
-      const response = await fetch(
-        `https://pedal-delivery-back.onrender.com/api/v1/orders/${orderId}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      );
+      const response = await fetch(`${API_BASE_URL}/orders/${orderId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       const data = await response.json();
       if (!response.ok)
         throw new Error(data.message || "Failed to fetch order");
@@ -150,7 +148,7 @@ const OrderDetailScreen: React.FC = () => {
     try {
       const token = await AsyncStorage.getItem("accessToken");
       const response = await fetch(
-        `https://pedal-delivery-back.onrender.com/api/v1/orders/${order.id}/status`,
+        `${API_BASE_URL}/orders/${order.id}/status`,
         {
           method: "PUT",
           headers: {

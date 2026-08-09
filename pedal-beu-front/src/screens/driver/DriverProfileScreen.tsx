@@ -17,6 +17,7 @@ import { Ionicons } from "@expo/vector-icons";
 import RatingStars from "../../components/driver/RatingStars";
 import AnimatedButton from "../../components/ui/AnimatedButton";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { API_BASE_URL } from "../../utils/constants";
 
 interface DriverProfile {
   id: string;
@@ -55,17 +56,15 @@ const DriverProfileScreen: React.FC = () => {
       setLoading(true);
       const token = await AsyncStorage.getItem("accessToken");
 
-      const userRes = await fetch(
-        "https://pedal-delivery-back.onrender.com/api/v1/users/me",
-        { headers: { Authorization: `Bearer ${token}` } },
-      );
+      const userRes = await fetch(`${API_BASE_URL}/users/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       if (!userRes.ok) throw new Error("Failed to fetch profile");
       const userData = await userRes.json();
 
-      const statsRes = await fetch(
-        "https://pedal-delivery-back.onrender.com/api/v1/driver/stats",
-        { headers: { Authorization: `Bearer ${token}` } },
-      );
+      const statsRes = await fetch(`${API_BASE_URL}/driver/stats`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       let stats = {
         totalDeliveries: 0,
         rating: 5.0,

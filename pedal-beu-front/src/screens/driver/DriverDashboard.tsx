@@ -17,6 +17,7 @@ import FloatingActionButton from "../../components/ui/FloatingActionButton";
 import { useRouter } from "expo-router";
 import WebSocketService from "../../services/websocket.service";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { API_BASE_URL } from "../../utils/constants";
 
 interface BackendOrder {
   id: string;
@@ -112,7 +113,7 @@ const DriverDashboard: React.FC = () => {
       try {
         const token = await AsyncStorage.getItem("accessToken");
         const response = await fetch(
-          "https://pedal-delivery-back.onrender.com/api/v1/driver/stats",
+          `${API_BASE_URL}/driver/stats`,
           { headers: { Authorization: `Bearer ${token}` } },
         );
         if (response.ok) {
@@ -249,8 +250,15 @@ const DriverDashboard: React.FC = () => {
   const mapBackendToNotification = (
     backend: BackendOrder,
   ): NotificationOrder => {
+    // The WebSocket "order:new" push is meant as a lightweight "hey, a new
+    // order exists — go refresh" signal (see order_handler.go), so treat
+    // every field here as potentially missing/partial rather than assuming
+    // it's a fully-populated order. A malformed payload should degrade
+    // gracefully, not crash the listener (which — before this fix — could
+    // also silently block OTHER "order:new" listeners, like the available
+    // orders list's own auto-refresh, from ever running).
     let distance = "N/A";
-    if (driverLocation && backend.restaurant?.location?.coordinates) {
+    if (driverLocation && backend?.restaurant?.location?.coordinates) {
       const [restLng, restLat] = backend.restaurant.location.coordinates;
       const dist = calculateDistance(
         driverLocation.latitude,
@@ -262,7 +270,7 @@ const DriverDashboard: React.FC = () => {
     }
 
     let eta = "30 min";
-    if (backend.delivery_info.estimated_delivery) {
+    if (backend?.delivery_info?.estimated_delivery) {
       const deliveryTime = new Date(backend.delivery_info.estimated_delivery);
       const now = new Date();
       const diffMinutes = Math.round(
@@ -272,22 +280,23 @@ const DriverDashboard: React.FC = () => {
     }
 
     return {
-      id: backend.id,
-      restaurantName: backend.restaurant?.name || "Restaurant",
-      amount: backend.total_amount?.total || 0,
+      id: backend?.id || "",
+      restaurantName: backend?.restaurant?.name || "Restaurant",
+      amount: backend?.total_amount?.total || 0,
       distance,
-      itemsCount: backend.items.reduce((sum, item) => sum + item.quantity, 0),
+      itemsCount:
+        backend?.items?.reduce((sum, item) => sum + item.quantity, 0) || 0,
       estimatedDeliveryTime: eta,
-      customerName: backend.delivery_info.contact_name,
-      customerPhone: backend.delivery_info.contact_phone,
-      deliveryAddress: backend.delivery_info.address.address,
-      restaurantLocation: backend.restaurant?.location?.coordinates
+      customerName: backend?.delivery_info?.contact_name || "Customer",
+      customerPhone: backend?.delivery_info?.contact_phone || "",
+      deliveryAddress: backend?.delivery_info?.address?.address || "",
+      restaurantLocation: backend?.restaurant?.location?.coordinates
         ? {
             latitude: backend.restaurant.location.coordinates[1],
             longitude: backend.restaurant.location.coordinates[0],
           }
         : undefined,
-      customerLocation: backend.delivery_info.address.location?.coordinates
+      customerLocation: backend?.delivery_info?.address?.location?.coordinates
         ? {
             latitude: backend.delivery_info.address.location.coordinates[1],
             longitude: backend.delivery_info.address.location.coordinates[0],
@@ -322,7 +331,7 @@ const DriverDashboard: React.FC = () => {
     try {
       const token = await AsyncStorage.getItem("accessToken");
       const response = await fetch(
-        `https://pedal-delivery-back.onrender.com/api/v1/driver/orders/${orderId}/accept`,
+        `${API_BASE_URL}/driver/orders/${orderId}/accept`,
         {
           method: "POST",
           headers: {
@@ -349,7 +358,7 @@ const DriverDashboard: React.FC = () => {
     try {
       const token = await AsyncStorage.getItem("accessToken");
       await fetch(
-        `https://pedal-delivery-back.onrender.com/api/v1/driver/orders/${orderId}/reject`,
+        `${API_BASE_URL}/driver/orders/${orderId}/reject`,
         {
           method: "POST",
           headers: {

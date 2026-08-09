@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -35,6 +36,45 @@ type Client struct {
 	userID primitive.ObjectID
 	role   string
 	rooms  map[string]bool
+
+	// closeMu/closed guard against the classic "send on closed channel"
+	// panic: sendJSON() is called directly from readPump()'s own goroutine
+	// (e.g. replying to a ping), while the Hub's Run() goroutine closes
+	// `send` on unregister. Those two are otherwise unsynchronized — a
+	// send racing a close panics even inside `select {case...:default:}`,
+	// since that only guards against blocking, not against a closed
+	// channel. All sends/closes to `send` must go through safeSend /
+	// markClosed below instead of touching the channel directly.
+	closeMu sync.Mutex
+	closed  bool
+}
+
+// safeSend sends bytes to the client's outbound channel, safely handling
+// concurrent close. Returns false if the client is already closed or the
+// channel is full (caller should treat both as "message dropped").
+func (c *Client) safeSend(b []byte) bool {
+	c.closeMu.Lock()
+	defer c.closeMu.Unlock()
+	if c.closed {
+		return false
+	}
+	select {
+	case c.send <- b:
+		return true
+	default:
+		return false
+	}
+}
+
+// markClosed closes the send channel exactly once. Safe to call multiple
+// times or concurrently with safeSend.
+func (c *Client) markClosed() {
+	c.closeMu.Lock()
+	defer c.closeMu.Unlock()
+	if !c.closed {
+		c.closed = true
+		close(c.send)
+	}
 }
 
 func (c *Client) readPump() {
@@ -251,10 +291,7 @@ func (c *Client) sendJSON(v interface{}) {
 	if err != nil {
 		return
 	}
-	select {
-	case c.send <- b:
-	default:
-	}
+	c.safeSend(b)
 }
 
 func (c *Client) writePump() {

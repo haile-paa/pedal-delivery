@@ -73,7 +73,7 @@ const FoodItemCard: React.FC<FoodItemCardProps> = React.memo(
               )}
             </View>
 
-            {!item.isAvailable ? (
+            {!item.is_available ? (
               <View style={styles.unavailableBadge}>
                 <Text style={styles.unavailableText}>Unavailable</Text>
               </View>
@@ -111,7 +111,7 @@ const FoodItemCard: React.FC<FoodItemCardProps> = React.memo(
         </View>
       </Animated.View>
     );
-  }
+  },
 );
 
 const styles = StyleSheet.create({

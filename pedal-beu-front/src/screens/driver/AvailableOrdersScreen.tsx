@@ -20,6 +20,7 @@ import { useRouter } from "expo-router";
 import WebSocketService from "../../services/websocket.service";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
+import { API_BASE_URL } from "../../utils/constants";
 
 // Define the expected shape of a backend order (from REST or WebSocket)
 interface BackendOrder {
@@ -295,7 +296,7 @@ const AvailableOrdersScreen: React.FC = () => {
       const token = await AsyncStorage.getItem("accessToken");
       if (!token) {
         Alert.alert("Error", "You are not logged in");
-        router.replace("/login");
+        router.replace("/(auth)/welcome");
         return;
       }
 
@@ -420,7 +421,7 @@ const AvailableOrdersScreen: React.FC = () => {
       }
 
       const { latitude, longitude } = loc;
-      const url = `https://pedal-delivery-back.onrender.com/api/v1/driver/orders/available?lat=${latitude}&lng=${longitude}&radius=5000`;
+      const url = `${API_BASE_URL}/driver/orders/available?lat=${latitude}&lng=${longitude}&radius=5000`;
       const response = await fetch(url, {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -462,15 +463,12 @@ const AvailableOrdersScreen: React.FC = () => {
   const fetchDriverStats = async () => {
     try {
       const token = await AsyncStorage.getItem("accessToken");
-      const response = await fetch(
-        "https://pedal-delivery-back.onrender.com/api/v1/driver/stats",
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
+      const response = await fetch(`${API_BASE_URL}/driver/stats`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
         },
-      );
+      });
 
       if (!response.ok) {
         // Fallback to default stats
@@ -540,7 +538,7 @@ const AvailableOrdersScreen: React.FC = () => {
     try {
       const token = await AsyncStorage.getItem("accessToken");
       const response = await fetch(
-        `https://pedal-delivery-back.onrender.com/api/v1/driver/orders/${orderId}/accept`,
+        `${API_BASE_URL}/driver/orders/${orderId}/accept`,
         {
           method: "POST",
           headers: {
@@ -602,16 +600,13 @@ const AvailableOrdersScreen: React.FC = () => {
         onPress: async () => {
           try {
             const token = await AsyncStorage.getItem("accessToken");
-            await fetch(
-              `https://pedal-delivery-back.onrender.com/api/v1/driver/orders/${orderId}/reject`,
-              {
-                method: "POST",
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                  "Content-Type": "application/json",
-                },
+            await fetch(`${API_BASE_URL}/driver/orders/${orderId}/reject`, {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
               },
-            );
+            });
 
             setAvailableOrders((prev) =>
               prev.filter((order) => order.id !== orderId),
@@ -646,7 +641,7 @@ const AvailableOrdersScreen: React.FC = () => {
               const remainingOrders = availableOrders.slice(1);
               for (const order of remainingOrders) {
                 await fetch(
-                  `https://pedal-delivery-back.onrender.com/api/v1/driver/orders/${order.id}/reject`,
+                  `${API_BASE_URL}/driver/orders/${order.id}/reject`,
                   {
                     method: "POST",
                     headers: {

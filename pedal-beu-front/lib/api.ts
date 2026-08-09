@@ -9,8 +9,7 @@ import {
   OTPResponse,
   User,
 } from "../src/types";
-
-const API_BASE_URL = "https://pedal-delivery-back.onrender.com/api/v1";
+import { API_BASE_URL } from "../src/utils/constants";
 
 const api = axios.create({
   baseURL: API_BASE_URL,

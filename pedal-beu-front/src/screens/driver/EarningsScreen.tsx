@@ -13,6 +13,7 @@ import { colors } from "../../theme/colors";
 import EarningsChart from "../../components/driver/EarningsChart";
 import { useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { API_BASE_URL } from "../../utils/constants";
 
 interface EarningsSummary {
   today: number;
@@ -66,7 +67,7 @@ const EarningsScreen: React.FC = () => {
       const token = await AsyncStorage.getItem("accessToken");
 
       const summaryRes = await fetch(
-        "https://pedal-delivery-back.onrender.com/api/v1/driver/earnings/summary",
+        `${API_BASE_URL}/driver/earnings/summary`,
         { headers: { Authorization: `Bearer ${token}` } },
       );
       if (summaryRes.ok) {
@@ -75,7 +76,7 @@ const EarningsScreen: React.FC = () => {
       }
 
       const chartRes = await fetch(
-        `https://pedal-delivery-back.onrender.com/api/v1/driver/earnings/chart?range=${timeRange}`,
+        `${API_BASE_URL}/driver/earnings/chart?range=${timeRange}`,
         { headers: { Authorization: `Bearer ${token}` } },
       );
       if (chartRes.ok) {
@@ -89,7 +90,7 @@ const EarningsScreen: React.FC = () => {
       }
 
       const txRes = await fetch(
-        "https://pedal-delivery-back.onrender.com/api/v1/driver/earnings/transactions?limit=5",
+        `${API_BASE_URL}/driver/earnings/transactions?limit=5`,
         { headers: { Authorization: `Bearer ${token}` } },
       );
       if (txRes.ok) {

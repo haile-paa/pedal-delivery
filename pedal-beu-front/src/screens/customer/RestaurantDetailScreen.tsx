@@ -164,7 +164,7 @@ const RestaurantDetailScreen: React.FC = () => {
         { text: "Cancel", style: "cancel" },
         {
           text: "Login",
-          onPress: () => router.push("/login"),
+          onPress: () => router.push("/(auth)/welcome"),
         },
       ]);
       return;

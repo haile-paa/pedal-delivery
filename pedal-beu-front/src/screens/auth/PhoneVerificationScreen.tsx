@@ -20,6 +20,7 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { colors } from "../../theme/colors";
 import { useAppState } from "../../context/AppStateContext";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { API_BASE_URL } from "../../utils/constants";
 
 const { width: screenWidth } = Dimensions.get("window");
 
@@ -97,18 +98,15 @@ const PhoneVerificationScreen: React.FC = () => {
     setError(null);
 
     try {
-      const res = await fetch(
-        "https://pedal-delivery-back.onrender.com/api/v1/auth/verify-otp",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            phone,
-            code: otpString,
-            role: role,
-          }),
-        },
-      );
+      const res = await fetch(`${API_BASE_URL}/auth/verify-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone,
+          code: otpString,
+          role: role,
+        }),
+      });
 
       const data = await res.json();
 
@@ -172,17 +170,14 @@ const PhoneVerificationScreen: React.FC = () => {
     if (resendTimer > 0) return;
 
     try {
-      const res = await fetch(
-        "https://pedal-delivery-back.onrender.com/api/v1/auth/send-otp",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            phone,
-            role,
-          }),
-        },
-      );
+      const res = await fetch(`${API_BASE_URL}/auth/send-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone,
+          role,
+        }),
+      });
 
       const data = await res.json();
       if (res.ok) {

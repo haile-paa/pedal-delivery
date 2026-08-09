@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { WS_BASE_URL } from "../utils/constants";
 
 type EventCallback = (data: any) => void;
 
@@ -9,7 +10,7 @@ class WebSocketService {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
-  private baseUrl = "wss://pedal-delivery-back.onrender.com";
+  private baseUrl = WS_BASE_URL;
   private token: string | null = null;
   private intentionalClose = false;
   private rooms: string[] = [];
@@ -178,7 +179,20 @@ class WebSocketService {
 
   private trigger(event: string, data: any) {
     const callbacks = this.listeners.get(event);
-    if (callbacks) callbacks.forEach((cb) => cb(data));
+    if (!callbacks) return;
+    // Each callback gets its own try/catch — one broken listener (e.g. a
+    // screen that crashes parsing a malformed payload) must never prevent
+    // OTHER listeners for the same event from running. Without this,
+    // Array.prototype.forEach aborts entirely on the first throw, silently
+    // breaking unrelated features (e.g. a driver's order list failing to
+    // auto-refresh just because a notification banner elsewhere crashed).
+    callbacks.forEach((cb) => {
+      try {
+        cb(data);
+      } catch (error) {
+        console.error(`Error in WebSocket "${event}" listener:`, error);
+      }
+    });
   }
 
   // If the socket isn't open yet (still connecting), the message is queued

@@ -28,6 +28,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import * as Location from "expo-location"; // ✅ Import Location
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAppState } from "../../context/AppStateContext";
+import { API_BASE_URL } from "../../utils/constants";
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
 
@@ -136,17 +137,14 @@ const WelcomeScreen: React.FC = () => {
         normalizedPhone = `+251${normalizedPhone.substring(1)}`;
       }
 
-      const res = await fetch(
-        "https://pedal-delivery-back.onrender.com/api/v1/auth/login",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            phone: normalizedPhone,
-            password,
-          }),
-        },
-      );
+      const res = await fetch(`${API_BASE_URL}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone: normalizedPhone,
+          password,
+        }),
+      });
 
       const data = await res.json();
 
@@ -231,7 +229,7 @@ const WelcomeScreen: React.FC = () => {
   //   setLoading(true);
   //   try {
   //     const res = await fetch(
-  //       "https://pedal-delivery-back.onrender.com/api/v1/auth/send-otp",
+  //       `${API_BASE_URL}/auth/send-otp`,
   //       {
   //         method: "POST",
   //         headers: { "Content-Type": "application/json" },
@@ -282,7 +280,7 @@ const WelcomeScreen: React.FC = () => {
   //   setLoading(true);
   //   try {
   //     const res = await fetch(
-  //       "https://pedal-delivery-back.onrender.com/api/v1/auth/send-otp",
+  //       `${API_BASE_URL}/auth/send-otp`,
   //       {
   //         method: "POST",
   //         headers: { "Content-Type": "application/json" },
@@ -419,7 +417,9 @@ const WelcomeScreen: React.FC = () => {
                 ]}
                 onPress={handleSignIn}
                 disabled={
-                  !validatePhoneNumber(phoneNumber) || !password.trim() || loading
+                  !validatePhoneNumber(phoneNumber) ||
+                  !password.trim() ||
+                  loading
                 }
               >
                 <LinearGradient

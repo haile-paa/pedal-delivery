@@ -22,6 +22,7 @@ import WebSocketService from "../../services/websocket.service";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { useAppState } from "../../context/AppStateContext";
+import { API_BASE_URL } from "../../utils/constants";
 
 interface DriverInfo {
   id: string;
@@ -231,20 +232,17 @@ const OrderTrackingScreen: React.FC = () => {
       if (!token) return;
 
       console.log("Auto‑cancelling order due to timeout");
-      const response = await fetch(
-        `https://pedal-delivery-back.onrender.com/api/v1/orders/${orderId}/cancel`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            reason:
-              "Order automatically cancelled: no driver accepted within 30 minutes",
-          }),
+      const response = await fetch(`${API_BASE_URL}/orders/${orderId}/cancel`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
         },
-      );
+        body: JSON.stringify({
+          reason:
+            "Order automatically cancelled: no driver accepted within 30 minutes",
+        }),
+      });
 
       const data = await response.json();
       if (response.ok) {
@@ -311,15 +309,12 @@ const OrderTrackingScreen: React.FC = () => {
         throw new Error("You are not logged in");
       }
 
-      const orderRes = await fetch(
-        `https://pedal-delivery-back.onrender.com/api/v1/orders/${orderId}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
+      const orderRes = await fetch(`${API_BASE_URL}/orders/${orderId}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
         },
-      );
+      });
       const orderData = await orderRes.json();
       if (!orderRes.ok) {
         throw new Error(orderData.message || "Failed to fetch order");
@@ -328,7 +323,7 @@ const OrderTrackingScreen: React.FC = () => {
       console.log("Order data from backend:", orderData);
 
       const restaurantRes = await fetch(
-        `https://pedal-delivery-back.onrender.com/api/v1/restaurants/${orderData.restaurant_id}`,
+        `${API_BASE_URL}/restaurants/${orderData.restaurant_id}`,
         {
           headers: { Authorization: `Bearer ${token}` },
         },
@@ -563,7 +558,7 @@ const OrderTrackingScreen: React.FC = () => {
             }
 
             const response = await fetch(
-              `https://pedal-delivery-back.onrender.com/api/v1/orders/${orderId}/cancel`,
+              `${API_BASE_URL}/orders/${orderId}/cancel`,
               {
                 method: "POST",
                 headers: {
