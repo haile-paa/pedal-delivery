@@ -202,7 +202,13 @@ func (r *orderRepository) FindAvailableOrders(ctx context.Context, driverID prim
 		"driver_id": nil,
 		// Exclude orders this specific driver already rejected
 		"rejected_by_drivers": bson.M{"$ne": driverID},
-		"restaurant.location": bson.M{
+		// NOTE: was "restaurant.location", a field that never existed on the
+		// Order document (orders only store RestaurantID, not an embedded
+		// restaurant object). That made $near match zero documents, silently,
+		// every time — no order ever showed up here regardless of distance.
+		// RestaurantLocation is now denormalized onto the order at creation
+		// time (see order_service.go CreateOrder), so query against that.
+		"restaurant_location": bson.M{
 			"$near": bson.M{
 				"$geometry":    location,
 				"$maxDistance": radius,

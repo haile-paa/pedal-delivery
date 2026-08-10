@@ -268,6 +268,11 @@ type Order struct {
 	CustomerID          primitive.ObjectID   `bson:"customer_id" json:"customer_id"`
 	DriverID            *primitive.ObjectID  `bson:"driver_id,omitempty" json:"driver_id,omitempty"`
 	RestaurantID        primitive.ObjectID   `bson:"restaurant_id" json:"restaurant_id"`
+	// RestaurantLocation is a snapshot of the restaurant's location at the time
+	// the order was placed. It's denormalized onto the order (rather than
+	// looked up via RestaurantID) so FindAvailableOrders can run a $near geo
+	// query directly against the orders collection.
+	RestaurantLocation  GeoLocation          `bson:"restaurant_location" json:"restaurant_location"`
 	Items               []OrderItem          `bson:"items" json:"items"`
 	Status              OrderStatus          `bson:"status" json:"status"`
 	TotalAmount         OrderAmount          `bson:"total_amount" json:"total_amount"`

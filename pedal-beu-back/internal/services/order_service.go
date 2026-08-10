@@ -189,10 +189,11 @@ func (s *orderService) CreateOrder(ctx context.Context, customerID primitive.Obj
 	// order was ever visible to anyone. Admins can still reject/cancel it
 	// from the admin site if needed (see order_service.go transition table).
 	order := &models.Order{
-		CustomerID:   customerID,
-		RestaurantID: restaurantID,
-		Items:        orderItems,
-		Status:       models.OrderAccepted,
+		CustomerID:         customerID,
+		RestaurantID:       restaurantID,
+		RestaurantLocation: restaurant.Location,
+		Items:              orderItems,
+		Status:             models.OrderAccepted,
 		TotalAmount:  totalAmount,
 		DeliveryInfo: models.DeliveryInfo{
 			Address:           deliveryAddress,
