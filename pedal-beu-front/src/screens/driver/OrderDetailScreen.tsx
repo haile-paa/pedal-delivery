@@ -290,44 +290,46 @@ const OrderDetailScreen: React.FC = () => {
                 <Text style={styles.itemName}>
                   {item.quantity}x {item.name}
                 </Text>
-                <Text style={styles.itemPrice}>${item.total.toFixed(2)}</Text>
+                <Text style={styles.itemPrice}>
+                  {item.total.toFixed(2)} Birr
+                </Text>
               </View>
             ))}
             <View style={styles.divider} />
             <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>Subtotal</Text>
               <Text style={styles.totalValue}>
-                ${order.subtotal.toFixed(2)}
+                {order.subtotal.toFixed(2)} Birr
               </Text>
             </View>
             <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>Delivery Fee</Text>
               <Text style={styles.totalValue}>
-                ${order.delivery_fee.toFixed(2)}
+                {order.delivery_fee.toFixed(2)} Birr
               </Text>
             </View>
             <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>Service Charge</Text>
               <Text style={styles.totalValue}>
-                ${order.service_charge.toFixed(2)}
+                {order.service_charge.toFixed(2)} Birr
               </Text>
             </View>
             <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>Tax</Text>
-              <Text style={styles.totalValue}>${order.tax.toFixed(2)}</Text>
+              <Text style={styles.totalValue}>{order.tax.toFixed(2)} Birr</Text>
             </View>
             {order.discount > 0 && (
               <View style={styles.totalRow}>
                 <Text style={styles.totalLabel}>Discount</Text>
                 <Text style={[styles.totalValue, styles.discountValue]}>
-                  -${order.discount.toFixed(2)}
+                  -{order.discount.toFixed(2)} Birr
                 </Text>
               </View>
             )}
             <View style={[styles.totalRow, styles.grandTotalRow]}>
               <Text style={styles.grandTotalLabel}>Total</Text>
               <Text style={styles.grandTotalValue}>
-                ${order.total.toFixed(2)}
+                {order.total.toFixed(2)} Birr
               </Text>
             </View>
           </View>

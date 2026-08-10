@@ -193,10 +193,21 @@ func (s *orderService) CreateOrder(ctx context.Context, customerID primitive.Obj
 		return nil, errors.New("address not found")
 	}
 
-	// Calculate delivery fee
-	deliveryFee, err := s.CalculateDeliveryFee(ctx, restaurant.Location, deliveryAddress.Location)
-	if err != nil {
-		return nil, err
+	// Delivery fee: use the restaurant's own configured delivery_fee when
+	// one is set (this is the exact number the customer already saw and
+	// agreed to in the cart/checkout screens), and only fall back to the
+	// distance-based estimate for restaurants that haven't configured one.
+	// Previously this always recalculated a distance-based fee here,
+	// silently overriding whatever the customer was shown at checkout —
+	// which is why the stored order total could differ from the price the
+	// customer approved.
+	deliveryFee := restaurant.DeliveryFee
+	if deliveryFee <= 0 {
+		calculatedFee, err := s.CalculateDeliveryFee(ctx, restaurant.Location, deliveryAddress.Location)
+		if err != nil {
+			return nil, err
+		}
+		deliveryFee = calculatedFee
 	}
 
 	// Calculate total amount
@@ -222,7 +233,7 @@ func (s *orderService) CreateOrder(ctx context.Context, customerID primitive.Obj
 		RestaurantLocation: restaurant.Location,
 		Items:              orderItems,
 		Status:             models.OrderAccepted,
-		TotalAmount:  totalAmount,
+		TotalAmount:        totalAmount,
 		DeliveryInfo: models.DeliveryInfo{
 			Address:           deliveryAddress,
 			Notes:             req.Notes,
