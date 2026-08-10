@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/haile-paa/pedal-delivery/internal/models"
@@ -29,6 +30,7 @@ type OrderService interface {
 	CalculateDeliveryFee(ctx context.Context, restaurantLocation, deliveryLocation models.GeoLocation) (float64, error)
 	GetOrderStatistics(ctx context.Context, restaurantID primitive.ObjectID) (map[string]interface{}, error)
 	GetAllOrders(ctx context.Context, page, limit int64) ([]models.Order, int64, error)
+	GetAllOrdersEnriched(ctx context.Context, page, limit int64) ([]AdminOrderView, int64, error)
 	VerifyOrderPayment(ctx context.Context, orderID primitive.ObjectID, customerID primitive.ObjectID, req *models.VerifyOrderPaymentRequest) (*models.Order, error)
 	SubmitPaymentProof(ctx context.Context, orderID primitive.ObjectID, customerID primitive.ObjectID, req *models.SubmitPaymentProofRequest) (*models.Order, error)
 	ReviewPaymentProof(ctx context.Context, orderID primitive.ObjectID, adminID primitive.ObjectID, req *models.ReviewPaymentProofRequest) (*models.Order, error)
@@ -180,11 +182,17 @@ func (s *orderService) CreateOrder(ctx context.Context, customerID primitive.Obj
 	}
 
 	// Create order
+	// Status starts as "accepted" (not "pending") so it's immediately
+	// visible to nearby drivers via GetAvailableOrders — this app has no
+	// separate restaurant-side "confirm this order" step/portal, so
+	// requiring manual acceptance before drivers can see it just meant no
+	// order was ever visible to anyone. Admins can still reject/cancel it
+	// from the admin site if needed (see order_service.go transition table).
 	order := &models.Order{
 		CustomerID:   customerID,
 		RestaurantID: restaurantID,
 		Items:        orderItems,
-		Status:       models.OrderPending,
+		Status:       models.OrderAccepted,
 		TotalAmount:  totalAmount,
 		DeliveryInfo: models.DeliveryInfo{
 			Address:           deliveryAddress,
@@ -290,16 +298,24 @@ func (s *orderService) isValidStatusTransition(current, new models.OrderStatus, 
 		models.OrderPending: {
 			"restaurant": {models.OrderAccepted, models.OrderRejected},
 			"customer":   {models.OrderCancelled},
-			"admin":      {models.OrderCancelled},
+			// "admin" can also drive the restaurant side of the order
+			// lifecycle: there is no separate "restaurant" account role
+			// anywhere in this system (registration only allows
+			// customer/driver/admin — see models.RegisterRequest), so
+			// without this, NO order could ever move past "pending" and
+			// drivers would never see any order, ever. Restaurants are
+			// managed through the admin site in this app, so admin is the
+			// practical stand-in for the restaurant's own actions.
+			"admin": {models.OrderAccepted, models.OrderRejected, models.OrderCancelled},
 		},
 		models.OrderAccepted: {
 			"restaurant": {models.OrderPreparing, models.OrderCancelled},
 			"driver":     {models.OrderCancelled},
-			"admin":      {models.OrderCancelled},
+			"admin":      {models.OrderPreparing, models.OrderCancelled},
 		},
 		models.OrderPreparing: {
 			"restaurant": {models.OrderReady, models.OrderCancelled},
-			"admin":      {models.OrderCancelled},
+			"admin":      {models.OrderReady, models.OrderCancelled},
 		},
 		models.OrderReady: {
 			"driver": {models.OrderPickedUp},
@@ -441,6 +457,21 @@ func (s *orderService) GetOrderStatistics(ctx context.Context, restaurantID prim
 
 	return stats, nil
 }
+
+// userDisplayName returns "FirstName LastName" trimmed, falling back to
+// username then phone. Mirrors handlers.userDisplayName (unexported there,
+// in a different package, so duplicated here rather than shared).
+func userDisplayName(u *models.User) string {
+	name := strings.TrimSpace(u.Profile.FirstName + " " + u.Profile.LastName)
+	if name != "" {
+		return name
+	}
+	if u.Username != "" {
+		return u.Username
+	}
+	return u.Phone
+}
+
 func (s *orderService) GetAllOrders(ctx context.Context, page, limit int64) ([]models.Order, int64, error) {
 	pagination := repositories.Pagination{
 		Page:    page,
@@ -449,6 +480,57 @@ func (s *orderService) GetAllOrders(ctx context.Context, page, limit int64) ([]m
 		SortDir: -1,
 	}
 	return s.orderRepo.GetAllOrders(ctx, pagination)
+}
+
+// AdminOrderView is what the admin site's Orders page actually needs to
+// display — the raw Order document only stores customer_id/restaurant_id/
+// driver_id references, never resolved names, but the UI needs to show
+// "who ordered", "which restaurant", "which driver took it", and the price
+// without the admin having to cross-reference IDs by hand.
+type AdminOrderView struct {
+	models.Order
+	CustomerName   string `json:"customer_name"`
+	CustomerPhone  string `json:"customer_phone"`
+	RestaurantName string `json:"restaurant_name"`
+	DriverName     string `json:"driver_name,omitempty"`
+	DriverPhone    string `json:"driver_phone,omitempty"`
+}
+
+// GetAllOrdersEnriched is the same as GetAllOrders but resolves
+// customer/restaurant/driver names for display on the admin site — see
+// AdminOrderView. Uses simple per-order lookups rather than a batch $in
+// query since admin page sizes are small (typically 20/page); fine for this
+// scale, worth revisiting with a proper join/cache if order volume grows.
+func (s *orderService) GetAllOrdersEnriched(ctx context.Context, page, limit int64) ([]AdminOrderView, int64, error) {
+	orders, total, err := s.GetAllOrders(ctx, page, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	views := make([]AdminOrderView, 0, len(orders))
+	for _, order := range orders {
+		view := AdminOrderView{Order: order}
+
+		if customer, err := s.userRepo.FindByID(ctx, order.CustomerID); err == nil && customer != nil {
+			view.CustomerName = userDisplayName(customer)
+			view.CustomerPhone = customer.Phone
+		}
+
+		if restaurant, err := s.restaurantRepo.FindByID(ctx, order.RestaurantID); err == nil && restaurant != nil {
+			view.RestaurantName = restaurant.Name
+		}
+
+		if order.DriverID != nil {
+			if driver, err := s.userRepo.FindByID(ctx, *order.DriverID); err == nil && driver != nil {
+				view.DriverName = userDisplayName(driver)
+				view.DriverPhone = driver.Phone
+			}
+		}
+
+		views = append(views, view)
+	}
+
+	return views, total, nil
 }
 
 // GetDriverStats computes a driver's delivery/earnings/rating stats live

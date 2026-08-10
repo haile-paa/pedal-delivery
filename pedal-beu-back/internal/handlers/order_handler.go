@@ -61,7 +61,7 @@ func (h *OrderHandler) GetAllOrders(c *gin.Context) {
 	page, _ := strconv.ParseInt(c.DefaultQuery("page", "1"), 10, 64)
 	limit, _ := strconv.ParseInt(c.DefaultQuery("limit", "20"), 10, 64)
 
-	orders, total, err := h.orderService.GetAllOrders(c.Request.Context(), page, limit)
+	orders, total, err := h.orderService.GetAllOrdersEnriched(c.Request.Context(), page, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
