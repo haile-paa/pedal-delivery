@@ -42,6 +42,7 @@ interface OrderStatus {
     | "preparing"
     | "ready"
     | "picked_up"
+    | "on_the_way"
     | "delivered"
     | "cancelled";
   timestamp: string;
@@ -109,17 +110,17 @@ const OrderTrackingScreen: React.FC = () => {
 
   const { dispatch } = useAppState();
 
-  // Track if the order has been accepted or further processed
+  // The 30‑minute auto‑cancel window is about waiting for a driver, not
+  // about the order's kitchen status — orders are created with status
+  // "accepted" immediately (see backend CreateOrder), so gating this on
+  // status alone made it look "active" from the first second and the
+  // countdown never ran. What actually ends the waiting period is a driver
+  // accepting the order, so key this off driverInfo instead.
   const isOrderActive = useCallback(() => {
-    const activeStatuses: OrderStatus["status"][] = [
-      "accepted",
-      "preparing",
-      "ready",
-      "picked_up",
-      "delivered",
-    ];
+    if (driverInfo) return true;
+    const activeStatuses: OrderStatus["status"][] = ["picked_up", "delivered"];
     return activeStatuses.includes(currentStatus);
-  }, [currentStatus]);
+  }, [currentStatus, driverInfo]);
 
   // Compute time remaining from order creation time
   const computeTimeRemaining = useCallback((createdAt: string) => {
@@ -144,6 +145,7 @@ const OrderTrackingScreen: React.FC = () => {
     preparing: "restaurant-outline",
     ready: "fast-food-outline",
     picked_up: "bicycle-outline",
+    on_the_way: "bicycle-outline",
     delivered: "checkmark-done-outline",
     cancelled: "close-circle-outline",
   };
@@ -154,6 +156,7 @@ const OrderTrackingScreen: React.FC = () => {
     preparing: colors.warning,
     ready: colors.warning,
     picked_up: colors.primary,
+    on_the_way: colors.primary,
     delivered: colors.success,
     cancelled: colors.error,
   };
@@ -167,6 +170,7 @@ const OrderTrackingScreen: React.FC = () => {
         return 1;
       case "ready":
       case "picked_up":
+      case "on_the_way":
         return 2;
       case "delivered":
         return 3;
@@ -832,10 +836,14 @@ const OrderTrackingScreen: React.FC = () => {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.statusHeader}>
-          <View style={styles.timeRemaining}>
-            <Text style={styles.timeLabel}>Auto‑cancel in</Text>
-            <Text style={styles.timeValue}>{timeRemaining} min</Text>
-          </View>
+          {!driverInfo &&
+            currentStatus !== "delivered" &&
+            currentStatus !== "cancelled" && (
+              <View style={styles.timeRemaining}>
+                <Text style={styles.timeLabel}>Auto‑cancel in</Text>
+                <Text style={styles.timeValue}>{timeRemaining} min</Text>
+              </View>
+            )}
           <View style={styles.currentStatus}>
             <Ionicons
               name={statusIcons[currentStatus] as any}

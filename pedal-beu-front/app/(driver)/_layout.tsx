@@ -80,6 +80,13 @@ export default function DriverLayout() {
           headerShown: false,
         }}
       />
+      <Tabs.Screen
+        name='order-detail'
+        options={{
+          href: null, // This hides it from the tab bar
+          headerShown: false,
+        }}
+      />
     </Tabs>
   );
 }

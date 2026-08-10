@@ -37,6 +37,8 @@ interface OrderDetails {
   }>;
   subtotal: number;
   delivery_fee: number;
+  service_charge: number;
+  discount: number;
   tax: number;
   total: number;
   special_instructions?: string;
@@ -61,13 +63,21 @@ const OrderDetailScreen: React.FC = () => {
     { title: "Delivered", description: "Order complete" },
   ];
 
+  // Maps the backend's real order statuses onto the 4 steps shown here.
+  // The backend has no separate restaurant-side actor to mark food as
+  // "preparing"/"ready" in real time, so once a driver is assigned they
+  // drive the whole flow: accepted -> ready (arrived at restaurant) ->
+  // picked_up -> delivered. "preparing"/"on_the_way" are included as
+  // fallbacks in case an order was ever nudged forward from the admin site.
   const getCurrentStep = (status: string) => {
     switch (status) {
       case "accepted":
+      case "preparing":
         return 0;
-      case "at_restaurant":
+      case "ready":
         return 1;
       case "picked_up":
+      case "on_the_way":
         return 2;
       case "delivered":
         return 3;
@@ -114,6 +124,8 @@ const OrderDetailScreen: React.FC = () => {
           })) || [],
         subtotal: data.total_amount?.subtotal || 0,
         delivery_fee: data.total_amount?.delivery_fee || 0,
+        service_charge: data.total_amount?.service_charge || 0,
+        discount: data.total_amount?.discount || 0,
         tax: data.total_amount?.tax || 0,
         total: data.total_amount?.total || 0,
         special_instructions: data.delivery_info?.notes,
@@ -295,9 +307,23 @@ const OrderDetailScreen: React.FC = () => {
               </Text>
             </View>
             <View style={styles.totalRow}>
+              <Text style={styles.totalLabel}>Service Charge</Text>
+              <Text style={styles.totalValue}>
+                ${order.service_charge.toFixed(2)}
+              </Text>
+            </View>
+            <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>Tax</Text>
               <Text style={styles.totalValue}>${order.tax.toFixed(2)}</Text>
             </View>
+            {order.discount > 0 && (
+              <View style={styles.totalRow}>
+                <Text style={styles.totalLabel}>Discount</Text>
+                <Text style={[styles.totalValue, styles.discountValue]}>
+                  -${order.discount.toFixed(2)}
+                </Text>
+              </View>
+            )}
             <View style={[styles.totalRow, styles.grandTotalRow]}>
               <Text style={styles.grandTotalLabel}>Total</Text>
               <Text style={styles.grandTotalValue}>
@@ -325,15 +351,15 @@ const OrderDetailScreen: React.FC = () => {
         </View>
 
         {/* Status update buttons based on current status */}
-        {order.status === "accepted" && (
+        {(order.status === "accepted" || order.status === "preparing") && (
           <AnimatedButton
             title='Arrived at Restaurant'
-            onPress={() => handleStatusUpdate("at_restaurant")}
+            onPress={() => handleStatusUpdate("ready")}
             loading={updating}
             fullWidth
           />
         )}
-        {order.status === "at_restaurant" && (
+        {order.status === "ready" && (
           <AnimatedButton
             title='Picked Up Order'
             onPress={() => handleStatusUpdate("picked_up")}
@@ -341,7 +367,7 @@ const OrderDetailScreen: React.FC = () => {
             fullWidth
           />
         )}
-        {order.status === "picked_up" && (
+        {(order.status === "picked_up" || order.status === "on_the_way") && (
           <AnimatedButton
             title='Mark as Delivered'
             onPress={() => handleStatusUpdate("delivered")}
@@ -425,6 +451,7 @@ const styles = StyleSheet.create({
   },
   totalLabel: { fontSize: 14, color: colors.gray600 },
   totalValue: { fontSize: 14, fontWeight: "600", color: colors.gray800 },
+  discountValue: { color: colors.success },
   grandTotalRow: {
     marginTop: 8,
     paddingTop: 8,

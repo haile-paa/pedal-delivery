@@ -202,7 +202,7 @@ func main() {
 
 	// Initialize services
 	authService := services.NewAuthService(userRepo, adminRepo)
-	orderService := services.NewOrderService(orderRepo, restaurantRepo, userRepo)
+	orderService := services.NewOrderService(orderRepo, restaurantRepo, userRepo, driverRepo)
 	restaurantService := services.NewRestaurantService(restaurantRepo)
 
 	// Initialize handlers

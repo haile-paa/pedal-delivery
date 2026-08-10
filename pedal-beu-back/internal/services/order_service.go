@@ -17,7 +17,7 @@ import (
 
 type OrderService interface {
 	CreateOrder(ctx context.Context, customerID primitive.ObjectID, req *models.CreateOrderRequest) (*models.Order, error)
-	GetOrderByID(ctx context.Context, orderID primitive.ObjectID, userID primitive.ObjectID, userRole string) (*models.Order, error)
+	GetOrderByID(ctx context.Context, orderID primitive.ObjectID, userID primitive.ObjectID, userRole string) (*OrderWithDriver, error)
 	GetCustomerOrders(ctx context.Context, customerID primitive.ObjectID, page, limit int64) ([]models.Order, int64, error)
 	GetDriverOrders(ctx context.Context, driverID primitive.ObjectID, page, limit int64) ([]models.Order, int64, error)
 	GetRestaurantOrders(ctx context.Context, restaurantID primitive.ObjectID, page, limit int64) ([]models.Order, int64, error)
@@ -42,18 +42,46 @@ type orderService struct {
 	orderRepo      repositories.OrderRepository
 	restaurantRepo repositories.RestaurantRepository
 	userRepo       repositories.UserRepository
+	driverRepo     repositories.DriverRepository
 }
 
 func NewOrderService(
 	orderRepo repositories.OrderRepository,
 	restaurantRepo repositories.RestaurantRepository,
 	userRepo repositories.UserRepository,
+	driverRepo repositories.DriverRepository,
 ) OrderService {
 	return &orderService{
 		orderRepo:      orderRepo,
 		restaurantRepo: restaurantRepo,
 		userRepo:       userRepo,
+		driverRepo:     driverRepo,
 	}
+}
+
+// OrderWithDriver is what GET /orders/:id actually returns. The raw Order
+// document only stores driver_id (a bare ObjectID reference), but both
+// consumers of this endpoint need more than that: the customer app needs
+// the assigned driver's name/phone/vehicle/rating to show "Your Driver",
+// and the driver app just ignores the extra field. Without this, the
+// customer never sees who's delivering their order even after a driver
+// has accepted it.
+type OrderWithDriver struct {
+	*models.Order
+	Driver *DriverContact `json:"driver,omitempty"`
+}
+
+// DriverContact is the public-facing subset of driver info safe to expose
+// to the customer tracking an order.
+type DriverContact struct {
+	ID                  string  `json:"id"`
+	Name                string  `json:"name"`
+	Phone               string  `json:"phone"`
+	ProfilePicture      string  `json:"profile_picture,omitempty"`
+	Rating              float64 `json:"rating"`
+	VehicleType         string  `json:"vehicle_type"`
+	LicensePlate        string  `json:"license_plate"`
+	CompletedDeliveries int     `json:"completed_deliveries"`
 }
 
 func (s *orderService) CreateOrder(ctx context.Context, customerID primitive.ObjectID, req *models.CreateOrderRequest) (*models.Order, error) {
@@ -216,7 +244,7 @@ func (s *orderService) CreateOrder(ctx context.Context, customerID primitive.Obj
 	return order, nil
 }
 
-func (s *orderService) GetOrderByID(ctx context.Context, orderID primitive.ObjectID, userID primitive.ObjectID, userRole string) (*models.Order, error) {
+func (s *orderService) GetOrderByID(ctx context.Context, orderID primitive.ObjectID, userID primitive.ObjectID, userRole string) (*OrderWithDriver, error) {
 	order, err := s.orderRepo.FindByID(ctx, orderID)
 	if err != nil {
 		return nil, err
@@ -244,7 +272,28 @@ func (s *orderService) GetOrderByID(ctx context.Context, orderID primitive.Objec
 		return nil, errors.New("unauthorized")
 	}
 
-	return order, nil
+	result := &OrderWithDriver{Order: order}
+
+	// Resolve the assigned driver's contact/vehicle info, if any, so the
+	// customer app can render "Your Driver" without a second round trip.
+	if order.DriverID != nil {
+		if driverUser, uerr := s.userRepo.FindByID(ctx, *order.DriverID); uerr == nil && driverUser != nil {
+			contact := &DriverContact{
+				ID:    driverUser.ID.Hex(),
+				Name:  userDisplayName(driverUser),
+				Phone: driverUser.Phone,
+			}
+			if driverProfile, derr := s.driverRepo.FindByUserID(ctx, *order.DriverID); derr == nil && driverProfile != nil {
+				contact.Rating = driverProfile.Rating
+				contact.VehicleType = driverProfile.Vehicle.Type
+				contact.LicensePlate = driverProfile.Vehicle.Plate
+				contact.CompletedDeliveries = driverProfile.TotalTrips
+			}
+			result.Driver = contact
+		}
+	}
+
+	return result, nil
 }
 
 func (s *orderService) GetCustomerOrders(ctx context.Context, customerID primitive.ObjectID, page, limit int64) ([]models.Order, int64, error) {
@@ -311,8 +360,14 @@ func (s *orderService) isValidStatusTransition(current, new models.OrderStatus, 
 		},
 		models.OrderAccepted: {
 			"restaurant": {models.OrderPreparing, models.OrderCancelled},
-			"driver":     {models.OrderCancelled},
-			"admin":      {models.OrderPreparing, models.OrderCancelled},
+			// There is no restaurant portal to mark "food ready" in real
+			// time (see the CreateOrder comment above), so once a driver
+			// has taken the order, they are the only actor who can report
+			// having physically arrived at the restaurant. Let them push
+			// straight to "ready" — this is what the driver app's
+			// "Arrived at Restaurant" button sends.
+			"driver": {models.OrderReady, models.OrderCancelled},
+			"admin":  {models.OrderPreparing, models.OrderCancelled},
 		},
 		models.OrderPreparing: {
 			"restaurant": {models.OrderReady, models.OrderCancelled},
@@ -323,7 +378,12 @@ func (s *orderService) isValidStatusTransition(current, new models.OrderStatus, 
 			"admin":  {models.OrderCancelled},
 		},
 		models.OrderPickedUp: {
-			"driver": {models.OrderOnTheWay},
+			// Same reasoning as above: no dispatcher needs the separate
+			// "on the way" hop reported, so the driver app's "Mark as
+			// Delivered" button can go straight from picked_up to
+			// delivered. on_the_way is kept available (e.g. for admin use)
+			// but isn't required.
+			"driver": {models.OrderOnTheWay, models.OrderDelivered},
 			"admin":  {models.OrderCancelled},
 		},
 		models.OrderOnTheWay: {
