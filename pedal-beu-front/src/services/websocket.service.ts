@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { AppState, AppStateStatus } from "react-native";
 import { WS_BASE_URL } from "../utils/constants";
 
 type EventCallback = (data: any) => void;
@@ -8,12 +9,18 @@ class WebSocketService {
   private static instance: WebSocketService;
   private listeners: Map<string, EventCallback[]> = new Map();
   private reconnectAttempts = 0;
-  private maxReconnectAttempts = 5;
+  // No longer a hard stop — a phone can sit backgrounded/off-network for a
+  // long time, and giving up after 5 tries meant a driver or customer who
+  // left the app idle for a few minutes would silently stop getting live
+  // updates until they force-closed and reopened it. We keep backing off
+  // (up to 30s between tries) but never stop trying on our own; only
+  // disconnect() (an intentional, explicit close) stops retries.
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
   private baseUrl = WS_BASE_URL;
   private token: string | null = null;
   private intentionalClose = false;
   private rooms: string[] = [];
+  private appStateSubscription: { remove: () => void } | null = null;
 
   // Tracks the in-flight connection attempt so multiple callers awaiting
   // connect() all resolve/reject together with the same outcome, and so
@@ -24,7 +31,35 @@ class WebSocketService {
   // opening. Flushed the instant handleOpen() fires.
   private pendingEmits: { type: string; payload: any }[] = [];
 
-  private constructor() {}
+  private constructor() {
+    // A locked screen or backgrounded app is the #1 real-world cause of the
+    // socket dropping — the OS suspends the connection, the server's ping
+    // eventually times out server-side, and the client fires onerror/
+    // onclose. Reconnecting immediately when the app comes back to the
+    // foreground (instead of waiting on the backoff timer, which may have
+    // already been idling for a while) makes that recovery instant instead
+    // of taking up to 30s.
+    this.appStateSubscription = AppState.addEventListener(
+      "change",
+      this.handleAppStateChange,
+    );
+  }
+
+  private handleAppStateChange = (nextState: AppStateStatus) => {
+    if (
+      nextState === "active" &&
+      this.token &&
+      !this.intentionalClose &&
+      this.ws?.readyState !== WebSocket.OPEN &&
+      this.ws?.readyState !== WebSocket.CONNECTING
+    ) {
+      if (this.reconnectTimeout) {
+        clearTimeout(this.reconnectTimeout);
+        this.reconnectTimeout = null;
+      }
+      this.connect(this.token).catch(() => {});
+    }
+  };
 
   static getInstance(): WebSocketService {
     if (!WebSocketService.instance) {
@@ -144,7 +179,13 @@ class WebSocketService {
   }
 
   private handleError(_error: Event) {
-    console.error("WebSocket error");
+    // This fires for ordinary, expected drops (screen lock, backgrounding,
+    // a brief network blip) that scheduleReconnect() below already recovers
+    // from automatically — it is not itself an app failure. console.error
+    // was surfacing this as a full red-screen error in the dev build even
+    // though nothing was actually broken; console.warn keeps it visible in
+    // logs without implying the app crashed.
+    console.warn("WebSocket connection error (will attempt to reconnect)");
     this.trigger("error", { message: "WebSocket error" });
   }
 
@@ -155,7 +196,10 @@ class WebSocketService {
   }
 
   private scheduleReconnect() {
-    if (this.reconnectAttempts >= this.maxReconnectAttempts) return;
+    // While backgrounded there's no point burning battery/retries — the
+    // moment the app returns to "active", handleAppStateChange() above
+    // reconnects immediately anyway.
+    if (AppState.currentState !== "active") return;
     const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
     if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout);
     this.reconnectTimeout = setTimeout(() => {

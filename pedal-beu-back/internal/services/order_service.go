@@ -24,7 +24,7 @@ type OrderService interface {
 	UpdateOrderStatus(ctx context.Context, orderID primitive.ObjectID, status models.OrderStatus, actorID primitive.ObjectID, actorRole string) error
 	AssignDriver(ctx context.Context, orderID, driverID primitive.ObjectID) error
 	RejectOrder(ctx context.Context, orderID, driverID primitive.ObjectID) error
-	GetAvailableOrders(ctx context.Context, driverID primitive.ObjectID, driverLocation models.GeoLocation, radius float64) ([]models.Order, error)
+	GetAvailableOrders(ctx context.Context, driverID primitive.ObjectID, driverLocation models.GeoLocation, radius float64) ([]OrderWithRestaurant, error)
 	CancelOrder(ctx context.Context, orderID primitive.ObjectID, userID primitive.ObjectID, userRole, reason string) error
 	RateOrder(ctx context.Context, orderID primitive.ObjectID, rating *models.OrderRating) error
 	CalculateDeliveryFee(ctx context.Context, restaurantLocation, deliveryLocation models.GeoLocation) (float64, error)
@@ -68,7 +68,28 @@ func NewOrderService(
 // has accepted it.
 type OrderWithDriver struct {
 	*models.Order
-	Driver *DriverContact `json:"driver,omitempty"`
+	Driver     *DriverContact  `json:"driver,omitempty"`
+	Restaurant *RestaurantInfo `json:"restaurant,omitempty"`
+}
+
+// RestaurantInfo is the pickup-location subset of a restaurant attached to
+// orders for the driver and customer apps — name, address, phone, and
+// location. The Order document only stores RestaurantID (plus a denormalized
+// RestaurantLocation snapshot for geo queries), so this is resolved from the
+// restaurants collection at read time rather than stored on the order.
+type RestaurantInfo struct {
+	Name     string             `json:"name"`
+	Address  string             `json:"address"`
+	Phone    string             `json:"phone,omitempty"`
+	Location *models.GeoLocation `json:"location,omitempty"`
+}
+
+// OrderWithRestaurant is what GET /driver/orders/available returns — each
+// order plus its restaurant's name/address/phone/location, so the driver
+// app can show the pickup address without a second round trip per order.
+type OrderWithRestaurant struct {
+	models.Order
+	Restaurant *RestaurantInfo `json:"restaurant,omitempty"`
 }
 
 // DriverContact is the public-facing subset of driver info safe to expose
@@ -285,6 +306,18 @@ func (s *orderService) GetOrderByID(ctx context.Context, orderID primitive.Objec
 
 	result := &OrderWithDriver{Order: order}
 
+	// Resolve the restaurant's name/address/phone/location so order-detail,
+	// navigation, and tracking screens can show pickup info without a
+	// separate /restaurants/:id call.
+	if restaurant, rerr := s.restaurantRepo.FindByID(ctx, order.RestaurantID); rerr == nil && restaurant != nil {
+		result.Restaurant = &RestaurantInfo{
+			Name:     restaurant.Name,
+			Address:  restaurant.Address,
+			Phone:    restaurant.Phone,
+			Location: &restaurant.Location,
+		}
+	}
+
 	// Resolve the assigned driver's contact/vehicle info, if any, so the
 	// customer app can render "Your Driver" without a second round trip.
 	if order.DriverID != nil {
@@ -424,8 +457,27 @@ func (s *orderService) RejectOrder(ctx context.Context, orderID, driverID primit
 	return s.orderRepo.RejectOrder(ctx, orderID, driverID)
 }
 
-func (s *orderService) GetAvailableOrders(ctx context.Context, driverID primitive.ObjectID, driverLocation models.GeoLocation, radius float64) ([]models.Order, error) {
-	return s.orderRepo.FindAvailableOrders(ctx, driverID, driverLocation, radius)
+func (s *orderService) GetAvailableOrders(ctx context.Context, driverID primitive.ObjectID, driverLocation models.GeoLocation, radius float64) ([]OrderWithRestaurant, error) {
+	orders, err := s.orderRepo.FindAvailableOrders(ctx, driverID, driverLocation, radius)
+	if err != nil {
+		return nil, err
+	}
+
+	views := make([]OrderWithRestaurant, 0, len(orders))
+	for _, order := range orders {
+		view := OrderWithRestaurant{Order: order}
+		if restaurant, rerr := s.restaurantRepo.FindByID(ctx, order.RestaurantID); rerr == nil && restaurant != nil {
+			view.Restaurant = &RestaurantInfo{
+				Name:     restaurant.Name,
+				Address:  restaurant.Address,
+				Phone:    restaurant.Phone,
+				Location: &restaurant.Location,
+			}
+		}
+		views = append(views, view)
+	}
+
+	return views, nil
 }
 
 func (s *orderService) CancelOrder(ctx context.Context, orderID primitive.ObjectID, userID primitive.ObjectID, userRole, reason string) error {

@@ -20,6 +20,7 @@ import { authAPI, checkAuth, orderAPI } from "../../lib/api";
 import { restaurantAPI } from "../../lib/restaurant";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
+import WebSocketService from "../services/websocket.service";
 
 // ----- Types (unchanged) -----
 
@@ -738,6 +739,16 @@ export const AppStateProvider: React.FC<{ children: ReactNode }> = ({
     } catch (error) {
       logError("Error logging out:", error);
     } finally {
+      // The WebSocket is a shared, app-wide connection (see
+      // websocket.service.ts) — logout is the one place that should
+      // actually tear it down for good. Individual screens (dashboard,
+      // order tracking, etc.) used to each call disconnect() from their
+      // own unmount cleanup, which meant just navigating away from one of
+      // them — or a routine re-render — could kill live updates for
+      // everyone else still using the connection, and permanently block
+      // the auto-reconnect logic until something happened to call
+      // connect() again.
+      WebSocketService.disconnect();
       await AsyncStorage.multiRemove(["accessToken", "refreshToken", "user"]);
       dispatch({ type: "LOGOUT" });
       router.replace("/(auth)/welcome");

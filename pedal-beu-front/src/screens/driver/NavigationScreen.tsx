@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -7,11 +7,13 @@ import {
   TouchableOpacity,
   Alert,
   Platform,
+  ActivityIndicator,
+  Linking,
 } from "react-native";
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
 import { colors } from "../../theme/colors";
-import AnimatedButton from "../../components/ui/AnimatedButton";
 import { useRouter, useLocalSearchParams } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import * as Location from "expo-location";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -23,50 +25,152 @@ interface Coordinates {
   longitude: number;
 }
 
+// Everything the map needs to show "full details" for each stop — pulled
+// fresh from GET /orders/:id rather than tunneled through router params, so
+// this screen works from ANY entry point (order detail, the dashboard's
+// quick-navigate button, a push notification deep link, etc.) as long as it
+// has an orderId. It also means phone numbers and full addresses — which
+// previously never made it to this screen at all — are always available.
+interface OrderLocations {
+  orderNumber: string;
+  status: string;
+  restaurant: {
+    name: string;
+    address: string;
+    phone?: string;
+    location: Coordinates | null;
+  };
+  customer: {
+    name: string;
+    address: string;
+    phone: string;
+    location: Coordinates | null;
+    specialInstructions?: string;
+  };
+}
+
 const NavigationScreen: React.FC = () => {
   const router = useRouter();
-  const params = useLocalSearchParams<{
-    orderId: string;
-    restLat: string;
-    restLng: string;
-    custLat: string;
-    custLng: string;
-    restaurantName: string;
-    customerAddress: string;
-  }>();
+  const params = useLocalSearchParams<{ orderId: string }>();
 
   const mapRef = useRef<MapView>(null);
+  const [loadingOrder, setLoadingOrder] = useState(true);
+  const [order, setOrder] = useState<OrderLocations | null>(null);
+
   const [currentLocation, setCurrentLocation] = useState<Coordinates | null>(
     null,
   );
-  const [destination, setDestination] = useState<Coordinates | null>(null);
   const [destinationType, setDestinationType] = useState<
     "restaurant" | "customer"
   >("restaurant");
   const [routeCoordinates, setRouteCoordinates] = useState<Coordinates[]>([]);
   const [distanceRemaining, setDistanceRemaining] = useState<number>(0);
   const [timeRemaining, setTimeRemaining] = useState<number>(0);
-  const [isNavigating, setIsNavigating] = useState(false);
-  const [locationSubscription, setLocationSubscription] =
-    useState<Location.LocationSubscription | null>(null);
+  // A ref, not state: the watchPositionAsync cleanup below runs inside a
+  // useEffect with an empty dependency array, so its cleanup closure only
+  // ever sees the value this held at mount time. With useState that value
+  // was always the initial `null` — the real subscription (set later, once
+  // watchPositionAsync resolves) was never visible to the cleanup, so
+  // `.remove()` never actually ran and the GPS watcher (and its outgoing
+  // location updates) kept running indefinitely after leaving this screen.
+  // A ref is mutated in place, so the cleanup always reads the current value.
+  const locationSubscriptionRef = useRef<Location.LocationSubscription | null>(
+    null,
+  );
 
-  // Destination coordinates from params
-  const restaurantLocation: Coordinates = {
-    latitude: parseFloat(params.restLat || "0"),
-    longitude: parseFloat(params.restLng || "0"),
-  };
-  const customerLocation: Coordinates = {
-    latitude: parseFloat(params.custLat || "0"),
-    longitude: parseFloat(params.custLng || "0"),
-  };
+  // Which marker's full-detail card is currently open (name/address/phone).
+  // null = no card showing.
+  const [selectedDetail, setSelectedDetail] = useState<
+    "restaurant" | "customer" | null
+  >(null);
 
-  // Start navigation to restaurant by default
+  const destination =
+    order &&
+    (destinationType === "restaurant"
+      ? order.restaurant.location
+      : order.customer.location);
+
+  // Fetch the order's full details (locations, addresses, phone numbers).
+  // Same enriched GET /orders/:id endpoint the order-detail and tracking
+  // screens use, so restaurant/customer info here is always accurate and
+  // current rather than a stale snapshot passed through navigation params.
+  const fetchOrder = useCallback(
+    async (showLoading: boolean) => {
+      if (!params.orderId) {
+        setLoadingOrder(false);
+        return;
+      }
+      try {
+        if (showLoading) setLoadingOrder(true);
+        const token = await AsyncStorage.getItem("accessToken");
+        const response = await fetch(
+          `${API_BASE_URL}/orders/${params.orderId}`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        const data = await response.json();
+        if (!response.ok)
+          throw new Error(data.message || "Failed to load order");
+
+        const restLoc = data.restaurant?.location?.coordinates
+          ? {
+              latitude: data.restaurant.location.coordinates[1],
+              longitude: data.restaurant.location.coordinates[0],
+            }
+          : null;
+        const custLoc = data.delivery_info?.address?.location?.coordinates
+          ? {
+              latitude: data.delivery_info.address.location.coordinates[1],
+              longitude: data.delivery_info.address.location.coordinates[0],
+            }
+          : null;
+
+        setOrder({
+          orderNumber: data.order_number,
+          status: data.status,
+          restaurant: {
+            name: data.restaurant?.name || "Restaurant",
+            address: data.restaurant?.address || "",
+            phone: data.restaurant?.phone,
+            location: restLoc,
+          },
+          customer: {
+            name: data.delivery_info?.contact_name || "Customer",
+            address: data.delivery_info?.address?.address || "",
+            phone: data.delivery_info?.contact_phone || "",
+            location: custLoc,
+            specialInstructions: data.delivery_info?.notes,
+          },
+        });
+
+        // Start at whichever stop the driver hasn't reached yet, so
+        // re-opening this screen mid-delivery resumes at the right leg.
+        setDestinationType(
+          data.status === "picked_up" || data.status === "on_the_way"
+            ? "customer"
+            : "restaurant",
+        );
+      } catch (error) {
+        console.error("Failed to load order for navigation:", error);
+        Alert.alert("Error", "Could not load order details for navigation");
+      } finally {
+        setLoadingOrder(false);
+      }
+    },
+    [params.orderId],
+  );
+
   useEffect(() => {
-    if (restaurantLocation.latitude && restaurantLocation.longitude) {
-      setDestination(restaurantLocation);
-      setDestinationType("restaurant");
-    }
-  }, []);
+    fetchOrder(true);
+  }, [fetchOrder]);
+
+  // Re-sync silently (no loading spinner) whenever this screen regains
+  // focus, so the destination/status here can't drift out of sync with a
+  // status change made elsewhere (e.g. the order detail screen).
+  useFocusEffect(
+    useCallback(() => {
+      fetchOrder(false);
+    }, [fetchOrder]),
+  );
 
   // Request location permission and start watching position
   useEffect(() => {
@@ -77,14 +181,12 @@ const NavigationScreen: React.FC = () => {
         return;
       }
 
-      // Get initial location
       const location = await Location.getCurrentPositionAsync({});
       setCurrentLocation({
         latitude: location.coords.latitude,
         longitude: location.coords.longitude,
       });
 
-      // Subscribe to location updates
       const subscription = await Location.watchPositionAsync(
         {
           accuracy: Location.Accuracy.High,
@@ -98,7 +200,6 @@ const NavigationScreen: React.FC = () => {
           };
           setCurrentLocation(newCoords);
 
-          // Send driver location via WebSocket if online
           const sendLocation = async () => {
             const token = await AsyncStorage.getItem("accessToken");
             if (token && WebSocketService.isConnected()) {
@@ -111,14 +212,15 @@ const NavigationScreen: React.FC = () => {
           sendLocation();
         },
       );
-      setLocationSubscription(subscription);
+      locationSubscriptionRef.current = subscription;
     };
 
     startLocationTracking();
 
     return () => {
-      if (locationSubscription) {
-        locationSubscription.remove();
+      if (locationSubscriptionRef.current) {
+        locationSubscriptionRef.current.remove();
+        locationSubscriptionRef.current = null;
       }
     };
   }, []);
@@ -126,7 +228,6 @@ const NavigationScreen: React.FC = () => {
   // Update route and distance when current location or destination changes
   useEffect(() => {
     if (currentLocation && destination) {
-      // Calculate straight‑line distance
       const dist = calculateDistance(
         currentLocation.latitude,
         currentLocation.longitude,
@@ -135,17 +236,19 @@ const NavigationScreen: React.FC = () => {
       );
       setDistanceRemaining(dist);
       setTimeRemaining(Math.round(dist * 12)); // rough estimate: 5 min per km → 12 km/h
-
-      // Create a simple straight‑line polyline (just start and end)
       setRouteCoordinates([currentLocation, destination]);
-
-      // If we're very close to destination, prompt arrival
-      if (dist < 0.1) {
-        // 100 meters
-        handleArrival();
-      }
     }
   }, [currentLocation, destination]);
+
+  // Opens the device's Google Maps app (or Google Maps in the browser if
+  // it isn't installed) with turn-by-turn directions from wherever the
+  // driver currently is to the given stop.
+  const openInGoogleMaps = (dest: Coordinates) => {
+    const url = `https://www.google.com/maps/dir/?api=1&destination=${dest.latitude},${dest.longitude}&travelmode=driving`;
+    Linking.openURL(url).catch(() =>
+      Alert.alert("Error", "Could not open Google Maps"),
+    );
+  };
 
   const calculateDistance = (
     lat1: number,
@@ -166,80 +269,6 @@ const NavigationScreen: React.FC = () => {
     return R * c;
   };
 
-  const handleArrival = () => {
-    if (!destination) return;
-
-    if (destinationType === "restaurant") {
-      Alert.alert("Arrived at Restaurant", "Have you picked up the order?", [
-        { text: "Not Yet", style: "cancel" },
-        {
-          text: "Yes, Picked Up",
-          onPress: async () => {
-            // Update order status to 'picked_up'
-            try {
-              const token = await AsyncStorage.getItem("accessToken");
-              await fetch(`${API_BASE_URL}/orders/${params.orderId}/status`, {
-                method: "PUT",
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({ status: "picked_up" }),
-              });
-              // Switch destination to customer
-              setDestination(customerLocation);
-              setDestinationType("customer");
-            } catch (error) {
-              console.error("Failed to update order status", error);
-            }
-          },
-        },
-      ]);
-    } else if (destinationType === "customer") {
-      Alert.alert("Arrived at Customer", "Mark order as delivered?", [
-        { text: "Not Yet", style: "cancel" },
-        {
-          text: "Delivered",
-          onPress: async () => {
-            try {
-              const token = await AsyncStorage.getItem("accessToken");
-              await fetch(`${API_BASE_URL}/orders/${params.orderId}/status`, {
-                method: "PUT",
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({ status: "delivered" }),
-              });
-              Alert.alert("Delivery Complete", "Thank you for delivering!", [
-                {
-                  text: "OK",
-                  onPress: () => router.push("/(driver)/dashboard"),
-                },
-              ]);
-            } catch (error) {
-              console.error("Failed to mark delivered", error);
-            }
-          },
-        },
-      ]);
-    }
-  };
-
-  const handleCallCustomer = () => {
-    const phone = ""; // We don't have phone in params; could fetch from order details
-    Alert.alert("Call Customer", "Call customer for delivery instructions?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Call",
-        onPress: () => {
-          // In a real app, open phone dialer
-          Alert.alert("Calling", "This would open the phone dialer");
-        },
-      },
-    ]);
-  };
-
   const fitMapToRoute = () => {
     if (mapRef.current && routeCoordinates.length > 0) {
       mapRef.current.fitToCoordinates(routeCoordinates, {
@@ -255,14 +284,41 @@ const NavigationScreen: React.FC = () => {
     }
   }, [routeCoordinates]);
 
-  if (!currentLocation) {
+  if (loadingOrder || !currentLocation) {
     return (
       <View style={styles.loadingContainer}>
         <StatusBar barStyle='light-content' />
-        <Text style={styles.loadingText}>Getting your location...</Text>
+        <ActivityIndicator size='large' color={colors.primary} />
+        <Text style={styles.loadingText}>
+          {loadingOrder
+            ? "Loading order details..."
+            : "Getting your location..."}
+        </Text>
       </View>
     );
   }
+
+  if (!order) {
+    return (
+      <View style={styles.loadingContainer}>
+        <StatusBar barStyle='light-content' />
+        <Text style={styles.loadingText}>Order not found</Text>
+      </View>
+    );
+  }
+
+  const detail =
+    selectedDetail === "restaurant"
+      ? order.restaurant
+      : selectedDetail === "customer"
+        ? order.customer
+        : null;
+  const detailLocation =
+    selectedDetail === "restaurant"
+      ? order.restaurant.location
+      : selectedDetail === "customer"
+        ? order.customer.location
+        : null;
 
   return (
     <View style={styles.container}>
@@ -283,6 +339,7 @@ const NavigationScreen: React.FC = () => {
         showsMyLocationButton={true}
         showsCompass={true}
         zoomControlEnabled={true}
+        onPress={() => setSelectedDetail(null)}
       >
         {/* Route Line */}
         {routeCoordinates.length > 0 && (
@@ -294,11 +351,13 @@ const NavigationScreen: React.FC = () => {
           />
         )}
 
-        {/* Restaurant Marker */}
-        {restaurantLocation.latitude !== 0 && (
+        {/* Restaurant Marker — tap for full details */}
+        {order.restaurant.location && (
           <Marker
-            coordinate={restaurantLocation}
-            title={params.restaurantName || "Restaurant"}
+            coordinate={order.restaurant.location}
+            title={order.restaurant.name}
+            description='Tap for pickup details'
+            onPress={() => setSelectedDetail("restaurant")}
           >
             <View style={[styles.marker, styles.restaurantMarker]}>
               <Ionicons name='restaurant' size={20} color={colors.white} />
@@ -306,12 +365,13 @@ const NavigationScreen: React.FC = () => {
           </Marker>
         )}
 
-        {/* Customer Marker */}
-        {customerLocation.latitude !== 0 && (
+        {/* Customer Marker — tap for full details */}
+        {order.customer.location && (
           <Marker
-            coordinate={customerLocation}
-            title='Customer'
-            description={params.customerAddress}
+            coordinate={order.customer.location}
+            title={order.customer.name}
+            description='Tap for delivery details'
+            onPress={() => setSelectedDetail("customer")}
           >
             <View style={[styles.marker, styles.customerMarker]}>
               <Ionicons name='home' size={20} color={colors.white} />
@@ -320,64 +380,170 @@ const NavigationScreen: React.FC = () => {
         )}
       </MapView>
 
-      {/* Navigation Info Overlay */}
-      <View style={styles.infoOverlay}>
-        <View style={styles.infoCard}>
-          <Text style={styles.destinationLabel}>
-            {destinationType === "restaurant" ? "To Restaurant" : "To Customer"}
-          </Text>
-          <Text style={styles.destinationName}>
-            {destinationType === "restaurant"
-              ? params.restaurantName
-              : params.customerAddress}
-          </Text>
+      {/* Top overlay: left/right arrow buttons let the driver flip between
+          restaurant and customer details from one fixed spot, in addition
+          to tapping the markers directly on the map. */}
+      <View style={styles.topOverlay}>
+        <TouchableOpacity
+          style={styles.topArrowButton}
+          onPress={() => setSelectedDetail("restaurant")}
+        >
+          <Ionicons name='chevron-back' size={22} color={colors.gray700} />
+        </TouchableOpacity>
 
-          <View style={styles.statsRow}>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>
-                {distanceRemaining.toFixed(1)}
+        <View style={styles.topOverlayContent}>
+          {!detail ? (
+            <View style={styles.infoCard}>
+              <Text style={styles.destinationLabel}>
+                {destinationType === "restaurant"
+                  ? "To Restaurant"
+                  : "To Customer"}
               </Text>
-              <Text style={styles.statLabel}>km</Text>
+              <Text style={styles.destinationName}>
+                {destinationType === "restaurant"
+                  ? order.restaurant.name
+                  : order.customer.name}
+              </Text>
+
+              <View style={styles.statsRow}>
+                <View style={styles.statItem}>
+                  <Text style={styles.statValue}>
+                    {distanceRemaining.toFixed(1)}
+                  </Text>
+                  <Text style={styles.statLabel}>km</Text>
+                </View>
+                <View style={styles.statDivider} />
+                <View style={styles.statItem}>
+                  <Text style={styles.statValue}>{timeRemaining}</Text>
+                  <Text style={styles.statLabel}>min</Text>
+                </View>
+              </View>
             </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{timeRemaining}</Text>
-              <Text style={styles.statLabel}>min</Text>
+          ) : detailLocation ? (
+            /* Full location detail card — name, address, phone with a
+               Call button, and a button to open the device's own maps
+               app. This is the "full details about those locations"
+               piece: tapping a marker, or the arrows above, surfaces
+               everything known about that stop. */
+            <View style={styles.detailCard}>
+              <View style={styles.detailHeader}>
+                <View
+                  style={[
+                    styles.detailIconCircle,
+                    selectedDetail === "restaurant"
+                      ? styles.restaurantMarker
+                      : styles.customerMarker,
+                  ]}
+                >
+                  <Ionicons
+                    name={
+                      selectedDetail === "restaurant" ? "restaurant" : "home"
+                    }
+                    size={20}
+                    color={colors.white}
+                  />
+                </View>
+                <View style={styles.detailHeaderText}>
+                  <Text style={styles.detailLabel}>
+                    {selectedDetail === "restaurant"
+                      ? "Pickup Location"
+                      : "Delivery Location"}
+                  </Text>
+                  <Text style={styles.detailName}>{detail.name}</Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setSelectedDetail(null)}
+                  style={styles.closeButton}
+                >
+                  <Ionicons name='close' size={20} color={colors.gray500} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.detailRow}>
+                <Ionicons
+                  name='location-outline'
+                  size={16}
+                  color={colors.gray500}
+                />
+                <Text style={styles.detailText}>
+                  {detail.address || "No address on file"}
+                </Text>
+              </View>
+
+              {detail.phone ? (
+                <View style={styles.detailRow}>
+                  <Ionicons
+                    name='call-outline'
+                    size={16}
+                    color={colors.gray500}
+                  />
+                  <Text style={styles.detailText}>{detail.phone}</Text>
+                </View>
+              ) : null}
+
+              {selectedDetail === "customer" &&
+                order.customer.specialInstructions && (
+                  <View style={styles.detailRow}>
+                    <Ionicons
+                      name='information-circle-outline'
+                      size={16}
+                      color={colors.gray500}
+                    />
+                    <Text style={styles.detailText}>
+                      {order.customer.specialInstructions}
+                    </Text>
+                  </View>
+                )}
+
+              <View style={styles.detailActions}>
+                <TouchableOpacity
+                  style={styles.secondaryButton}
+                  onPress={() => openInGoogleMaps(detailLocation)}
+                >
+                  <Ionicons
+                    name='navigate-outline'
+                    size={16}
+                    color={colors.gray700}
+                  />
+                  <Text style={styles.secondaryButtonText}>
+                    Get Directions
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
+          ) : null}
         </View>
+
+        <TouchableOpacity
+          style={styles.topArrowButton}
+          onPress={() => setSelectedDetail("customer")}
+        >
+          <Ionicons name='chevron-forward' size={22} color={colors.gray700} />
+        </TouchableOpacity>
       </View>
 
-      {/* Action Buttons */}
-      <View style={styles.actionOverlay}>
-        <View style={styles.actionRow}>
-          <TouchableOpacity
-            style={styles.secondaryButton}
-            onPress={handleCallCustomer}
-          >
-            <Ionicons name='call' size={20} color={colors.info} />
-            <Text style={styles.secondaryButtonText}>Call</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.secondaryButton}
-            onPress={fitMapToRoute}
-          >
-            <Ionicons name='locate' size={20} color={colors.primary} />
-            <Text style={styles.secondaryButtonText}>Fit Route</Text>
-          </TouchableOpacity>
-        </View>
-
-        <AnimatedButton
-          title={
-            destinationType === "restaurant"
-              ? "I've Arrived at Restaurant"
-              : "I've Arrived at Customer"
-          }
-          onPress={handleArrival}
-          fullWidth
-        />
-      </View>
+      {/* Calling and advancing order status stay on Order Detail — this
+          screen is just the map + directions. Back always returns to Order
+          Detail for the same order, explicitly: this lives inside a Tabs
+          navigator (see app/(driver)/_layout.tsx), where "order-detail",
+          "navigation", and "available-orders" are sibling tabs rather than
+          a single stack. router.back() there follows tab-focus history,
+          which isn't guaranteed to land back on Order Detail — it can
+          resolve to whichever tab (e.g. Available Orders) was focused
+          before, especially since this screen can also be opened straight
+          from the dashboard. Navigating to order-detail by name sidesteps
+          that. */}
+      <TouchableOpacity
+        style={styles.backButton}
+        onPress={() =>
+          router.push({
+            pathname: "/(driver)/order-detail" as any,
+            params: { orderId: params.orderId },
+          })
+        }
+      >
+        <Ionicons name='arrow-back' size={22} color={colors.gray800} />
+      </TouchableOpacity>
     </View>
   );
 };
@@ -391,11 +557,47 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
   },
-  infoOverlay: {
+  backButton: {
     position: "absolute",
-    top: 60,
-    left: 20,
-    right: 20,
+    top: 16,
+    left: 12,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.white,
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: colors.black,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 6,
+  },
+  topOverlay: {
+    position: "absolute",
+    top: 68,
+    left: 12,
+    right: 12,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+  },
+  topOverlayContent: {
+    flex: 1,
+  },
+  topArrowButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.white,
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 4,
+    shadowColor: colors.black,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 6,
   },
   infoCard: {
     backgroundColor: colors.white,
@@ -441,6 +643,60 @@ const styles = StyleSheet.create({
   statDivider: {
     width: 1,
     backgroundColor: colors.gray200,
+  },
+  detailCard: {
+    backgroundColor: colors.white,
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: colors.black,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 12,
+  },
+  detailHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  detailIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  detailHeaderText: {
+    flex: 1,
+  },
+  detailLabel: {
+    fontSize: 12,
+    color: colors.gray500,
+  },
+  detailName: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: colors.gray900,
+  },
+  closeButton: {
+    padding: 4,
+  },
+  detailRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    marginBottom: 8,
+  },
+  detailText: {
+    flex: 1,
+    fontSize: 14,
+    color: colors.gray700,
+  },
+  detailActions: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 8,
   },
   actionOverlay: {
     position: "absolute",

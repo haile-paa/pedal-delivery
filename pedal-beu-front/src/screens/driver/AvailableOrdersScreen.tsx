@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -17,6 +17,7 @@ import {
 import * as Location from "expo-location";
 import { colors } from "../../theme/colors";
 import { useRouter } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import WebSocketService from "../../services/websocket.service";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
@@ -63,6 +64,7 @@ interface BackendOrder {
     name: string;
     phone: string;
   };
+  status?: string;
 }
 
 // Frontend Order interface used in the screen
@@ -80,6 +82,7 @@ interface Order {
     id: string;
     name: string;
     phone: string;
+    address: string;
     location: {
       latitude: number;
       longitude: number;
@@ -105,6 +108,7 @@ interface Order {
     longitude: number;
   };
   paymentMethod: string;
+  status?: string;
 }
 
 interface DriverStats {
@@ -146,6 +150,7 @@ const mapBackendOrder = (backendOrder: BackendOrder): Order => {
       id: backendOrder.customer_id || "",
       name: backendOrder.delivery_info?.contact_name || "Customer",
       phone: backendOrder.delivery_info?.contact_phone || "",
+      address: backendOrder.delivery_info?.address?.address || "",
       location: customerLocation,
     },
     amount: backendOrder.total_amount?.total || 0,
@@ -169,7 +174,27 @@ const mapBackendOrder = (backendOrder: BackendOrder): Order => {
     restaurantLocation,
     customerLocation,
     paymentMethod: backendOrder.payment_method || "cash",
+    status: backendOrder.status,
   };
+};
+
+// Statuses that mean this driver is still actively working the order —
+// used to find "the order I'm already on" among GET /orders/driver so it
+// can be surfaced here even after leaving and coming back to this tab.
+const ACTIVE_DRIVER_STATUSES = [
+  "accepted",
+  "preparing",
+  "ready",
+  "picked_up",
+  "on_the_way",
+];
+
+const CURRENT_ORDER_STATUS_LABELS: Record<string, string> = {
+  accepted: "Heading to Restaurant",
+  preparing: "Heading to Restaurant",
+  ready: "At Restaurant",
+  picked_up: "Delivering",
+  on_the_way: "Delivering",
 };
 
 const AvailableOrdersScreen: React.FC = () => {
@@ -195,6 +220,13 @@ const AvailableOrdersScreen: React.FC = () => {
     all: false,
   });
   const [loading, setLoading] = useState(true);
+  // The order this driver already accepted and is actively delivering, if
+  // any. Previously, accepting an order removed it from `availableOrders`
+  // and the only way back to it was whatever screen you navigated to next
+  // — leaving this tab and coming back had nowhere to show it, so it
+  // looked like the order had vanished (it hadn't; the backend still had
+  // it, just nothing here queried for it).
+  const [currentOrder, setCurrentOrder] = useState<Order | null>(null);
   const appState = useRef(AppState.currentState);
   const locationInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -211,7 +243,15 @@ const AvailableOrdersScreen: React.FC = () => {
       if (locationInterval.current) {
         clearInterval(locationInterval.current);
       }
-      WebSocketService.disconnect();
+      // Not calling WebSocketService.disconnect() here — this screen is a
+      // tab (see app/(driver)/_layout.tsx) that stays mounted for the
+      // driver's whole session, so this cleanup only really runs at
+      // logout, which now disconnects centrally in AppStateContext.logout.
+      // Disconnecting from here too used to race with that, and — more
+      // importantly — used to fire from the *background* AppState handler
+      // below on every single app backgrounding (see the removed branch),
+      // which permanently blocked websocket.service.ts's own auto-
+      // reconnect until this screen happened to reconnect it again.
     };
   }, []);
 
@@ -232,6 +272,9 @@ const AvailableOrdersScreen: React.FC = () => {
 
       // Fetch driver stats
       await fetchDriverStats();
+
+      // Check whether an order is already in progress
+      await fetchCurrentOrder();
 
       // Start periodic location updates if online
       if (isOnline) {
@@ -327,19 +370,32 @@ const AvailableOrdersScreen: React.FC = () => {
     const isComingToForeground =
       (appState.current === "inactive" || appState.current === "background") &&
       nextAppState === "active";
-
     const isGoingToBackground =
       nextAppState === "inactive" || nextAppState === "background";
 
     if (isComingToForeground) {
-      // App came to foreground
+      // App came to foreground — refresh location/orders and resume the
+      // periodic location updates. The socket itself doesn't need
+      // reconnecting here: websocket.service.ts already listens for this
+      // same transition and reconnects on its own (see
+      // handleAppStateChange there), so this only needs to refresh this
+      // screen's own data.
       initializeDriver();
     } else if (isGoingToBackground) {
-      // App went to background
+      // Just pause the GPS polling to save battery — NOT the socket.
+      // Disconnecting the socket used to happen here too and would set
+      // intentionalClose=true on the shared connection, which blocks
+      // websocket.service.ts's own reconnect-on-foreground logic — so
+      // instead of the connection recovering automatically when you came
+      // back (e.g. from a phone call or Maps for directions), it stayed
+      // dead until something else happened to reconnect it. The OS may
+      // still suspend the raw socket while backgrounded (that part is
+      // outside any app's control), but we no longer fight our own
+      // recovery logic when it comes back.
       if (locationInterval.current) {
         clearInterval(locationInterval.current);
+        locationInterval.current = null;
       }
-      WebSocketService.disconnect();
     }
 
     appState.current = nextAppState;
@@ -388,6 +444,7 @@ const AvailableOrdersScreen: React.FC = () => {
     setAvailableOrders((prev) =>
       prev.filter((order) => order.id !== data.orderId),
     );
+    setCurrentOrder((prev) => (prev && prev.id === data.orderId ? null : prev));
   };
 
   const handleOrderTaken = async (data: {
@@ -457,6 +514,38 @@ const AvailableOrdersScreen: React.FC = () => {
     } catch (error) {
       console.error("Fetch orders error:", error);
       Alert.alert("Error", "Could not load available orders");
+    }
+  };
+
+  // Looks up whether this driver already has an order in progress (any
+  // status between "accepted" and "on_the_way") and surfaces it as
+  // `currentOrder`. Called on init, on pull-to-refresh, and whenever this
+  // tab regains focus, so returning here after accepting an order (or
+  // after visiting Order Detail / Navigate) always shows it if it's still
+  // active, and clears it automatically once it's delivered or cancelled.
+  const fetchCurrentOrder = async () => {
+    try {
+      const token = await AsyncStorage.getItem("accessToken");
+      const response = await fetch(
+        `${API_BASE_URL}/orders/driver?page=1&limit=5`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        },
+      );
+      if (!response.ok) return;
+      const data = await response.json();
+      const orders: BackendOrder[] = Array.isArray(data?.orders)
+        ? data.orders
+        : [];
+      const active = orders.find((o: any) =>
+        ACTIVE_DRIVER_STATUSES.includes(o.status),
+      );
+      setCurrentOrder(active ? mapBackendOrder(active) : null);
+    } catch (error) {
+      console.error("Fetch current order error:", error);
     }
   };
 
@@ -530,9 +619,24 @@ const AvailableOrdersScreen: React.FC = () => {
   const handleRefresh = async () => {
     setRefreshing(true);
     const location = await getDriverLocation();
-    await Promise.all([fetchAvailableOrders(location), fetchDriverStats()]);
+    await Promise.all([
+      fetchAvailableOrders(location),
+      fetchDriverStats(),
+      fetchCurrentOrder(),
+    ]);
     setRefreshing(false);
   };
+
+  // Re-check for an in-progress order every time this tab regains focus —
+  // this is what actually fixes "I accepted an order and now I can't find
+  // it": leaving for Order Detail / Navigate and coming back used to never
+  // re-query anything, so this screen's picture of the world was frozen
+  // from the moment it first loaded.
+  useFocusEffect(
+    useCallback(() => {
+      fetchCurrentOrder();
+    }, []),
+  );
 
   const handleAcceptOrder = async (orderId: string) => {
     try {
@@ -552,9 +656,11 @@ const AvailableOrdersScreen: React.FC = () => {
 
       if (response.ok) {
         // Remove order from available list
-        setAvailableOrders((prev) =>
-          prev.filter((order) => order.id !== orderId),
-        );
+        setAvailableOrders((prev) => {
+          const accepted = prev.find((order) => order.id === orderId);
+          if (accepted) setCurrentOrder({ ...accepted, status: "accepted" });
+          return prev.filter((order) => order.id !== orderId);
+        });
 
         // Notify customer via WebSocket
         const driverId = await AsyncStorage.getItem("userId");
@@ -761,6 +867,26 @@ const AvailableOrdersScreen: React.FC = () => {
             <Text style={styles.detailText}>{order.customer.name}</Text>
           </View>
           <View style={styles.detailRow}>
+            <Ionicons
+              name='restaurant-outline'
+              size={16}
+              color={colors.gray600}
+            />
+            <Text style={styles.detailText} numberOfLines={2}>
+              Pickup: {order.restaurant.address || "No address on file"}
+            </Text>
+          </View>
+          <View style={styles.detailRow}>
+            <Ionicons
+              name='location-outline'
+              size={16}
+              color={colors.gray600}
+            />
+            <Text style={styles.detailText} numberOfLines={2}>
+              Drop-off: {order.customer.address || "No address on file"}
+            </Text>
+          </View>
+          <View style={styles.detailRow}>
             <Ionicons name='cube' size={16} color={colors.gray600} />
             <Text style={styles.detailText}>{order.itemsCount} items</Text>
           </View>
@@ -863,6 +989,43 @@ const AvailableOrdersScreen: React.FC = () => {
         }
         showsVerticalScrollIndicator={false}
       >
+        {/* Current Delivery — the order this driver already accepted and
+            is actively working, if any. Always re-checked on focus (see
+            fetchCurrentOrder) so it can't go "missing" after navigating
+            away and back. */}
+        {currentOrder && (
+          <TouchableOpacity
+            style={styles.currentOrderCard}
+            onPress={() =>
+              router.push({
+                pathname: "/(driver)/order-detail" as any,
+                params: { orderId: currentOrder.id },
+              })
+            }
+            activeOpacity={0.85}
+          >
+            <View style={styles.currentOrderBadge}>
+              <Ionicons name='bicycle' size={14} color={colors.white} />
+              <Text style={styles.currentOrderBadgeText}>
+                {CURRENT_ORDER_STATUS_LABELS[currentOrder.status || ""] ||
+                  "In Progress"}
+              </Text>
+            </View>
+            <View style={styles.currentOrderRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.currentOrderTitle}>
+                  {currentOrder.restaurant.name}
+                </Text>
+                <Text style={styles.currentOrderSubtitle}>
+                  Order #{currentOrder.orderId} ·{" "}
+                  {currentOrder.amount.toFixed(2)} Birr
+                </Text>
+              </View>
+              <Ionicons name='chevron-forward' size={22} color={colors.white} />
+            </View>
+          </TouchableOpacity>
+        )}
+
         {/* Stats */}
         <View style={styles.statsContainer}>
           <View style={styles.statCard}>
@@ -1107,6 +1270,48 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 16,
     color: colors.gray600,
+  },
+  currentOrderCard: {
+    marginHorizontal: 20,
+    marginTop: 16,
+    padding: 16,
+    borderRadius: 16,
+    backgroundColor: colors.primary,
+    shadowColor: colors.black,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  currentOrderBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(255,255,255,0.2)",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 6,
+    marginBottom: 10,
+  },
+  currentOrderBadgeText: {
+    color: colors.white,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  currentOrderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  currentOrderTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: colors.white,
+    marginBottom: 2,
+  },
+  currentOrderSubtitle: {
+    fontSize: 13,
+    color: "rgba(255,255,255,0.85)",
   },
   statsContainer: {
     flexDirection: "row",

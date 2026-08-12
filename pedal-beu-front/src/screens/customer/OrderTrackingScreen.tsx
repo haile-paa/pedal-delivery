@@ -122,12 +122,53 @@ const OrderTrackingScreen: React.FC = () => {
     return activeStatuses.includes(currentStatus);
   }, [currentStatus, driverInfo]);
 
-  // Compute time remaining from order creation time
-  const computeTimeRemaining = useCallback((createdAt: string) => {
-    const created = new Date(createdAt).getTime();
-    const deadline = created + AUTO_CANCEL_MINUTES * 60 * 1000;
+  // The absolute deadline (client epoch ms) this order auto‑cancels at.
+  // Resolved ONCE per order instead of being re‑derived from `created_at`
+  // on every tick, and validated before being trusted — see resolveDeadline.
+  const deadlineRef = useRef<number | null>(null);
+  const deadlineOrderIdRef = useRef<string | null>(null);
+  // Consecutive interval ticks that have found the order expired. A single
+  // bad reading (a device/server clock that's out of sync, a `created_at`
+  // read a moment too early, a re-render right after checkout, etc.) must
+  // not be enough to cancel a brand‑new order — this was the actual cause
+  // of orders getting auto‑cancelled seconds after being placed instead of
+  // after the real 30‑minute window. We only act once expiry is confirmed
+  // on more than one check, ~10s apart.
+  const expiredStreakRef = useRef(0);
+
+  // Resolve (and cache) the deadline for the given order. If the parsed
+  // `created_at` is invalid, or already reads as expired the very first
+  // time we see it (impossible for an order just placed seconds ago — a
+  // sign of clock skew or a bad timestamp, not an actual 30‑minute wait),
+  // we don't trust it. Instead we start a fresh full-length window
+  // measured from "now" on this device, so the customer is never
+  // penalized by a clock mismatch.
+  const resolveDeadline = useCallback((createdAt: string, id: string) => {
+    if (deadlineOrderIdRef.current !== id) {
+      deadlineOrderIdRef.current = id;
+      deadlineRef.current = null;
+      expiredStreakRef.current = 0;
+    }
+
+    if (deadlineRef.current !== null) return deadlineRef.current;
+
+    const createdMs = new Date(createdAt).getTime();
     const now = Date.now();
-    const diffMs = deadline - now;
+    const windowMs = AUTO_CANCEL_MINUTES * 60 * 1000;
+    const candidateDeadline = createdMs + windowMs;
+
+    const isPlausible =
+      !Number.isNaN(createdMs) &&
+      candidateDeadline > now && // not already "expired" the instant we saw it
+      createdMs <= now + 5 * 60 * 1000; // not created implausibly far in the future
+
+    deadlineRef.current = isPlausible ? candidateDeadline : now + windowMs;
+    return deadlineRef.current;
+  }, []);
+
+  // Minutes remaining until a given deadline, for display.
+  const computeTimeRemaining = useCallback((deadline: number) => {
+    const diffMs = deadline - Date.now();
     if (diffMs <= 0) return 0;
     return Math.ceil(diffMs / (60 * 1000));
   }, []);
@@ -207,28 +248,38 @@ const OrderTrackingScreen: React.FC = () => {
 
   // Auto‑cancel timer based on real‑time remaining
   useEffect(() => {
-    if (!orderDetails?.created_at || isOrderActive()) return;
+    if (!orderDetails?.created_at || !orderId || isOrderActive()) return;
 
-    // Update time remaining every 10 seconds
+    const id = String(orderId);
+    const deadline = resolveDeadline(orderDetails.created_at, id);
+    setTimeRemaining(computeTimeRemaining(deadline));
+
+    // Re-check every 10 seconds. Cancellation only fires once expiry has
+    // been confirmed on two consecutive checks (see expiredStreakRef).
     const interval = setInterval(() => {
-      const remaining = computeTimeRemaining(orderDetails.created_at);
+      const remaining = computeTimeRemaining(deadline);
       setTimeRemaining(remaining);
 
-      // If time runs out, cancel automatically
-      if (remaining <= 0 && currentStatus !== "cancelled") {
+      if (remaining > 0) {
+        expiredStreakRef.current = 0;
+        return;
+      }
+
+      expiredStreakRef.current += 1;
+      if (expiredStreakRef.current >= 2 && currentStatus !== "cancelled") {
         cancelOrderAutomatically();
       }
     }, 10000);
 
-    // Initial calculation
-    const remaining = computeTimeRemaining(orderDetails.created_at);
-    setTimeRemaining(remaining);
-    if (remaining <= 0 && currentStatus !== "cancelled") {
-      cancelOrderAutomatically();
-    }
-
     return () => clearInterval(interval);
-  }, [orderDetails?.created_at, currentStatus, isOrderActive]);
+  }, [
+    orderDetails?.created_at,
+    orderId,
+    currentStatus,
+    isOrderActive,
+    resolveDeadline,
+    computeTimeRemaining,
+  ]);
 
   const cancelOrderAutomatically = async () => {
     try {

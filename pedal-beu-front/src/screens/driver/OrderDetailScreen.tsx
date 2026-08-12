@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -8,11 +8,13 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
+  Linking,
 } from "react-native";
 import { colors } from "../../theme/colors";
 import ProgressStepper from "../../components/ui/ProgressStepper";
 import AnimatedButton from "../../components/ui/AnimatedButton";
 import { useRouter, useLocalSearchParams } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { API_BASE_URL } from "../../utils/constants";
 
@@ -89,6 +91,18 @@ const OrderDetailScreen: React.FC = () => {
   useEffect(() => {
     if (orderId) fetchOrderDetails();
   }, [orderId]);
+
+  // Re-fetch whenever this screen regains focus — e.g. coming back from
+  // the Navigate map screen, where the driver may have advanced the order
+  // status (arrived/picked up/delivered) independently. Without this the
+  // status shown here — and therefore which action button renders — could
+  // stay stuck on a stale value, and tapping it would try to push a status
+  // transition the backend now considers invalid (silently "not working").
+  useFocusEffect(
+    useCallback(() => {
+      if (orderId) fetchOrderDetails();
+    }, [orderId]),
+  );
 
   const fetchOrderDetails = async () => {
     try {
@@ -188,34 +202,28 @@ const OrderDetailScreen: React.FC = () => {
   };
 
   const handleCallCustomer = () => {
-    if (order?.customer.phone) {
-      Alert.alert("Call Customer", `Call ${order.customer.name}?`, [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Call",
-          onPress: () => Alert.alert("Calling", "This would open phone dialer"),
-        },
-      ]);
+    if (!order?.customer.phone) {
+      Alert.alert(
+        "No phone number",
+        "No phone number is available for this customer.",
+      );
+      return;
     }
+    Alert.alert("Call Customer", `Call ${order.customer.name}?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Call",
+        onPress: () => Linking.openURL(`tel:${order.customer.phone}`),
+      },
+    ]);
   };
 
   const handleNavigate = () => {
-    if (order?.restaurant_location && order?.customer_location) {
-      router.push({
-        pathname: "/(driver)/navigation" as any,
-        params: {
-          orderId: order.id,
-          restLat: order.restaurant_location.lat,
-          restLng: order.restaurant_location.lng,
-          custLat: order.customer_location.lat,
-          custLng: order.customer_location.lng,
-          restaurantName: order.restaurant.name,
-          customerAddress: order.delivery_address,
-        },
-      });
-    } else {
-      Alert.alert("Navigation", "Location data not available");
-    }
+    if (!order) return;
+    router.push({
+      pathname: "/(driver)/navigation" as any,
+      params: { orderId: order.id },
+    });
   };
 
   if (loading) {

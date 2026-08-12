@@ -112,10 +112,9 @@ const DriverDashboard: React.FC = () => {
     const fetchStats = async () => {
       try {
         const token = await AsyncStorage.getItem("accessToken");
-        const response = await fetch(
-          `${API_BASE_URL}/driver/stats`,
-          { headers: { Authorization: `Bearer ${token}` } },
-        );
+        const response = await fetch(`${API_BASE_URL}/driver/stats`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
         if (response.ok) {
           const data = await response.json();
           setStats({
@@ -226,7 +225,17 @@ const DriverDashboard: React.FC = () => {
     WebSocketService.off("order:new", handleNewOrder);
     WebSocketService.off("order:cancelled", handleOrderCancelled);
     WebSocketService.off("order:taken", handleOrderTaken);
-    WebSocketService.disconnect();
+    // Deliberately NOT calling WebSocketService.disconnect() here. This
+    // effect's cleanup runs on every unmount/re-render of this screen —
+    // including just navigating to Order Detail or the Navigation map
+    // while still online — not only when the driver actually flips the
+    // online/offline toggle off. The socket is a shared, app-wide
+    // connection (other screens may be relying on it too), and
+    // disconnect() is a hard, "this was intentional" close that blocks
+    // the automatic reconnect logic in websocket.service.ts. Actually
+    // tearing the connection down belongs to logout only (see
+    // AppStateContext.logout) — here we just stop broadcasting this
+    // driver's presence and location.
 
     setNotifications([]);
   };
@@ -357,16 +366,13 @@ const DriverDashboard: React.FC = () => {
   const handleRejectOrder = async (orderId: string) => {
     try {
       const token = await AsyncStorage.getItem("accessToken");
-      await fetch(
-        `${API_BASE_URL}/driver/orders/${orderId}/reject`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
+      await fetch(`${API_BASE_URL}/driver/orders/${orderId}/reject`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
         },
-      );
+      });
       setNotifications((prev) => prev.filter((o) => o.id !== orderId));
     } catch (error) {
       console.error("Reject error:", error);
@@ -553,7 +559,12 @@ const DriverDashboard: React.FC = () => {
       {state.driver.currentOrder && (
         <FloatingActionButton
           icon='navigate'
-          onPress={() => router.push("/(driver)/navigation" as any)}
+          onPress={() =>
+            router.push({
+              pathname: "/(driver)/navigation" as any,
+              params: { orderId: state.driver.currentOrder!.id },
+            })
+          }
           position='bottom-right'
         />
       )}
