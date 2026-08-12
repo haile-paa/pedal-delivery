@@ -145,6 +145,98 @@ func (h *RestaurantHandler) GetRestaurants(c *gin.Context) {
 	})
 }
 
+// GetAllRestaurantsAdmin godoc
+// @Summary Get all restaurants (admin)
+// @Description Get every restaurant regardless of verification/active status, for the admin dashboard
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param page query int false "Page number" default(1)
+// @Param limit query int false "Items per page" default(20)
+// @Success 200 {object} gin.H{"data": []models.Restaurant, "pagination": gin.H{"page":1,"limit":20,"total":100}}
+// @Router /restaurants/all [get]
+func (h *RestaurantHandler) GetAllRestaurantsAdmin(c *gin.Context) {
+	var query struct {
+		Page  int `form:"page" default:"1"`
+		Limit int `form:"limit" default:"20"`
+	}
+
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid query parameters",
+			"data":  []interface{}{},
+		})
+		return
+	}
+
+	if query.Page < 1 {
+		query.Page = 1
+	}
+	if query.Limit < 1 || query.Limit > 200 {
+		query.Limit = 20
+	}
+
+	restaurants, total, err := h.service.GetAllRestaurantsAdmin(c.Request.Context(), models.RestaurantQuery{
+		Page:  query.Page,
+		Limit: query.Limit,
+	})
+	if err != nil {
+		log.Printf("Error fetching restaurants (admin): %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to fetch restaurants",
+			"data":  []interface{}{},
+		})
+		return
+	}
+
+	totalPages := int(math.Ceil(float64(total) / float64(query.Limit)))
+	if totalPages < 1 {
+		totalPages = 1
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data": restaurants,
+		"pagination": gin.H{
+			"page":        query.Page,
+			"limit":       query.Limit,
+			"total":       total,
+			"total_pages": totalPages,
+		},
+	})
+}
+
+// VerifyRestaurant godoc
+// @Summary Set a restaurant's verification status
+// @Description Admin-only toggle to mark a restaurant verified/unverified so it displays (or not) to customers
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param id path string true "Restaurant ID"
+// @Param body body object{is_verified=bool} true "Verification status"
+// @Success 200 {object} models.Restaurant
+// @Router /restaurants/{id}/verify [patch]
+func (h *RestaurantHandler) VerifyRestaurant(c *gin.Context) {
+	id := c.Param("id")
+
+	var req struct {
+		IsVerified bool `json:"is_verified"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	restaurant, err := h.service.SetRestaurantVerification(c.Request.Context(), id, req.IsVerified)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, restaurant)
+}
+
 // GetRestaurantByID godoc
 // @Summary Get restaurant by ID
 // @Description Get detailed information about a restaurant

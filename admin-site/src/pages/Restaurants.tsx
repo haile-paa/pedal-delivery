@@ -160,6 +160,26 @@ const Restaurants: React.FC = () => {
     }
   };
 
+  // Handle toggle verified status (no more editing MongoDB by hand)
+  const handleToggleVerified = async (id: string, currentStatus: boolean) => {
+    try {
+      await restaurantAPI.setVerified(id, !currentStatus);
+
+      // Update local state
+      setRestaurants((prev) =>
+        prev.map((restaurant) =>
+          restaurant._id === id
+            ? { ...restaurant, is_verified: !currentStatus }
+            : restaurant,
+        ),
+      );
+    } catch (err: any) {
+      alert(
+        err.response?.data?.error || "Failed to update verification status",
+      );
+    }
+  };
+
   // Filter restaurants based on search term and status
   const filteredRestaurants = restaurants.filter((restaurant) => {
     const matchesSearch =
@@ -437,9 +457,13 @@ const Restaurants: React.FC = () => {
                               </span>
                             )}
                           </span>
-                          {restaurant.is_verified && (
+                          {restaurant.is_verified ? (
                             <span className='rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800'>
                               ✓ Verified
+                            </span>
+                          ) : (
+                            <span className='rounded-full bg-yellow-100 px-2 py-1 text-xs font-medium text-yellow-800'>
+                              Pending verification
                             </span>
                           )}
                         </div>
@@ -447,6 +471,26 @@ const Restaurants: React.FC = () => {
                       <div className='flex items-center space-x-2'>
                         {restaurantId && (
                           <>
+                            <button
+                              onClick={() =>
+                                handleToggleVerified(
+                                  restaurantId,
+                                  restaurant.is_verified,
+                                )
+                              }
+                              className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
+                                restaurant.is_verified
+                                  ? "bg-yellow-100 text-yellow-800 hover:bg-yellow-200"
+                                  : "bg-green-100 text-green-800 hover:bg-green-200"
+                              }`}
+                              title={
+                                restaurant.is_verified
+                                  ? "Unverify (hide from customers)"
+                                  : "Verify (show to customers)"
+                              }
+                            >
+                              {restaurant.is_verified ? "Unverify" : "Verify"}
+                            </button>
                             <Link
                               to={`/restaurants/${restaurantId}/edit`}
                               className='rounded-lg p-2 hover:bg-gray-100'

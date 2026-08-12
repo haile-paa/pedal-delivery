@@ -29,9 +29,11 @@ type RestaurantRepository interface {
 	FindByOwnerID(ctx context.Context, ownerID primitive.ObjectID) ([]models.Restaurant, error)
 	FindNearby(ctx context.Context, location models.GeoLocation, radius float64, pagination Pagination) ([]models.Restaurant, int64, error)
 	FindAll(ctx context.Context, pagination Pagination) ([]models.Restaurant, int64, error)
+	FindAllAdmin(ctx context.Context, pagination Pagination) ([]models.Restaurant, int64, error)
 	Update(ctx context.Context, id primitive.ObjectID, update interface{}) error
 	Delete(ctx context.Context, id primitive.ObjectID) error
 	UpdateStatus(ctx context.Context, id primitive.ObjectID, isActive bool) error
+	UpdateVerification(ctx context.Context, id primitive.ObjectID, isVerified bool) error
 	AddMenuItem(ctx context.Context, restaurantID primitive.ObjectID, item *models.MenuItem) error
 	UpdateMenuItem(ctx context.Context, restaurantID, itemID primitive.ObjectID, update interface{}) error
 	DeleteMenuItem(ctx context.Context, restaurantID, itemID primitive.ObjectID) error
@@ -156,6 +158,52 @@ func (r *restaurantRepository) FindAll(ctx context.Context, pagination Paginatio
 	return restaurants, total, nil
 }
 
+// FindAllAdmin returns every restaurant regardless of is_active/is_verified,
+// so the admin dashboard can see (and verify) newly-created restaurants that
+// aren't visible to customers yet.
+func (r *restaurantRepository) FindAllAdmin(ctx context.Context, pagination Pagination) ([]models.Restaurant, int64, error) {
+	filter := bson.M{}
+
+	total, err := r.collection.CountDocuments(ctx, filter)
+	if err != nil {
+		log.Printf("❌ Error counting restaurants (admin): %v", err)
+		return []models.Restaurant{}, 0, err
+	}
+
+	if total == 0 {
+		return []models.Restaurant{}, 0, nil
+	}
+
+	skip := (pagination.Page - 1) * pagination.Limit
+
+	sortDir := 1
+	if pagination.SortDir < 0 {
+		sortDir = -1
+	}
+	sortBy := pagination.SortBy
+	if sortBy == "" {
+		sortBy = "created_at"
+	}
+
+	cursor, err := r.collection.Find(ctx, filter, options.Find().
+		SetSort(bson.D{{Key: sortBy, Value: sortDir}}).
+		SetSkip(skip).
+		SetLimit(pagination.Limit))
+	if err != nil {
+		log.Printf("❌ Error finding restaurants (admin): %v", err)
+		return []models.Restaurant{}, 0, err
+	}
+	defer cursor.Close(ctx)
+
+	var restaurants []models.Restaurant
+	if err := cursor.All(ctx, &restaurants); err != nil {
+		log.Printf("❌ Error decoding restaurants (admin): %v", err)
+		return []models.Restaurant{}, 0, err
+	}
+
+	return restaurants, total, nil
+}
+
 func (r *restaurantRepository) FindNearby(ctx context.Context, location models.GeoLocation, radius float64, pagination Pagination) ([]models.Restaurant, int64, error) {
 	log.Printf("📍 Repository: FindNearby called, location=%v, radius=%.0f", location, radius)
 
@@ -251,6 +299,26 @@ func (r *restaurantRepository) UpdateStatus(ctx context.Context, id primitive.Ob
 		"$set": bson.M{
 			"is_active":  isActive,
 			"updated_at": time.Now(),
+		},
+	}
+
+	result, err := r.collection.UpdateOne(ctx, bson.M{"_id": id}, update)
+	if err != nil {
+		return err
+	}
+
+	if result.MatchedCount == 0 {
+		return errors.New("restaurant not found")
+	}
+
+	return nil
+}
+
+func (r *restaurantRepository) UpdateVerification(ctx context.Context, id primitive.ObjectID, isVerified bool) error {
+	update := bson.M{
+		"$set": bson.M{
+			"is_verified": isVerified,
+			"updated_at":  time.Now(),
 		},
 	}
 

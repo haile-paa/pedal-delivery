@@ -17,10 +17,12 @@ type RestaurantService interface {
 	CreateRestaurant(ctx context.Context, ownerID string, req models.CreateRestaurantRequest) (*models.Restaurant, error)
 	GetRestaurantByID(ctx context.Context, id string) (*models.Restaurant, error)
 	GetRestaurants(ctx context.Context, query models.RestaurantQuery) ([]models.Restaurant, int64, error)
+	GetAllRestaurantsAdmin(ctx context.Context, query models.RestaurantQuery) ([]models.Restaurant, int64, error)
 	FindNearby(ctx context.Context, location models.GeoLocation, radius float64) ([]models.Restaurant, error)
 	Search(ctx context.Context, query string, location *models.GeoLocation) ([]models.Restaurant, error)
 	GetMenuItems(ctx context.Context, restaurantID string) ([]models.MenuItem, error)
 	UpdateRestaurant(ctx context.Context, id string, update models.UpdateRestaurantRequest) (*models.Restaurant, error)
+	SetRestaurantVerification(ctx context.Context, id string, isVerified bool) (*models.Restaurant, error)
 	DeleteRestaurant(ctx context.Context, id string) error
 	AddMenuItem(ctx context.Context, restaurantID string, req models.CreateMenuItemRequest) (*models.MenuItem, error)
 	UpdateMenuItem(ctx context.Context, restaurantID, itemID string, req models.UpdateMenuItemRequest) (*models.MenuItem, error)
@@ -157,6 +159,38 @@ func (s *restaurantService) GetRestaurants(ctx context.Context, query models.Res
 	}
 
 	return restaurants, total, nil
+}
+
+// GetAllRestaurantsAdmin returns every restaurant (verified or not, active or
+// not) for the admin dashboard, so newly added restaurants show up immediately
+// without needing a manual database edit.
+func (s *restaurantService) GetAllRestaurantsAdmin(ctx context.Context, query models.RestaurantQuery) ([]models.Restaurant, int64, error) {
+	pagination := repositories.Pagination{
+		Page:    int64(query.Page),
+		Limit:   int64(query.Limit),
+		SortBy:  "created_at",
+		SortDir: -1,
+	}
+
+	restaurants, total, err := s.repo.FindAllAdmin(ctx, pagination)
+	if err != nil {
+		return []models.Restaurant{}, 0, err
+	}
+
+	return restaurants, total, nil
+}
+
+func (s *restaurantService) SetRestaurantVerification(ctx context.Context, id string, isVerified bool) (*models.Restaurant, error) {
+	objectID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return nil, errors.New("invalid restaurant ID")
+	}
+
+	if err := s.repo.UpdateVerification(ctx, objectID, isVerified); err != nil {
+		return nil, err
+	}
+
+	return s.repo.FindByID(ctx, objectID)
 }
 
 func (s *restaurantService) FindNearby(ctx context.Context, location models.GeoLocation, radius float64) ([]models.Restaurant, error) {

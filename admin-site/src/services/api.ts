@@ -112,13 +112,17 @@ export const adminAPI = {
 
 // Restaurant API
 export const restaurantAPI = {
-  getAll: (params?: any) => api.get("/restaurants", { params }),
+  // Admin-only: returns every restaurant (verified or not) so newly added
+  // restaurants show up here without editing MongoDB by hand.
+  getAll: (params?: any) => api.get("/restaurants/all", { params }),
   getById: (id: string) => api.get(`/restaurants/${id}`),
   create: (data: any) => api.post("/restaurants", data),
   update: (id: string, data: any) => api.put(`/restaurants/${id}`, data),
   delete: (id: string) => api.delete(`/restaurants/${id}`),
   getMenu: (id: string) => api.get(`/restaurants/${id}/menu`),
   edit: (id: string, data: any) => api.put(`/restaurants/${id}`, data),
+  setVerified: (id: string, isVerified: boolean) =>
+    api.patch(`/restaurants/${id}/verify`, { is_verified: isVerified }),
 };
 
 // Menu API
