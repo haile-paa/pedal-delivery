@@ -555,6 +555,8 @@ func main() {
 				driver.POST("/orders/:id/accept", orderHandler.AcceptOrder)
 				driver.POST("/orders/:id/reject", orderHandler.RejectOrder)
 				driver.GET("/stats", orderHandler.GetDriverStats)
+				driver.GET("/earnings/chart", orderHandler.GetDriverEarningsChart)
+				driver.GET("/earnings/transactions", orderHandler.GetDriverEarningsTransactions)
 			}
 
 			restaurantAdmin := protected.Group("/restaurants")

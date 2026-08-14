@@ -14,6 +14,8 @@ interface RatingStarsProps {
   size?: number;
   showValue?: boolean;
   animated?: boolean;
+  /** Overrides the numeric "x.x/5" text — pass e.g. "New" when there's no real rating yet. */
+  label?: string;
 }
 
 const RatingStars: React.FC<RatingStarsProps> = ({
@@ -22,6 +24,7 @@ const RatingStars: React.FC<RatingStarsProps> = ({
   size = 16,
   showValue = true,
   animated = true,
+  label,
 }) => {
   const progress = useSharedValue(0);
 
@@ -50,7 +53,7 @@ const RatingStars: React.FC<RatingStarsProps> = ({
           size={size}
           color={colors.gray300}
           style={styles.star}
-        />
+        />,
       );
     }
 
@@ -79,8 +82,14 @@ const RatingStars: React.FC<RatingStarsProps> = ({
 
       {showValue && (
         <Text style={styles.ratingText}>
-          {rating.toFixed(1)}
-          <Text style={styles.maxRating}>/{maxRating}</Text>
+          {label ? (
+            label
+          ) : (
+            <>
+              {rating.toFixed(1)}
+              <Text style={styles.maxRating}>/{maxRating}</Text>
+            </>
+          )}
         </Text>
       )}
     </View>

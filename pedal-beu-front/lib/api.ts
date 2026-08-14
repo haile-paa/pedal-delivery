@@ -385,6 +385,27 @@ export const authAPI = {
     const response = await api.put("/users/profile", data);
     return response.data;
   },
+
+  // Uploads a picked image to storage and returns its public URL. Callers
+  // should follow up with updateProfile({ avatar: url }) to persist it.
+  uploadAvatar: async (asset: {
+    uri: string;
+    fileName?: string | null;
+    mimeType?: string | null;
+  }): Promise<{ url: string }> => {
+    const formData = new FormData();
+    formData.append("image", {
+      uri: asset.uri,
+      name: asset.fileName || `avatar-${Date.now()}.jpg`,
+      type: asset.mimeType || "image/jpeg",
+    } as any);
+
+    const response = await api.post("/users/upload", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+      timeout: 60000,
+    });
+    return response.data;
+  },
 };
 
 // ==================== ADDRESS API ====================

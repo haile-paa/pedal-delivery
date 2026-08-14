@@ -36,6 +36,8 @@ type OrderService interface {
 	ReviewPaymentProof(ctx context.Context, orderID primitive.ObjectID, adminID primitive.ObjectID, req *models.ReviewPaymentProofRequest) (*models.Order, error)
 	GetPaymentVerificationHealth(ctx context.Context) map[string]interface{}
 	GetDriverStats(ctx context.Context, driverID primitive.ObjectID) (map[string]interface{}, error)
+	GetDriverEarningsChart(ctx context.Context, driverID primitive.ObjectID, rangeType string) (map[string]interface{}, error)
+	GetDriverEarningsTransactions(ctx context.Context, driverID primitive.ObjectID, limit int64) ([]map[string]interface{}, error)
 }
 
 type orderService struct {
@@ -801,6 +803,7 @@ func (s *orderService) GetDriverStats(ctx context.Context, driverID primitive.Ob
 		"totalDeliveries": totalDeliveries,
 		"averageRating":   averageRating,
 		"rating":          averageRating, // DriverProfileScreen reads this key
+		"ratingCount":     ratingCount,   // 0 means no customer has rated this driver yet — the app should show "New" instead of a fake 5.0
 		"averageEarnings": averageEarnings,
 		"acceptanceRate":  acceptanceRate,
 		"todayEarnings":   todayEarnings,
@@ -811,4 +814,130 @@ func (s *orderService) GetDriverStats(ctx context.Context, driverID primitive.Ob
 			"today":     todayEarnings,
 		},
 	}, nil
+}
+
+// GetDriverEarningsChart buckets a driver's delivered-order earnings into a
+// bar-chart-friendly {data, labels} shape for the given range. Backs GET
+// /api/v1/driver/earnings/chart — used by EarningsScreen.
+func (s *orderService) GetDriverEarningsChart(ctx context.Context, driverID primitive.ObjectID, rangeType string) (map[string]interface{}, error) {
+	orders, _, err := s.orderRepo.FindByDriverID(ctx, driverID, repositories.Pagination{
+		Page:    1,
+		Limit:   10000,
+		SortBy:  "created_at",
+		SortDir: -1,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now()
+	var labels []string
+	var data []float64
+
+	switch rangeType {
+	case "month":
+		// Bucket the current month into weekly chunks (Week 1..Week n).
+		startOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+		daysInMonth := time.Date(now.Year(), now.Month()+1, 0, 0, 0, 0, 0, now.Location()).AddDate(0, 0, -1).Day()
+		numWeeks := (daysInMonth + 6) / 7
+		data = make([]float64, numWeeks)
+		labels = make([]string, numWeeks)
+		for i := 0; i < numWeeks; i++ {
+			labels[i] = fmt.Sprintf("Week %d", i+1)
+		}
+		for _, o := range orders {
+			if o.Status != models.OrderDelivered {
+				continue
+			}
+			if o.UpdatedAt.Before(startOfMonth) || o.UpdatedAt.Month() != now.Month() || o.UpdatedAt.Year() != now.Year() {
+				continue
+			}
+			weekIdx := (o.UpdatedAt.Day() - 1) / 7
+			if weekIdx >= numWeeks {
+				weekIdx = numWeeks - 1
+			}
+			data[weekIdx] += o.TotalAmount.DeliveryFee
+		}
+	case "year":
+		monthNames := []string{"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"}
+		data = make([]float64, 12)
+		labels = monthNames
+		for _, o := range orders {
+			if o.Status != models.OrderDelivered {
+				continue
+			}
+			if o.UpdatedAt.Year() != now.Year() {
+				continue
+			}
+			data[int(o.UpdatedAt.Month())-1] += o.TotalAmount.DeliveryFee
+		}
+	default: // "week"
+		dayNames := []string{"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"}
+		data = make([]float64, 7)
+		labels = make([]string, 7)
+		startOfRange := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, 0, -6)
+		for i := 0; i < 7; i++ {
+			labels[i] = dayNames[int(startOfRange.AddDate(0, 0, i).Weekday())]
+		}
+		for _, o := range orders {
+			if o.Status != models.OrderDelivered {
+				continue
+			}
+			if o.UpdatedAt.Before(startOfRange) {
+				continue
+			}
+			dayIdx := int(o.UpdatedAt.Sub(startOfRange).Hours() / 24)
+			if dayIdx < 0 || dayIdx > 6 {
+				continue
+			}
+			data[dayIdx] += o.TotalAmount.DeliveryFee
+		}
+	}
+
+	return map[string]interface{}{
+		"data":   data,
+		"labels": labels,
+	}, nil
+}
+
+// GetDriverEarningsTransactions returns the driver's most recent delivered
+// or cancelled orders formatted as earnings transactions. Backs GET
+// /api/v1/driver/earnings/transactions — used by EarningsScreen.
+func (s *orderService) GetDriverEarningsTransactions(ctx context.Context, driverID primitive.ObjectID, limit int64) ([]map[string]interface{}, error) {
+	orders, _, err := s.orderRepo.FindByDriverID(ctx, driverID, repositories.Pagination{
+		Page:    1,
+		Limit:   10000,
+		SortBy:  "updated_at",
+		SortDir: -1,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if limit <= 0 {
+		limit = 5
+	}
+
+	transactions := make([]map[string]interface{}, 0, limit)
+	for _, o := range orders {
+		if int64(len(transactions)) >= limit {
+			break
+		}
+		if o.Status != models.OrderDelivered && o.Status != models.OrderCancelled {
+			continue
+		}
+		status := "completed"
+		if o.Status == models.OrderCancelled {
+			status = "failed"
+		}
+		transactions = append(transactions, map[string]interface{}{
+			"id":      o.ID.Hex(),
+			"date":    o.UpdatedAt.Format("Jan 2, 2006"),
+			"amount":  o.TotalAmount.DeliveryFee,
+			"orderId": o.OrderNumber,
+			"status":  status,
+		})
+	}
+
+	return transactions, nil
 }

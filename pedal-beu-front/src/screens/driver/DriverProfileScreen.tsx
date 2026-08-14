@@ -9,7 +9,9 @@ import {
   Image,
   Alert,
   ActivityIndicator,
+  Linking,
 } from "react-native";
+import * as ImagePicker from "expo-image-picker";
 import { useAppState } from "../../context/AppStateContext";
 import { useRouter } from "expo-router";
 import { colors } from "../../theme/colors";
@@ -18,6 +20,7 @@ import RatingStars from "../../components/driver/RatingStars";
 import AnimatedButton from "../../components/ui/AnimatedButton";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { API_BASE_URL } from "../../utils/constants";
+import { authAPI } from "../../../lib/api";
 
 interface DriverProfile {
   id: string;
@@ -26,6 +29,7 @@ interface DriverProfile {
   email?: string;
   avatar?: string;
   rating: number;
+  ratingCount: number;
   totalDeliveries: number;
   vehicle?: {
     type: string;
@@ -33,7 +37,6 @@ interface DriverProfile {
     color?: string;
     model?: string;
   };
-  documents?: Array<{ type: string; status: string; url?: string }>;
   earnings: {
     total: number;
     thisMonth: number;
@@ -46,6 +49,7 @@ const DriverProfileScreen: React.FC = () => {
   const { state, dispatch } = useAppState();
   const [profile, setProfile] = useState<DriverProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   useEffect(() => {
     fetchProfile();
@@ -65,9 +69,15 @@ const DriverProfileScreen: React.FC = () => {
       const statsRes = await fetch(`${API_BASE_URL}/driver/stats`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      let stats = {
+      let stats: {
+        totalDeliveries: number;
+        rating: number;
+        ratingCount: number;
+        earnings: { total: number; thisMonth: number; today: number };
+      } = {
         totalDeliveries: 0,
         rating: 5.0,
+        ratingCount: 0,
         earnings: { total: 0, thisMonth: 0, today: 0 },
       };
       if (statsRes.ok) {
@@ -80,10 +90,10 @@ const DriverProfileScreen: React.FC = () => {
         phone: userData.phone,
         email: userData.email,
         avatar: userData.profile?.avatar,
-        rating: stats.rating || 5.0,
+        rating: stats.rating ?? 5.0,
+        ratingCount: stats.ratingCount ?? 0,
         totalDeliveries: stats.totalDeliveries || 0,
         vehicle: userData.vehicle,
-        documents: userData.documents,
         earnings: stats.earnings || { total: 0, thisMonth: 0, today: 0 },
       });
     } catch (error) {
@@ -91,6 +101,53 @@ const DriverProfileScreen: React.FC = () => {
       Alert.alert("Error", "Could not load profile");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePickAvatar = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert(
+        "Permission Required",
+        "Please allow photo access to update your profile picture.",
+      );
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+
+    if (result.canceled || result.assets.length === 0) return;
+    const asset = result.assets[0];
+
+    try {
+      setUploadingAvatar(true);
+      const uploaded = await authAPI.uploadAvatar({
+        uri: asset.uri,
+        fileName: asset.fileName,
+        mimeType: asset.mimeType,
+      });
+      await authAPI.updateProfile({ avatar: uploaded.url });
+      setProfile((prev) => (prev ? { ...prev, avatar: uploaded.url } : prev));
+      dispatch({
+        type: "UPDATE_USER",
+        payload: {
+          ...state.auth.user,
+          profile: { ...state.auth.user?.profile, avatar: uploaded.url },
+        } as any,
+      });
+    } catch (error) {
+      console.error("Avatar upload error:", error);
+      Alert.alert(
+        "Error",
+        "Could not update your profile picture. Please try again.",
+      );
+    } finally {
+      setUploadingAvatar(false);
     }
   };
 
@@ -128,12 +185,6 @@ const DriverProfileScreen: React.FC = () => {
       onPress: () => router.push("/(driver)/earnings" as any),
     },
     {
-      id: "documents",
-      title: "Documents",
-      icon: "document-text-outline",
-      onPress: () => router.push("/(driver)/documents" as any),
-    },
-    {
       id: "vehicle",
       title: "Vehicle Information",
       icon: "car-outline",
@@ -143,7 +194,22 @@ const DriverProfileScreen: React.FC = () => {
       id: "support",
       title: "Help & Support",
       icon: "help-circle-outline",
-      onPress: () => Alert.alert("Support", "Help center coming soon!"),
+      onPress: () =>
+        Alert.alert(
+          "Help & Support",
+          "Need a hand? Reach us any time:\n\n📞 Call: +251 900 000 000\n✉️ Email: support@beupedal.com\n💬 Live chat: available 8am–10pm daily",
+          [
+            {
+              text: "Call Support",
+              onPress: () => Linking.openURL("tel:+251900000000"),
+            },
+            {
+              text: "Email Support",
+              onPress: () => Linking.openURL("mailto:support@beupedal.com"),
+            },
+            { text: "Close", style: "cancel" },
+          ],
+        ),
     },
     {
       id: "settings",
@@ -185,9 +251,14 @@ const DriverProfileScreen: React.FC = () => {
             )}
             <TouchableOpacity
               style={styles.editButton}
-              onPress={() => Alert.alert("Edit", "Edit profile coming soon!")}
+              onPress={handlePickAvatar}
+              disabled={uploadingAvatar}
             >
-              <Ionicons name='camera' size={16} color={colors.white} />
+              {uploadingAvatar ? (
+                <ActivityIndicator size='small' color={colors.white} />
+              ) : (
+                <Ionicons name='camera' size={16} color={colors.white} />
+              )}
             </TouchableOpacity>
           </View>
 
@@ -200,6 +271,7 @@ const DriverProfileScreen: React.FC = () => {
               size={20}
               showValue={true}
               animated={true}
+              label={profile.ratingCount === 0 ? "New" : undefined}
             />
             <Text style={styles.ratingText}>
               {profile.totalDeliveries} deliveries

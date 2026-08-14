@@ -42,6 +42,55 @@ func (h *OrderHandler) GetDriverStats(c *gin.Context) {
 	c.JSON(http.StatusOK, stats)
 }
 
+// GetDriverEarningsChart returns bucketed earnings data for the given range
+// (week/month/year) for the driver earnings bar chart.
+// GET /api/v1/driver/earnings/chart?range=week|month|year
+func (h *OrderHandler) GetDriverEarningsChart(c *gin.Context) {
+	userID := c.MustGet("userID").(primitive.ObjectID)
+	userRole := c.MustGet("userRole").(string)
+
+	if userRole != "driver" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Only drivers can view their earnings"})
+		return
+	}
+
+	rangeType := c.DefaultQuery("range", "week")
+	if rangeType != "week" && rangeType != "month" && rangeType != "year" {
+		rangeType = "week"
+	}
+
+	chart, err := h.orderService.GetDriverEarningsChart(c.Request.Context(), userID, rangeType)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, chart)
+}
+
+// GetDriverEarningsTransactions returns the driver's most recent earnings
+// transactions (delivered/cancelled orders).
+// GET /api/v1/driver/earnings/transactions?limit=5
+func (h *OrderHandler) GetDriverEarningsTransactions(c *gin.Context) {
+	userID := c.MustGet("userID").(primitive.ObjectID)
+	userRole := c.MustGet("userRole").(string)
+
+	if userRole != "driver" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Only drivers can view their earnings"})
+		return
+	}
+
+	limit, _ := strconv.ParseInt(c.DefaultQuery("limit", "5"), 10, 64)
+
+	transactions, err := h.orderService.GetDriverEarningsTransactions(c.Request.Context(), userID, limit)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, transactions)
+}
+
 // GetAllOrders returns all orders with pagination (admin only)
 // @Summary Get all orders
 // @Tags admin

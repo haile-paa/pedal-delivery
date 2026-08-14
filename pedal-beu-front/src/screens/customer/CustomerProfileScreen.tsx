@@ -7,19 +7,24 @@ import {
   ScrollView,
   StatusBar,
   TouchableOpacity,
+  Image,
   Alert,
+  ActivityIndicator,
+  Linking,
 } from "react-native";
+import * as ImagePicker from "expo-image-picker";
 import { useAppState } from "../../context/AppStateContext";
 import { useRouter } from "expo-router";
 import { colors } from "../../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
 import AnimatedButton from "../../components/ui/AnimatedButton";
-import api from "../../../lib/api";
+import api, { authAPI } from "../../../lib/api";
 
 const CustomerProfileScreen = () => {
   const router = useRouter();
   const { state, dispatch } = useAppState();
   const [loading, setLoading] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   const fetchProfile = async () => {
     try {
@@ -80,6 +85,52 @@ const CustomerProfileScreen = () => {
     Alert.alert("Update", "Edit profile feature coming soon!");
   };
 
+  const handlePickAvatar = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert(
+        "Permission Required",
+        "Please allow photo access to update your profile picture.",
+      );
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+
+    if (result.canceled || result.assets.length === 0) return;
+    const asset = result.assets[0];
+
+    try {
+      setUploadingAvatar(true);
+      const uploaded = await authAPI.uploadAvatar({
+        uri: asset.uri,
+        fileName: asset.fileName,
+        mimeType: asset.mimeType,
+      });
+      await authAPI.updateProfile({ avatar: uploaded.url });
+      dispatch({
+        type: "UPDATE_USER",
+        payload: {
+          ...user,
+          profile: { ...user?.profile, avatar: uploaded.url },
+        } as any,
+      });
+    } catch (error) {
+      console.error("Avatar upload error:", error);
+      Alert.alert(
+        "Error",
+        "Could not update your profile picture. Please try again.",
+      );
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
   const handleLogout = () => {
     Alert.alert("Logout", "Are you sure you want to logout?", [
       { text: "Cancel", style: "cancel" },
@@ -115,6 +166,27 @@ const CustomerProfileScreen = () => {
       onPress: () => Alert.alert("Coming Soon"),
       badge: favoriteCount,
     },
+    {
+      id: "support",
+      title: "Help & Support",
+      icon: "help-circle-outline" as const,
+      onPress: () =>
+        Alert.alert(
+          "Help & Support",
+          "Need a hand? Reach us any time:\n\n📞 Call: +251 900 000 000\n✉️ Email: support@beupedal.com\n💬 Live chat: available 8am–10pm daily",
+          [
+            {
+              text: "Call Support",
+              onPress: () => Linking.openURL("tel:+251900000000"),
+            },
+            {
+              text: "Email Support",
+              onPress: () => Linking.openURL("mailto:support@beupedal.com"),
+            },
+            { text: "Close", style: "cancel" },
+          ],
+        ),
+    },
   ];
 
   return (
@@ -123,11 +195,29 @@ const CustomerProfileScreen = () => {
       <ScrollView style={styles.scrollView}>
         <View style={styles.profileHeader}>
           <View style={styles.avatarContainer}>
-            <View style={styles.avatarPlaceholder}>
-              <Text style={styles.avatarText}>
-                {user?.name?.charAt(0) || "U"}
-              </Text>
-            </View>
+            {user?.profile?.avatar ? (
+              <Image
+                source={{ uri: user.profile.avatar }}
+                style={styles.avatar}
+              />
+            ) : (
+              <View style={styles.avatarPlaceholder}>
+                <Text style={styles.avatarText}>
+                  {user?.name?.charAt(0) || "U"}
+                </Text>
+              </View>
+            )}
+            <TouchableOpacity
+              style={styles.editButton}
+              onPress={handlePickAvatar}
+              disabled={uploadingAvatar}
+            >
+              {uploadingAvatar ? (
+                <ActivityIndicator size='small' color={colors.white} />
+              ) : (
+                <Ionicons name='camera' size={16} color={colors.white} />
+              )}
+            </TouchableOpacity>
           </View>
           <Text style={styles.userName}>{user?.name}</Text>
           <Text style={styles.userEmail}>{user?.email}</Text>
@@ -216,6 +306,11 @@ const styles = StyleSheet.create({
     position: "relative",
     marginBottom: 16,
   },
+  avatar: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+  },
   avatarPlaceholder: {
     width: 100,
     height: 100,
@@ -228,6 +323,19 @@ const styles = StyleSheet.create({
     fontSize: 40,
     fontWeight: "bold",
     color: colors.white,
+  },
+  editButton: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    backgroundColor: colors.primary,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 3,
+    borderColor: colors.white,
   },
   userName: {
     fontSize: 24,

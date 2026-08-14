@@ -63,6 +63,7 @@ interface NotificationOrder {
 interface DriverStats {
   totalDeliveries: number;
   averageRating: number;
+  ratingCount: number;
   averageEarnings: number;
   acceptanceRate: number;
   todayEarnings: number;
@@ -118,6 +119,7 @@ const DriverDashboard: React.FC = () => {
   const [stats, setStats] = useState<DriverStats>({
     totalDeliveries: 0,
     averageRating: 5.0,
+    ratingCount: 0,
     averageEarnings: 0,
     acceptanceRate: 0,
     todayEarnings: 0,
@@ -159,6 +161,7 @@ const DriverDashboard: React.FC = () => {
           setStats({
             totalDeliveries: data.totalDeliveries || 0,
             averageRating: data.averageRating || 5.0,
+            ratingCount: data.ratingCount || 0,
             averageEarnings: data.averageEarnings || 0,
             acceptanceRate: data.acceptanceRate || 0,
             todayEarnings: data.todayEarnings || 0,
@@ -468,7 +471,7 @@ const DriverDashboard: React.FC = () => {
           </View>
           <View style={styles.statCard}>
             <Text style={styles.statValue}>
-              {stats.averageRating.toFixed(1)}
+              {stats.ratingCount === 0 ? "New" : stats.averageRating.toFixed(1)}
             </Text>
             <Text style={styles.statLabel}>Rating</Text>
           </View>

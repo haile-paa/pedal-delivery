@@ -22,6 +22,7 @@ interface EarningsSummary {
   completedOrders: number;
   avgPerOrder: number;
   rating: number;
+  ratingCount: number;
 }
 
 interface Transaction {
@@ -44,6 +45,7 @@ const EarningsScreen: React.FC = () => {
     completedOrders: 0,
     avgPerOrder: 0,
     rating: 5.0,
+    ratingCount: 0,
   });
   const [chartData, setChartData] = useState<{
     data: number[];
@@ -65,13 +67,24 @@ const EarningsScreen: React.FC = () => {
     try {
       const token = await AsyncStorage.getItem("accessToken");
 
-      const summaryRes = await fetch(
-        `${API_BASE_URL}/driver/earnings/summary`,
-        { headers: { Authorization: `Bearer ${token}` } },
-      );
-      if (summaryRes.ok) {
-        const data = await summaryRes.json();
-        setSummary(data);
+      // Summary numbers come from /driver/stats (the same endpoint the
+      // dashboard and profile screens use) — there's no separate
+      // /driver/earnings/summary endpoint on the backend.
+      const statsRes = await fetch(`${API_BASE_URL}/driver/stats`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (statsRes.ok) {
+        const data = await statsRes.json();
+        setSummary({
+          today: data.todayEarnings || 0,
+          thisWeek: data.weekEarnings || 0,
+          thisMonth: data.earnings?.thisMonth || 0,
+          total: data.earnings?.total || 0,
+          completedOrders: data.totalDeliveries || 0,
+          avgPerOrder: data.averageEarnings || 0,
+          rating: data.rating ?? data.averageRating ?? 0,
+          ratingCount: data.ratingCount ?? 0,
+        });
       }
 
       const chartRes = await fetch(
@@ -94,7 +107,7 @@ const EarningsScreen: React.FC = () => {
       );
       if (txRes.ok) {
         const data = await txRes.json();
-        setTransactions(data);
+        setTransactions(data || []);
       }
     } catch (error) {
       console.error("Fetch earnings error:", error);
@@ -142,7 +155,9 @@ const EarningsScreen: React.FC = () => {
             <Text style={styles.statLabel}>Orders</Text>
           </View>
           <View style={styles.statCard}>
-            <Text style={styles.statValue}>{summary.rating.toFixed(1)}</Text>
+            <Text style={styles.statValue}>
+              {summary.ratingCount === 0 ? "New" : summary.rating.toFixed(1)}
+            </Text>
             <Text style={styles.statLabel}>Rating</Text>
           </View>
         </View>
@@ -223,7 +238,7 @@ const EarningsScreen: React.FC = () => {
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Recent Transactions</Text>
             <TouchableOpacity
-              onPress={() => router.push("/(driver)/documents" as any)}
+              onPress={() => router.push("/(driver)/order-history" as any)}
             >
               <Text style={styles.seeAllButton}>See All</Text>
             </TouchableOpacity>
