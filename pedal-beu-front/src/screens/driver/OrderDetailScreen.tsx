@@ -246,7 +246,11 @@ const OrderDetailScreen: React.FC = () => {
   return (
     <View style={styles.container}>
       <StatusBar barStyle='dark-content' backgroundColor={colors.background} />
-      <ScrollView style={styles.scrollView}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.header}>
           <Text style={styles.orderId}>Order #{order.order_number}</Text>
           <Text style={styles.restaurantName}>{order.restaurant.name}</Text>
@@ -392,7 +396,8 @@ const OrderDetailScreen: React.FC = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  scrollView: { flex: 1, paddingHorizontal: 20, paddingBottom: 100 },
+  scrollView: { flex: 1, paddingHorizontal: 20 },
+  scrollContent: { paddingBottom: 180 },
   header: {
     paddingTop: 60,
     paddingBottom: 20,

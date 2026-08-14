@@ -504,7 +504,81 @@ func (s *orderService) RateOrder(ctx context.Context, orderID primitive.ObjectID
 		return errors.New("order already rated")
 	}
 
-	return s.orderRepo.AddRating(ctx, orderID, *rating)
+	if err := s.orderRepo.AddRating(ctx, orderID, *rating); err != nil {
+		return err
+	}
+
+	// Recompute and persist the driver's/restaurant's average rating so
+	// they reflect real customer feedback everywhere they're surfaced —
+	// not just in GetDriverStats (which averages live from order history
+	// on every call), but also the static Driver.Rating/Restaurant.Rating
+	// fields used by DriverContact (customer's live tracking card) and the
+	// restaurant listing/detail screens.
+	if order.DriverID != nil {
+		if avg, count, derr := s.averageDriverRating(ctx, *order.DriverID); derr == nil && count > 0 {
+			if uerr := s.driverRepo.UpdateRating(ctx, *order.DriverID, avg); uerr != nil {
+				fmt.Printf("⚠️  Failed to update driver rating for %s: %v\n", order.DriverID.Hex(), uerr)
+			}
+		}
+	}
+
+	if avg, count, rerr := s.averageRestaurantRating(ctx, order.RestaurantID); rerr == nil && count > 0 {
+		if uerr := s.restaurantRepo.Update(ctx, order.RestaurantID, bson.M{
+			"rating":        avg,
+			"total_reviews": count,
+		}); uerr != nil {
+			fmt.Printf("⚠️  Failed to update restaurant rating for %s: %v\n", order.RestaurantID.Hex(), uerr)
+		}
+	}
+
+	return nil
+}
+
+// averageDriverRating averages DeliveryRating across every rated order this
+// driver has completed. userID is the driver's User._id (matches
+// order.driver_id — see UpdateRating).
+func (s *orderService) averageDriverRating(ctx context.Context, userID primitive.ObjectID) (float64, int, error) {
+	orders, _, err := s.orderRepo.FindByDriverID(ctx, userID, repositories.Pagination{
+		Page: 1, Limit: 10000, SortBy: "created_at", SortDir: -1,
+	})
+	if err != nil {
+		return 0, 0, err
+	}
+
+	sum, count := 0, 0
+	for _, o := range orders {
+		if o.Rating != nil && o.Rating.DeliveryRating > 0 {
+			sum += o.Rating.DeliveryRating
+			count++
+		}
+	}
+	if count == 0 {
+		return 0, 0, nil
+	}
+	return float64(sum) / float64(count), count, nil
+}
+
+// averageRestaurantRating averages RestaurantRating across every rated order
+// placed with this restaurant.
+func (s *orderService) averageRestaurantRating(ctx context.Context, restaurantID primitive.ObjectID) (float64, int, error) {
+	orders, _, err := s.orderRepo.FindByRestaurantID(ctx, restaurantID, repositories.Pagination{
+		Page: 1, Limit: 10000, SortBy: "created_at", SortDir: -1,
+	})
+	if err != nil {
+		return 0, 0, err
+	}
+
+	sum, count := 0, 0
+	for _, o := range orders {
+		if o.Rating != nil && o.Rating.RestaurantRating > 0 {
+			sum += o.Rating.RestaurantRating
+			count++
+		}
+	}
+	if count == 0 {
+		return 0, 0, nil
+	}
+	return float64(sum) / float64(count), count, nil
 }
 
 func (s *orderService) CalculateDeliveryFee(ctx context.Context, restaurantLocation, deliveryLocation models.GeoLocation) (float64, error) {

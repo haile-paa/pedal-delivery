@@ -1,4 +1,4 @@
-// app/(customer)/order-traking.tsx
+// app/(customer)/order-tracking.tsx
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View,
@@ -18,6 +18,7 @@ import MapView, { Marker, Polyline } from "react-native-maps";
 import { colors } from "../../theme/colors";
 import ProgressStepper from "../../components/ui/ProgressStepper";
 import AnimatedButton from "../../components/ui/AnimatedButton";
+import RateOrderModal from "../../components/customer/RateOrderModal";
 import WebSocketService from "../../services/websocket.service";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
@@ -70,6 +71,11 @@ interface OrderDetails {
   delivery_address: string;
   estimated_delivery_time: string;
   created_at: string;
+  rating?: {
+    food_rating: number;
+    delivery_rating: number;
+    restaurant_rating: number;
+  } | null;
 }
 
 const AUTO_CANCEL_MINUTES = 30;
@@ -107,6 +113,7 @@ const OrderTrackingScreen: React.FC = () => {
     Array<{ latitude: number; longitude: number }>
   >([]);
   const [error, setError] = useState<string | null>(null);
+  const [showRatingModal, setShowRatingModal] = useState(false);
 
   const { dispatch } = useAppState();
 
@@ -405,6 +412,7 @@ const OrderTrackingScreen: React.FC = () => {
         estimated_delivery_time:
           orderData.delivery_info?.estimated_delivery || "",
         created_at: orderData.created_at,
+        rating: orderData.rating || null,
       };
 
       setOrderDetails(details);
@@ -558,9 +566,7 @@ const OrderTrackingScreen: React.FC = () => {
       [
         {
           text: "Rate Order",
-          onPress: () => {
-            Alert.alert("Rating", "Rate your order feature coming soon!");
-          },
+          onPress: () => setShowRatingModal(true),
         },
       ],
     );
@@ -778,13 +784,20 @@ const OrderTrackingScreen: React.FC = () => {
             </View>
           )}
           <View style={styles.deliveredActions}>
-            <AnimatedButton
-              title='Rate Your Order'
-              onPress={() =>
-                Alert.alert("Rating", "Rate your order feature coming soon!")
-              }
-              style={styles.rateButton}
-            />
+            {orderDetails?.rating ? (
+              <View style={styles.thanksForRating}>
+                <Ionicons name='star' size={20} color={colors.warning} />
+                <Text style={styles.thanksForRatingText}>
+                  Thanks for rating your order!
+                </Text>
+              </View>
+            ) : (
+              <AnimatedButton
+                title='Rate Your Order'
+                onPress={() => setShowRatingModal(true)}
+                style={styles.rateButton}
+              />
+            )}
             <AnimatedButton
               title='Back to Home'
               onPress={() => router.replace("/(customer)/home")}
@@ -793,6 +806,15 @@ const OrderTrackingScreen: React.FC = () => {
             />
           </View>
         </View>
+        <RateOrderModal
+          visible={showRatingModal}
+          orderId={orderId}
+          onClose={() => setShowRatingModal(false)}
+          onSubmitted={(rating) => {
+            setShowRatingModal(false);
+            setOrderDetails((prev) => (prev ? { ...prev, rating } : prev));
+          }}
+        />
       </View>
     );
   }
@@ -887,14 +909,12 @@ const OrderTrackingScreen: React.FC = () => {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.statusHeader}>
-          {!driverInfo &&
-            currentStatus !== "delivered" &&
-            currentStatus !== "cancelled" && (
-              <View style={styles.timeRemaining}>
-                <Text style={styles.timeLabel}>Auto‑cancel in</Text>
-                <Text style={styles.timeValue}>{timeRemaining} min</Text>
-              </View>
-            )}
+          {!driverInfo && (
+            <View style={styles.timeRemaining}>
+              <Text style={styles.timeLabel}>Auto‑cancel in</Text>
+              <Text style={styles.timeValue}>{timeRemaining} min</Text>
+            </View>
+          )}
           <View style={styles.currentStatus}>
             <Ionicons
               name={statusIcons[currentStatus] as any}
@@ -1529,6 +1549,21 @@ const styles = StyleSheet.create({
   rateButton: {
     width: "100%",
     marginBottom: 8,
+  },
+  thanksForRating: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.warningLight,
+    borderRadius: 12,
+    paddingVertical: 14,
+    marginBottom: 8,
+    gap: 8,
+  },
+  thanksForRatingText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: colors.gray800,
   },
   homeButton: {
     width: "100%",

@@ -1,8 +1,14 @@
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "../../src/theme/colors";
 
 export default function DriverLayout() {
+  // See app/(customer)/_layout.tsx — same reasoning: pad by the bottom
+  // safe-area inset so the tab bar clears a phone's on-screen system nav
+  // bar where one is reserved, and stays unchanged where it isn't.
+  const insets = useSafeAreaInsets();
+
   return (
     <Tabs
       screenOptions={{
@@ -13,9 +19,9 @@ export default function DriverLayout() {
           backgroundColor: colors.white,
           borderTopWidth: 1,
           borderTopColor: colors.gray200,
-          paddingBottom: 8,
+          paddingBottom: 8 + insets.bottom,
           paddingTop: 8,
-          height: 60,
+          height: 60 + insets.bottom,
         },
         tabBarLabelStyle: {
           fontSize: 12,

@@ -23,6 +23,7 @@ type DriverRepository interface {
 	UpdateVehicle(ctx context.Context, id primitive.ObjectID, vehicle models.Vehicle) error
 	UpdateOnlineStatus(ctx context.Context, userID primitive.ObjectID, isOnline bool) error
 	UpdateLocation(ctx context.Context, userID primitive.ObjectID, lng, lat float64) error
+	UpdateRating(ctx context.Context, id primitive.ObjectID, rating float64) error
 }
 
 type driverRepository struct {
@@ -171,6 +172,24 @@ func (r *driverRepository) UpdateLocation(ctx context.Context, userID primitive.
 				"type":        "Point",
 				"coordinates": []float64{lng, lat},
 			},
+			"updated_at": time.Now(),
+		}},
+	)
+	return err
+}
+
+// UpdateRating persists a driver's recomputed average delivery rating —
+// called after a customer rates an order, so the static `rating` field
+// (surfaced on the customer's live tracking card via DriverContact) stays
+// in sync with the same live average GetDriverStats reports elsewhere.
+// userID is the driver's User._id (same key AssignDriver/order.driver_id
+// and UpdateOnlineStatus/UpdateLocation use), not the Driver document's own _id.
+func (r *driverRepository) UpdateRating(ctx context.Context, userID primitive.ObjectID, rating float64) error {
+	_, err := r.collection.UpdateOne(
+		ctx,
+		bson.M{"user_id": userID},
+		bson.M{"$set": bson.M{
+			"rating":     rating,
 			"updated_at": time.Now(),
 		}},
 	)

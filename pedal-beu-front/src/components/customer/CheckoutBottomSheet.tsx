@@ -159,7 +159,32 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
           longitude,
         });
         if (rg) {
-          addressStr = `${rg.street || ""}${rg.city ? `, ${rg.city}` : ""}${rg.region ? `, ${rg.region}` : ""}`;
+          // Addis Ababa reverse-geocode results frequently come back with no
+          // `street` at all (the device geocoder just doesn't have
+          // street-level data there). When that happens, Android's geocoder
+          // often puts a Plus Code (e.g. "3P5J+WF9") in `name` instead of a
+          // real place name — technically a valid location code, but not
+          // something a customer or driver can read at a glance. Prefer
+          // district/subregion (actual neighborhood names) over `name`, and
+          // skip `name` entirely when it looks like a Plus Code.
+          const isPlusCode = (s?: string | null) =>
+            !!s &&
+            /^[23456789CFGHJMPQRVWX]{4,6}\+[23456789CFGHJMPQRVWX]{2,3}$/i.test(
+              s,
+            );
+
+          const streetPart = [rg.streetNumber, rg.street]
+            .filter(Boolean)
+            .join(" ");
+          const leadPart =
+            streetPart ||
+            rg.district ||
+            rg.subregion ||
+            (isPlusCode(rg.name) ? undefined : rg.name);
+          const parts = [leadPart, rg.city, rg.region].filter(Boolean);
+          if (parts.length > 0) {
+            addressStr = parts.join(", ");
+          }
         }
       } catch {}
 

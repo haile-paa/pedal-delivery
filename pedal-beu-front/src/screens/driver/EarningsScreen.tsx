@@ -6,7 +6,6 @@ import {
   ScrollView,
   StatusBar,
   TouchableOpacity,
-  Alert,
   ActivityIndicator,
 } from "react-native";
 import { colors } from "../../theme/colors";
@@ -102,25 +101,6 @@ const EarningsScreen: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleWithdraw = () => {
-    Alert.alert("Withdraw Earnings", "How much would you like to withdraw?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Withdraw All",
-        onPress: () =>
-          Alert.alert("Success", "Withdrawal request submitted! (Demo)"),
-      },
-      {
-        text: "Custom Amount",
-        onPress: () =>
-          Alert.alert(
-            "Custom Amount",
-            "Enter withdrawal amount feature coming soon!",
-          ),
-      },
-    ]);
   };
 
   if (loading) {
@@ -290,25 +270,6 @@ const EarningsScreen: React.FC = () => {
             </View>
           )}
         </View>
-
-        <View style={styles.withdrawalSection}>
-          <View style={styles.withdrawalCard}>
-            <Text style={styles.withdrawalTitle}>Available for Withdrawal</Text>
-            <Text style={styles.withdrawalAmount}>
-              {summary.thisMonth.toFixed(2)} Birr
-            </Text>
-            <Text style={styles.withdrawalNote}>
-              Funds are available for withdrawal 24 hours after delivery
-              completion
-            </Text>
-            <TouchableOpacity
-              style={styles.withdrawButton}
-              onPress={handleWithdraw}
-            >
-              <Text style={styles.withdrawButtonText}>Withdraw Earnings</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
       </ScrollView>
     </View>
   );
@@ -454,46 +415,6 @@ const styles = StyleSheet.create({
     color: colors.warning,
   },
   statusFailed: { backgroundColor: colors.error + "20", color: colors.error },
-  withdrawalSection: { paddingHorizontal: 20, marginTop: 24, marginBottom: 40 },
-  withdrawalCard: {
-    backgroundColor: colors.white,
-    borderRadius: 20,
-    padding: 24,
-    alignItems: "center",
-    shadowColor: colors.black,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  withdrawalTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: colors.gray800,
-    marginBottom: 8,
-  },
-  withdrawalAmount: {
-    fontSize: 36,
-    fontWeight: "bold",
-    color: colors.primary,
-    marginBottom: 12,
-  },
-  withdrawalNote: {
-    fontSize: 14,
-    color: colors.gray600,
-    textAlign: "center",
-    marginBottom: 20,
-    lineHeight: 20,
-  },
-  withdrawButton: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: 32,
-    paddingVertical: 14,
-    borderRadius: 12,
-    width: "100%",
-    alignItems: "center",
-  },
-  withdrawButtonText: { fontSize: 16, fontWeight: "bold", color: colors.white },
 });
 
 export default EarningsScreen;

@@ -6,6 +6,8 @@ import {
   ScrollView,
   StatusBar,
   TouchableOpacity,
+  Pressable,
+  Animated,
   Alert,
 } from "react-native";
 import * as Location from "expo-location";
@@ -66,6 +68,43 @@ interface DriverStats {
   todayEarnings: number;
   weekEarnings: number;
 }
+
+// A Quick Actions tile with a spring press-scale + ripple, so it actually
+// feels tappable instead of a static TouchableOpacity dimming slightly.
+const QuickActionButton: React.FC<{
+  icon: string;
+  label: string;
+  color: string;
+  onPress: () => void;
+}> = ({ icon, label, color, onPress }) => {
+  const scale = useRef(new Animated.Value(1)).current;
+
+  const animateTo = (toValue: number) => {
+    Animated.spring(scale, {
+      toValue,
+      useNativeDriver: true,
+      speed: 40,
+      bounciness: 6,
+    }).start();
+  };
+
+  return (
+    <Pressable
+      onPress={onPress}
+      onPressIn={() => animateTo(0.94)}
+      onPressOut={() => animateTo(1)}
+      android_ripple={{ color: color + "30", borderless: false }}
+      style={styles.actionPressable}
+    >
+      <Animated.View style={[styles.actionButton, { transform: [{ scale }] }]}>
+        <View style={[styles.actionIcon, { backgroundColor: color + "20" }]}>
+          <Text style={[styles.actionIconText, { color }]}>{icon}</Text>
+        </View>
+        <Text style={styles.actionText}>{label}</Text>
+      </Animated.View>
+    </Pressable>
+  );
+};
 
 const DriverDashboard: React.FC = () => {
   const router = useRouter();
@@ -438,79 +477,24 @@ const DriverDashboard: React.FC = () => {
         <View style={styles.actionsContainer}>
           <Text style={styles.sectionTitle}>Quick Actions</Text>
           <View style={styles.actionsGrid}>
-            <TouchableOpacity
-              style={styles.actionButton}
+            <QuickActionButton
+              icon='📋'
+              label='Available Orders'
+              color={colors.primary}
               onPress={() => router.push("/(driver)/available-orders" as any)}
-            >
-              <View
-                style={[
-                  styles.actionIcon,
-                  { backgroundColor: colors.primary + "20" },
-                ]}
-              >
-                <Text
-                  style={[styles.actionIconText, { color: colors.primary }]}
-                >
-                  📋
-                </Text>
-              </View>
-              <Text style={styles.actionText}>Available Orders</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.actionButton}
+            />
+            <QuickActionButton
+              icon='💰'
+              label='Earnings'
+              color={colors.success}
               onPress={() => router.push("/(driver)/earnings" as any)}
-            >
-              <View
-                style={[
-                  styles.actionIcon,
-                  { backgroundColor: colors.success + "20" },
-                ]}
-              >
-                <Text
-                  style={[styles.actionIconText, { color: colors.success }]}
-                >
-                  💰
-                </Text>
-              </View>
-              <Text style={styles.actionText}>Earnings</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={() => router.push("/(driver)/documents" as any)}
-            >
-              <View
-                style={[
-                  styles.actionIcon,
-                  { backgroundColor: colors.info + "20" },
-                ]}
-              >
-                <Text style={[styles.actionIconText, { color: colors.info }]}>
-                  📄
-                </Text>
-              </View>
-              <Text style={styles.actionText}>Documents</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.actionButton}
+            />
+            <QuickActionButton
+              icon='👤'
+              label='Profile'
+              color={colors.secondary}
               onPress={() => router.push("/(driver)/profile" as any)}
-            >
-              <View
-                style={[
-                  styles.actionIcon,
-                  { backgroundColor: colors.secondary + "20" },
-                ]}
-              >
-                <Text
-                  style={[styles.actionIconText, { color: colors.secondary }]}
-                >
-                  👤
-                </Text>
-              </View>
-              <Text style={styles.actionText}>Profile</Text>
-            </TouchableOpacity>
+            />
           </View>
         </View>
 
@@ -621,11 +605,16 @@ const styles = StyleSheet.create({
     color: colors.gray900,
     marginBottom: 16,
   },
-  actionsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 16 },
+  actionsGrid: { flexDirection: "row", gap: 12 },
+  actionPressable: {
+    flex: 1,
+    borderRadius: 16,
+    overflow: "hidden",
+  },
   actionButton: {
-    width: "48%",
+    flex: 1,
     alignItems: "center",
-    padding: 16,
+    padding: 14,
     backgroundColor: colors.gray50,
     borderRadius: 16,
   },
