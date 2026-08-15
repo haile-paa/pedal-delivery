@@ -19,6 +19,7 @@ import CategoryFilter from "../../components/customer/CategoryFilter";
 import LoadingSkeleton from "../../components/ui/LoadingSkeleton";
 import { useRouter } from "expo-router";
 import { restaurantAPI } from "../../../lib/restaurant";
+import { favoritesAPI } from "../../../lib/api";
 import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 
@@ -45,6 +46,16 @@ const HomeScreen: React.FC = () => {
   useEffect(() => {
     console.log("HomeScreen - current user:", state.auth.user);
   }, [state.auth.user]);
+
+  useEffect(() => {
+    (async () => {
+      const restaurants = await favoritesAPI.getFavorites();
+      dispatch({
+        type: "SET_FAVORITE_RESTAURANTS",
+        payload: restaurants.map((r: any) => r.id),
+      });
+    })();
+  }, []);
 
   const getUserFirstName = () => {
     const user = state.auth.user;
@@ -307,11 +318,42 @@ const HomeScreen: React.FC = () => {
     });
   };
 
+  const handleToggleFavorite = useCallback(
+    async (restaurant: Restaurant) => {
+      const isFav = state.customer.favoriteRestaurants.includes(restaurant.id);
+      try {
+        if (isFav) {
+          await favoritesAPI.removeFavorite(restaurant.id);
+          dispatch({
+            type: "SET_FAVORITE_RESTAURANTS",
+            payload: state.customer.favoriteRestaurants.filter(
+              (id) => id !== restaurant.id,
+            ),
+          });
+        } else {
+          await favoritesAPI.addFavorite(restaurant.id);
+          dispatch({
+            type: "SET_FAVORITE_RESTAURANTS",
+            payload: [...state.customer.favoriteRestaurants, restaurant.id],
+          });
+        }
+      } catch (error) {
+        console.error("Toggle favorite error:", error);
+      }
+    },
+    [state.customer.favoriteRestaurants],
+  );
+
   const renderRestaurantItem = useCallback(
     ({ item }: { item: Restaurant }) => (
-      <RestaurantCard item={item} onPress={handleRestaurantPress} />
+      <RestaurantCard
+        item={item}
+        onPress={handleRestaurantPress}
+        isFavorite={state.customer.favoriteRestaurants.includes(item.id)}
+        onToggleFavorite={handleToggleFavorite}
+      />
     ),
-    [],
+    [state.customer.favoriteRestaurants, handleToggleFavorite],
   );
 
   const renderSkeleton = useCallback(

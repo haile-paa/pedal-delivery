@@ -446,6 +446,28 @@ export const addressAPI = {
   },
 };
 
+// ==================== FAVORITES API ====================
+
+export const favoritesAPI = {
+  addFavorite: async (restaurantId: string): Promise<void> => {
+    await api.post(`/users/favorites/${restaurantId}`);
+  },
+
+  removeFavorite: async (restaurantId: string): Promise<void> => {
+    await api.delete(`/users/favorites/${restaurantId}`);
+  },
+
+  getFavorites: async (): Promise<any[]> => {
+    try {
+      const response = await api.get("/users/favorites");
+      return response.data.restaurants || [];
+    } catch (error: any) {
+      console.log("Failed to get favorites:", error.message);
+      return [];
+    }
+  },
+};
+
 // ==================== ORDER API ====================
 
 export const orderAPI = {

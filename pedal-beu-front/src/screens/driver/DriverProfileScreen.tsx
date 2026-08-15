@@ -185,12 +185,6 @@ const DriverProfileScreen: React.FC = () => {
       onPress: () => router.push("/(driver)/earnings" as any),
     },
     {
-      id: "vehicle",
-      title: "Vehicle Information",
-      icon: "car-outline",
-      onPress: () => Alert.alert("Vehicle", "Vehicle details coming soon!"),
-    },
-    {
       id: "support",
       title: "Help & Support",
       icon: "help-circle-outline",
@@ -215,7 +209,7 @@ const DriverProfileScreen: React.FC = () => {
       id: "settings",
       title: "Settings",
       icon: "settings-outline",
-      onPress: () => Alert.alert("Settings", "Settings coming soon!"),
+      onPress: () => router.push("/(driver)/settings" as any),
     },
   ];
 

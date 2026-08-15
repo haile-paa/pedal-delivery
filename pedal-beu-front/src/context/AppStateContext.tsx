@@ -113,7 +113,8 @@ type AppAction =
   | { type: "SELECT_ADDRESS"; payload: Address | null }
   | { type: "ADD_ORDER"; payload: Order }
   | { type: "SET_CUSTOMER_LOADING"; payload: boolean }
-  | { type: "SET_DRIVER_LOADING"; payload: boolean };
+  | { type: "SET_DRIVER_LOADING"; payload: boolean }
+  | { type: "SET_FAVORITE_RESTAURANTS"; payload: string[] };
 
 const initialState: AppState = {
   auth: {
@@ -426,6 +427,11 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
       return {
         ...state,
         driver: { ...state.driver, isLoading: action.payload },
+      };
+    case "SET_FAVORITE_RESTAURANTS":
+      return {
+        ...state,
+        customer: { ...state.customer, favoriteRestaurants: action.payload },
       };
     default:
       return state;

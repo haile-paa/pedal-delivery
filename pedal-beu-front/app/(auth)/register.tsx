@@ -13,6 +13,7 @@ import {
   ScrollView,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { colors } from "../../src/theme/colors";
 import { authAPI } from "../../lib/api";
 import { LinearGradient } from "expo-linear-gradient";
@@ -34,6 +35,8 @@ const RegisterScreen: React.FC = () => {
   const [email, setEmail] = useState(params.email || "");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const validatePhoneNumber = (phone: string): boolean => {
@@ -201,26 +204,50 @@ const RegisterScreen: React.FC = () => {
 
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Password *</Text>
-          <TextInput
-            style={styles.input}
-            placeholder='At least 6 characters'
-            value={password}
-            onChangeText={setPassword}
-            editable={!loading}
-            secureTextEntry
-          />
+          <View style={styles.passwordWrapper}>
+            <TextInput
+              style={styles.passwordInput}
+              placeholder='At least 6 characters'
+              value={password}
+              onChangeText={setPassword}
+              editable={!loading}
+              secureTextEntry={!showPassword}
+            />
+            <TouchableOpacity
+              onPress={() => setShowPassword((prev) => !prev)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons
+                name={showPassword ? "eye-off-outline" : "eye-outline"}
+                size={22}
+                color={colors.gray500}
+              />
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Confirm Password *</Text>
-          <TextInput
-            style={styles.input}
-            placeholder='Re-enter your password'
-            value={confirmPassword}
-            onChangeText={setConfirmPassword}
-            editable={!loading}
-            secureTextEntry
-          />
+          <View style={styles.passwordWrapper}>
+            <TextInput
+              style={styles.passwordInput}
+              placeholder='Re-enter your password'
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              editable={!loading}
+              secureTextEntry={!showConfirmPassword}
+            />
+            <TouchableOpacity
+              onPress={() => setShowConfirmPassword((prev) => !prev)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons
+                name={showConfirmPassword ? "eye-off-outline" : "eye-outline"}
+                size={22}
+                color={colors.gray500}
+              />
+            </TouchableOpacity>
+          </View>
         </View>
 
         <TouchableOpacity
@@ -347,6 +374,21 @@ const styles = StyleSheet.create({
     borderColor: colors.gray300,
     borderRadius: 12,
     paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+    color: colors.gray900,
+  },
+  passwordWrapper: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.gray300,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+  },
+  passwordInput: {
+    flex: 1,
     paddingVertical: 14,
     fontSize: 16,
     color: colors.gray900,

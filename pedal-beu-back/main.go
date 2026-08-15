@@ -215,7 +215,7 @@ func main() {
 
 	handlers.SetUserRepository(userRepo)
 	handlers.SetAdminRepository(adminRepo)
-	userHandler := handlers.NewUserHandler(userRepo)
+	userHandler := handlers.NewUserHandler(userRepo, restaurantRepo)
 
 	router := gin.New()
 
@@ -471,6 +471,10 @@ func main() {
 				user.POST("/addresses", userHandler.AddAddress)
 				user.GET("/addresses", userHandler.GetAddresses)
 				user.DELETE("/addresses/:addressId", userHandler.DeleteAddress)
+
+				user.POST("/favorites/:restaurantId", userHandler.AddFavoriteRestaurant)
+				user.DELETE("/favorites/:restaurantId", userHandler.RemoveFavoriteRestaurant)
+				user.GET("/favorites", userHandler.GetFavoriteRestaurants)
 
 				user.POST("/upload", func(c *gin.Context) {
 					file, err := c.FormFile("image")

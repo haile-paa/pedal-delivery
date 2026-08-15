@@ -1,13 +1,16 @@
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { colors } from "../../src/theme/colors";
+import { useTheme } from "../../src/context/ThemeContext";
+import { useLanguage } from "../../src/context/LanguageContext";
 
 export default function DriverLayout() {
   // See app/(customer)/_layout.tsx — same reasoning: pad by the bottom
   // safe-area inset so the tab bar clears a phone's on-screen system nav
   // bar where one is reserved, and stays unchanged where it isn't.
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
+  const { t } = useLanguage();
 
   return (
     <Tabs
@@ -32,7 +35,7 @@ export default function DriverLayout() {
       <Tabs.Screen
         name='dashboard'
         options={{
-          title: "Dashboard",
+          title: t("dashboard"),
           tabBarIcon: ({ color, size }) => (
             <Ionicons name='speedometer-outline' size={size} color={color} />
           ),
@@ -41,7 +44,7 @@ export default function DriverLayout() {
       <Tabs.Screen
         name='available-orders'
         options={{
-          title: "Orders",
+          title: t("orders"),
           tabBarIcon: ({ color, size }) => (
             <Ionicons name='list-outline' size={size} color={color} />
           ),
@@ -50,7 +53,7 @@ export default function DriverLayout() {
       <Tabs.Screen
         name='earnings'
         options={{
-          title: "Earnings",
+          title: t("earnings"),
           tabBarIcon: ({ color, size }) => (
             <Ionicons name='cash-outline' size={size} color={color} />
           ),
@@ -59,7 +62,7 @@ export default function DriverLayout() {
       <Tabs.Screen
         name='profile'
         options={{
-          title: "Profile",
+          title: t("profile"),
           tabBarIcon: ({ color, size }) => (
             <Ionicons name='person-outline' size={size} color={color} />
           ),
@@ -88,6 +91,13 @@ export default function DriverLayout() {
       />
       <Tabs.Screen
         name='order-detail'
+        options={{
+          href: null, // This hides it from the tab bar
+          headerShown: false,
+        }}
+      />
+      <Tabs.Screen
+        name='settings'
         options={{
           href: null, // This hides it from the tab bar
           headerShown: false,

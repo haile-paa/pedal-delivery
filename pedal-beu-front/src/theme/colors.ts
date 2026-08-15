@@ -34,4 +34,45 @@ export const colors = {
   card: "#FFFFFF",
 };
 
+// Dark palette. Mirrors every key in `colors` above (same primary/semantic
+// accents, inverted neutrals) so any component that switches from the
+// static `colors` import to `useTheme().colors` picks up dark mode without
+// further changes. `gray*` is inverted (gray900 becomes near-white — used
+// for "primary text" in most screens) so text/background contrast stays
+// correct in dark mode without touching each screen's style values.
+export const darkColors: typeof colors = {
+  primary: "#8B5CF6",
+  primaryLight: "#C4B5FD",
+  primaryGlow: "#A78BFA",
+  secondary: "#A78BFA",
+  accent: "#F0ABFC",
+
+  white: "#1E1E24", // "card/surface" color in most screens — dark here on purpose
+  black: "#FFFFFF",
+  gray50: "#15151A",
+  gray100: "#1E1E24",
+  gray200: "#2B2B33",
+  gray300: "#3A3A45",
+  gray400: "#6B7280",
+  gray500: "#9CA3AF",
+  gray600: "#B5B9C2",
+  gray700: "#D1D5DB",
+  gray800: "#E5E7EB",
+  gray900: "#F5F5F7",
+
+  warningLight: "#3A2E10",
+  successLight: "#0F2E22",
+  success: "#34D399",
+  warning: "#FBBF24",
+  error: "#F87171",
+  info: "#60A5FA",
+
+  background: "#121216",
+  surface: "#1A1A20",
+  card: "#1E1E24",
+};
+
 export type Colors = typeof colors;
+
+export const getThemeColors = (theme: "light" | "dark"): Colors =>
+  theme === "dark" ? darkColors : colors;

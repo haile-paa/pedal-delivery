@@ -91,8 +91,13 @@ type User struct {
 	OTP         *OTP               `bson:"otp,omitempty" json:"-"`
 	FCMToken    string             `bson:"fcm_token,omitempty" json:"-"`
 	LastLoginAt *time.Time         `bson:"last_login_at,omitempty" json:"last_login_at,omitempty"`
-	CreatedAt   time.Time          `bson:"created_at" json:"created_at"`
-	UpdatedAt   time.Time          `bson:"updated_at" json:"updated_at"`
+	// FavoriteRestaurants holds the IDs of restaurants this (customer) user
+	// has favorited. Only meaningful for role == "customer" but kept on the
+	// base User doc rather than a separate collection since it's a small,
+	// frequently-read list.
+	FavoriteRestaurants []primitive.ObjectID `bson:"favorite_restaurants,omitempty" json:"favorite_restaurants,omitempty"`
+	CreatedAt           time.Time             `bson:"created_at" json:"created_at"`
+	UpdatedAt           time.Time             `bson:"updated_at" json:"updated_at"`
 }
 type Admin struct {
 	ID          primitive.ObjectID `bson:"_id,omitempty" json:"id"`

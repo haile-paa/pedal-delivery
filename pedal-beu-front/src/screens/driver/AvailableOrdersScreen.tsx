@@ -22,6 +22,7 @@ import WebSocketService from "../../services/websocket.service";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { API_BASE_URL } from "../../utils/constants";
+import { reverseGeocodeToAddress } from "../../utils/reverseGeocode";
 
 // Define the expected shape of a backend order (from REST or WebSocket)
 interface BackendOrder {
@@ -506,6 +507,7 @@ const AvailableOrdersScreen: React.FC = () => {
           return mapped;
         });
         setAvailableOrders(orders);
+        resolveMissingRestaurantAddresses(orders);
       } else {
         throw new Error(
           data?.error || data?.message || "Failed to fetch orders",
@@ -514,6 +516,37 @@ const AvailableOrdersScreen: React.FC = () => {
     } catch (error) {
       console.error("Fetch orders error:", error);
       Alert.alert("Error", "Could not load available orders");
+    }
+  };
+
+  // Some restaurants were created without an address on file (an older,
+  // less strict version of restaurant onboarding). When that happens but
+  // the restaurant still has real coordinates, reverse-geocode those
+  // coordinates on-device so drivers see a usable pickup location instead
+  // of "No address on file". Runs after the orders are already shown, so
+  // it never blocks the list from rendering.
+  const resolveMissingRestaurantAddresses = async (orders: Order[]) => {
+    const needsAddress = orders.filter(
+      (o) =>
+        !o.restaurant.address &&
+        (o.restaurantLocation.latitude || o.restaurantLocation.longitude),
+    );
+    if (needsAddress.length === 0) return;
+
+    for (const order of needsAddress) {
+      const resolved = await reverseGeocodeToAddress(
+        order.restaurantLocation.latitude,
+        order.restaurantLocation.longitude,
+      );
+      if (resolved) {
+        setAvailableOrders((prev) =>
+          prev.map((o) =>
+            o.id === order.id
+              ? { ...o, restaurant: { ...o.restaurant, address: resolved } }
+              : o,
+          ),
+        );
+      }
     }
   };
 
@@ -1045,7 +1078,9 @@ const AvailableOrdersScreen: React.FC = () => {
             <Text style={styles.statLabel}>Avg/Order</Text>
           </View>
           <View style={styles.statCard}>
-            <Text style={styles.statValue}>{driverStats.acceptanceRate}%</Text>
+            <Text style={styles.statValue}>
+              {driverStats.acceptanceRate.toFixed(1)}%
+            </Text>
             <Text style={styles.statLabel}>Acceptance</Text>
           </View>
         </View>

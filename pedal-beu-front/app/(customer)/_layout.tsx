@@ -1,7 +1,8 @@
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { colors } from "../../src/theme/colors";
+import { useTheme } from "../../src/context/ThemeContext";
+import { useLanguage } from "../../src/context/LanguageContext";
 
 export default function CustomerLayout() {
   // Some Android phones reserve a system nav bar (3-button or gesture pill)
@@ -11,6 +12,8 @@ export default function CustomerLayout() {
   // phones that have one, while leaving it exactly as-is on phones that
   // don't (insets.bottom is 0 there, so this is a no-op).
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
+  const { t } = useLanguage();
 
   return (
     <Tabs
@@ -35,7 +38,7 @@ export default function CustomerLayout() {
       <Tabs.Screen
         name='home'
         options={{
-          title: "Home",
+          title: t("home"),
           tabBarIcon: ({ color, size }) => (
             <Ionicons name='home-outline' size={size} color={color} />
           ),
@@ -44,7 +47,7 @@ export default function CustomerLayout() {
       <Tabs.Screen
         name='cart'
         options={{
-          title: "Cart",
+          title: t("cart"),
           tabBarIcon: ({ color, size }) => (
             <Ionicons name='cart-outline' size={size} color={color} />
           ),
@@ -53,7 +56,7 @@ export default function CustomerLayout() {
       <Tabs.Screen
         name='order-history'
         options={{
-          title: "Orders",
+          title: t("orders"),
           tabBarIcon: ({ color, size }) => (
             <Ionicons name='receipt-outline' size={size} color={color} />
           ),
@@ -62,7 +65,7 @@ export default function CustomerLayout() {
       <Tabs.Screen
         name='profile'
         options={{
-          title: "Profile",
+          title: t("profile"),
           tabBarIcon: ({ color, size }) => (
             <Ionicons name='person-outline' size={size} color={color} />
           ),
@@ -70,6 +73,20 @@ export default function CustomerLayout() {
       />
       <Tabs.Screen
         name='restaurant/[id]'
+        options={{
+          href: null, // This hides it from the tab bar
+          headerShown: false,
+        }}
+      />
+      <Tabs.Screen
+        name='favorites'
+        options={{
+          href: null, // This hides it from the tab bar
+          headerShown: false,
+        }}
+      />
+      <Tabs.Screen
+        name='settings'
         options={{
           href: null, // This hides it from the tab bar
           headerShown: false,

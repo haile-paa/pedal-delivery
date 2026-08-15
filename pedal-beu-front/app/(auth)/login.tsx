@@ -17,6 +17,7 @@ import {
   Platform,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { colors } from "../../src/theme/colors";
 import { authAPI } from "../../lib/api";
 import { LinearGradient } from "expo-linear-gradient";
@@ -44,6 +45,7 @@ const LoginScreen: React.FC = () => {
   const { dispatch } = useAppState();
   const [loading, setLoading] = useState(false);
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleLogin = async () => {
     if (!password) {
@@ -172,14 +174,26 @@ const LoginScreen: React.FC = () => {
 
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Password</Text>
-          <TextInput
-            style={styles.input}
-            placeholder='Enter your password'
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            editable={!loading}
-          />
+          <View style={styles.passwordWrapper}>
+            <TextInput
+              style={styles.passwordInput}
+              placeholder='Enter your password'
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={!showPassword}
+              editable={!loading}
+            />
+            <TouchableOpacity
+              onPress={() => setShowPassword((prev) => !prev)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons
+                name={showPassword ? "eye-off-outline" : "eye-outline"}
+                size={22}
+                color={colors.gray500}
+              />
+            </TouchableOpacity>
+          </View>
         </View>
 
         <TouchableOpacity
@@ -299,6 +313,21 @@ const styles = StyleSheet.create({
     borderColor: colors.gray300,
     borderRadius: 12,
     paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+    color: colors.gray900,
+  },
+  passwordWrapper: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.gray300,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+  },
+  passwordInput: {
+    flex: 1,
     paddingVertical: 14,
     fontSize: 16,
     color: colors.gray900,

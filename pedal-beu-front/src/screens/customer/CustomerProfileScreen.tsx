@@ -18,7 +18,7 @@ import { useRouter } from "expo-router";
 import { colors } from "../../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
 import AnimatedButton from "../../components/ui/AnimatedButton";
-import api, { authAPI } from "../../../lib/api";
+import api, { authAPI, favoritesAPI } from "../../../lib/api";
 
 const CustomerProfileScreen = () => {
   const router = useRouter();
@@ -65,10 +65,23 @@ const CustomerProfileScreen = () => {
     }
   };
 
+  const fetchFavorites = async () => {
+    try {
+      const restaurants = await favoritesAPI.getFavorites();
+      dispatch({
+        type: "SET_FAVORITE_RESTAURANTS",
+        payload: restaurants.map((r: any) => r.id),
+      });
+    } catch (err: any) {
+      console.log("Favorites fetch error:", err.message);
+    }
+  };
+
   useEffect(() => {
     fetchProfile();
     fetchAddresses();
     fetchOrders();
+    fetchFavorites();
   }, []);
 
   const user = state.auth.user;
@@ -163,8 +176,14 @@ const CustomerProfileScreen = () => {
       id: "favorites",
       title: "Favorite Restaurants",
       icon: "heart-outline" as const,
-      onPress: () => Alert.alert("Coming Soon"),
+      onPress: () => router.push("/(customer)/favorites" as any),
       badge: favoriteCount,
+    },
+    {
+      id: "settings",
+      title: "Settings",
+      icon: "settings-outline" as const,
+      onPress: () => router.push("/(customer)/settings" as any),
     },
     {
       id: "support",

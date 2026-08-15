@@ -1,14 +1,22 @@
 // components/customer/RestaurantCard.tsx - Simple version for debugging
 import React from "react";
 import { View, Text, Image, StyleSheet, TouchableOpacity } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { Restaurant } from "../../types";
 
 type Props = {
   item: Restaurant;
   onPress?: (restaurant: Restaurant) => void;
+  isFavorite?: boolean;
+  onToggleFavorite?: (restaurant: Restaurant) => void;
 };
 
-const RestaurantCard: React.FC<Props> = ({ item, onPress }) => {
+const RestaurantCard: React.FC<Props> = ({
+  item,
+  onPress,
+  isFavorite,
+  onToggleFavorite,
+}) => {
   console.log("Rendering restaurant:", item.name, item.id);
 
   return (
@@ -28,7 +36,24 @@ const RestaurantCard: React.FC<Props> = ({ item, onPress }) => {
         onError={(e) => console.log("Image error:", e.nativeEvent.error)}
       />
       <View style={styles.content}>
-        <Text style={styles.name}>{item.name || "Unnamed Restaurant"}</Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.name}>{item.name || "Unnamed Restaurant"}</Text>
+          {onToggleFavorite && (
+            <TouchableOpacity
+              onPress={(e) => {
+                e.stopPropagation?.();
+                onToggleFavorite(item);
+              }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons
+                name={isFavorite ? "heart" : "heart-outline"}
+                size={18}
+                color={isFavorite ? "#FF6B6B" : "#999"}
+              />
+            </TouchableOpacity>
+          )}
+        </View>
         <Text style={styles.cuisine}>
           {Array.isArray(item.cuisine_type)
             ? item.cuisine_type.join(", ")
@@ -76,6 +101,11 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   name: {
     fontWeight: "700",

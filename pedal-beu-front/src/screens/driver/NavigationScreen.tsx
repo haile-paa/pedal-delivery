@@ -19,6 +19,7 @@ import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import WebSocketService from "../../services/websocket.service";
 import { API_BASE_URL } from "../../utils/constants";
+import { reverseGeocodeToAddress } from "../../utils/reverseGeocode";
 
 interface Coordinates {
   latitude: number;
@@ -141,6 +142,26 @@ const NavigationScreen: React.FC = () => {
             specialInstructions: data.delivery_info?.notes,
           },
         });
+
+        // Some restaurants were created without an address on file. When
+        // that happens but real coordinates exist, fall back to an
+        // on-device reverse geocode instead of showing "No address on file".
+        if (!data.restaurant?.address && restLoc) {
+          reverseGeocodeToAddress(restLoc.latitude, restLoc.longitude).then(
+            (resolved) => {
+              if (resolved) {
+                setOrder((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        restaurant: { ...prev.restaurant, address: resolved },
+                      }
+                    : prev,
+                );
+              }
+            },
+          );
+        }
 
         // Start at whichever stop the driver hasn't reached yet, so
         // re-opening this screen mid-delivery resumes at the right leg.
@@ -505,9 +526,7 @@ const NavigationScreen: React.FC = () => {
                     size={16}
                     color={colors.gray700}
                   />
-                  <Text style={styles.secondaryButtonText}>
-                    Get Directions
-                  </Text>
+                  <Text style={styles.secondaryButtonText}>Get Directions</Text>
                 </TouchableOpacity>
               </View>
             </View>

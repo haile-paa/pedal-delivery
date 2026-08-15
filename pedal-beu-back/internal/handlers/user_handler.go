@@ -11,11 +11,12 @@ import (
 )
 
 type UserHandler struct {
-	userRepo repositories.UserRepository
+	userRepo       repositories.UserRepository
+	restaurantRepo repositories.RestaurantRepository
 }
 
-func NewUserHandler(userRepo repositories.UserRepository) *UserHandler {
-	return &UserHandler{userRepo: userRepo}
+func NewUserHandler(userRepo repositories.UserRepository, restaurantRepo repositories.RestaurantRepository) *UserHandler {
+	return &UserHandler{userRepo: userRepo, restaurantRepo: restaurantRepo}
 }
 
 // AddAddress adds a new address to the user's profile
@@ -85,4 +86,66 @@ func (h *UserHandler) DeleteAddress(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Address deleted successfully"})
+}
+
+// AddFavoriteRestaurant favorites a restaurant for the current user.
+// POST /api/v1/users/favorites/:restaurantId
+func (h *UserHandler) AddFavoriteRestaurant(c *gin.Context) {
+	userID := c.MustGet("userID").(primitive.ObjectID)
+
+	restaurantID, err := primitive.ObjectIDFromHex(c.Param("restaurantId"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid restaurant ID"})
+		return
+	}
+
+	if err := h.userRepo.AddFavoriteRestaurant(c.Request.Context(), userID, restaurantID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add favorite: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Restaurant added to favorites"})
+}
+
+// RemoveFavoriteRestaurant unfavorites a restaurant for the current user.
+// DELETE /api/v1/users/favorites/:restaurantId
+func (h *UserHandler) RemoveFavoriteRestaurant(c *gin.Context) {
+	userID := c.MustGet("userID").(primitive.ObjectID)
+
+	restaurantID, err := primitive.ObjectIDFromHex(c.Param("restaurantId"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid restaurant ID"})
+		return
+	}
+
+	if err := h.userRepo.RemoveFavoriteRestaurant(c.Request.Context(), userID, restaurantID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to remove favorite: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Restaurant removed from favorites"})
+}
+
+// GetFavoriteRestaurants returns the current user's favorited restaurants,
+// with full restaurant details (name/image/rating/etc.) so the app can
+// render a favorites list in one request.
+// GET /api/v1/users/favorites
+func (h *UserHandler) GetFavoriteRestaurants(c *gin.Context) {
+	userID := c.MustGet("userID").(primitive.ObjectID)
+
+	ids, err := h.userRepo.GetFavoriteRestaurants(c.Request.Context(), userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get favorites: " + err.Error()})
+		return
+	}
+
+	restaurants := make([]models.Restaurant, 0, len(ids))
+	for _, id := range ids {
+		restaurant, rerr := h.restaurantRepo.FindByID(c.Request.Context(), id)
+		if rerr == nil && restaurant != nil {
+			restaurants = append(restaurants, *restaurant)
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"restaurants": restaurants})
 }

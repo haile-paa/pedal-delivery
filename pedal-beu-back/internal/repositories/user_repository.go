@@ -32,6 +32,9 @@ type UserRepository interface {
 	GetAddresses(ctx context.Context, userID primitive.ObjectID) ([]models.Address, error)
 	UpdateFCMToken(ctx context.Context, userID primitive.ObjectID, token string) error
 	UpdateLastLogin(ctx context.Context, userID primitive.ObjectID) error
+	AddFavoriteRestaurant(ctx context.Context, userID, restaurantID primitive.ObjectID) error
+	RemoveFavoriteRestaurant(ctx context.Context, userID, restaurantID primitive.ObjectID) error
+	GetFavoriteRestaurants(ctx context.Context, userID primitive.ObjectID) ([]primitive.ObjectID, error)
 }
 
 type userRepository struct {
@@ -411,4 +414,68 @@ func (r *userRepository) UpdateLastLogin(ctx context.Context, userID primitive.O
 	}
 
 	return nil
+}
+
+// AddFavoriteRestaurant adds a restaurant to the user's favorites list.
+// $addToSet avoids duplicate entries if the same restaurant is favorited
+// twice (e.g. a double-tap on the heart icon).
+func (r *userRepository) AddFavoriteRestaurant(ctx context.Context, userID, restaurantID primitive.ObjectID) error {
+	update := bson.M{
+		"$addToSet": bson.M{
+			"favorite_restaurants": restaurantID,
+		},
+		"$set": bson.M{
+			"updated_at": time.Now(),
+		},
+	}
+
+	result, err := r.collection.UpdateOne(ctx, bson.M{"_id": userID}, update)
+	if err != nil {
+		return err
+	}
+
+	if result.MatchedCount == 0 {
+		return errors.New("user not found")
+	}
+
+	return nil
+}
+
+// RemoveFavoriteRestaurant removes a restaurant from the user's favorites list.
+func (r *userRepository) RemoveFavoriteRestaurant(ctx context.Context, userID, restaurantID primitive.ObjectID) error {
+	update := bson.M{
+		"$pull": bson.M{
+			"favorite_restaurants": restaurantID,
+		},
+		"$set": bson.M{
+			"updated_at": time.Now(),
+		},
+	}
+
+	result, err := r.collection.UpdateOne(ctx, bson.M{"_id": userID}, update)
+	if err != nil {
+		return err
+	}
+
+	if result.MatchedCount == 0 {
+		return errors.New("user not found")
+	}
+
+	return nil
+}
+
+// GetFavoriteRestaurants returns the IDs of restaurants this user has favorited.
+func (r *userRepository) GetFavoriteRestaurants(ctx context.Context, userID primitive.ObjectID) ([]primitive.ObjectID, error) {
+	var user models.User
+	projection := bson.M{"favorite_restaurants": 1}
+
+	err := r.collection.FindOne(ctx, bson.M{"_id": userID}, options.FindOne().SetProjection(projection)).Decode(&user)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, errors.New("user not found")
+		}
+		return nil, err
+	}
+
+	return user.FavoriteRestaurants, nil
 }

@@ -25,6 +25,7 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import CheckoutBottomSheet from "../../components/customer/CheckoutBottomSheet";
 import { restaurantAPI } from "../../../lib/restaurant";
+import { favoritesAPI } from "../../../lib/api";
 
 const RestaurantDetailScreen: React.FC = () => {
   const router = useRouter();
@@ -41,6 +42,54 @@ const RestaurantDetailScreen: React.FC = () => {
   const [categories, setCategories] = useState<string[]>(["All"]);
   const [showCheckout, setShowCheckout] = useState(false);
   const [selectedAddress, setSelectedAddress] = useState<any>(null);
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [favoriteLoading, setFavoriteLoading] = useState(false);
+
+  useEffect(() => {
+    setIsFavorite(state.customer.favoriteRestaurants.includes(restaurantId));
+  }, [state.customer.favoriteRestaurants, restaurantId]);
+
+  useEffect(() => {
+    // Refresh favorites from the server once so the heart reflects the
+    // signed-in user's real favorites rather than whatever's cached.
+    (async () => {
+      const favs = await favoritesAPI.getFavorites();
+      dispatch({
+        type: "SET_FAVORITE_RESTAURANTS",
+        payload: favs.map((r: any) => r.id),
+      });
+    })();
+  }, []);
+
+  const handleToggleFavorite = async () => {
+    if (favoriteLoading || !restaurantId) return;
+    const wasFavorite = isFavorite;
+    setFavoriteLoading(true);
+    setIsFavorite(!wasFavorite); // optimistic
+    try {
+      if (wasFavorite) {
+        await favoritesAPI.removeFavorite(restaurantId);
+        dispatch({
+          type: "SET_FAVORITE_RESTAURANTS",
+          payload: state.customer.favoriteRestaurants.filter(
+            (id) => id !== restaurantId,
+          ),
+        });
+      } else {
+        await favoritesAPI.addFavorite(restaurantId);
+        dispatch({
+          type: "SET_FAVORITE_RESTAURANTS",
+          payload: [...state.customer.favoriteRestaurants, restaurantId],
+        });
+      }
+    } catch (error) {
+      console.error("Toggle favorite error:", error);
+      setIsFavorite(wasFavorite); // revert on failure
+      Alert.alert("Error", "Could not update favorites. Please try again.");
+    } finally {
+      setFavoriteLoading(false);
+    }
+  };
 
   useEffect(() => {
     loadRestaurantDetails();
@@ -281,7 +330,17 @@ const RestaurantDetailScreen: React.FC = () => {
           <Ionicons name='arrow-back' size={24} color={colors.white} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{restaurant.name}</Text>
-        <View style={styles.headerRight} />
+        <TouchableOpacity
+          style={styles.headerRight}
+          onPress={handleToggleFavorite}
+          disabled={favoriteLoading}
+        >
+          <Ionicons
+            name={isFavorite ? "heart" : "heart-outline"}
+            size={24}
+            color={isFavorite ? colors.error : colors.white}
+          />
+        </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.scrollView}>

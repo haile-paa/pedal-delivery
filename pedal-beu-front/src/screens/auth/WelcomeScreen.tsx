@@ -22,6 +22,7 @@ import Animated, {
   Easing,
 } from "react-native-reanimated";
 import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { colors } from "../../theme/colors";
 import AnimatedButton from "../../components/ui/AnimatedButton";
 import { LinearGradient } from "expo-linear-gradient";
@@ -38,6 +39,7 @@ const WelcomeScreen: React.FC = () => {
   const [showPhoneScreen, setShowPhoneScreen] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState("");
   const [password, setPassword] = useState(""); // used for the phone+password Sign In flow
+  const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState(""); // kept for the old email+phone-first flow — see below (commented out)
   const [loading, setLoading] = useState(false);
 
@@ -391,18 +393,28 @@ const WelcomeScreen: React.FC = () => {
             <View style={styles.phoneInputContainer}>
               <View style={styles.phoneInputWrapper}>
                 <TextInput
-                  style={styles.phoneInput}
+                  style={[styles.phoneInput, { flex: 1 }]}
                   placeholder='Password'
                   placeholderTextColor={colors.gray400}
                   value={password}
                   onChangeText={setPassword}
-                  secureTextEntry
+                  secureTextEntry={!showPassword}
                   editable={!loading}
                   returnKeyType='done'
                   keyboardAppearance='light'
                   onBlur={() => Keyboard.dismiss()}
                   onSubmitEditing={handleSignIn}
                 />
+                <TouchableOpacity
+                  onPress={() => setShowPassword((prev) => !prev)}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Ionicons
+                    name={showPassword ? "eye-off-outline" : "eye-outline"}
+                    size={22}
+                    color={colors.gray500}
+                  />
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -449,12 +461,6 @@ const WelcomeScreen: React.FC = () => {
             >
               <Text style={styles.createAccountButtonText}>
                 Create New Account
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity onPress={goToDriverForm} disabled={loading}>
-              <Text style={styles.driverLinkText}>
-                🚗 Register as a driver instead
               </Text>
             </TouchableOpacity>
           </View>
