@@ -348,7 +348,7 @@ const WelcomeScreen: React.FC = () => {
       />
 
       {showPhoneScreen ? (
-        <View style={[styles.screen, styles.screen2]}>
+        <View key="phone-screen" style={[styles.screen, styles.screen2]}>
           <LinearGradient
             colors={["#f8fafc", "#e2e8f0"]}
             style={StyleSheet.absoluteFill}
@@ -468,7 +468,7 @@ const WelcomeScreen: React.FC = () => {
           </View>
         </View>
       ) : (
-        <View style={[styles.screen, styles.screen1]}>
+        <View key="welcome-screen" style={[styles.screen, styles.screen1]}>
           <LinearGradient
             colors={["#667eea", "#764ba2"]}
             start={{ x: 0, y: 0 }}
