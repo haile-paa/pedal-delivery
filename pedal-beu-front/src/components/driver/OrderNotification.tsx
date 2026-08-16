@@ -8,7 +8,7 @@ import Animated, {
   withDelay,
   runOnJS,
 } from "react-native-reanimated";
-import { colors } from "../../theme/colors";
+import { useTheme } from "../../context/ThemeContext";
 import { Ionicons } from "@expo/vector-icons";
 
 interface OrderNotificationProps {
@@ -31,6 +31,8 @@ const OrderNotification: React.FC<OrderNotificationProps> = ({
   onReject,
   index,
 }) => {
+  const { colors, isDark } = useTheme();
+  const styles = getStyles(colors, isDark);
   const slideAnim = useSharedValue(-300);
   const scaleAnim = useSharedValue(0.9);
   const pulseAnim = useSharedValue(1);
@@ -92,17 +94,23 @@ const OrderNotification: React.FC<OrderNotificationProps> = ({
       <View style={styles.content}>
         <View style={styles.header}>
           <Text style={styles.restaurantName}>{order.restaurantName}</Text>
-          <Text style={styles.amount}>{order.amount.toFixed(2)} Birr</Text>
+          <Text style={styles.amount}>
+            {order.amount.toFixed(2)} Birr
+          </Text>
         </View>
 
         <View style={styles.details}>
           <View style={styles.detailRow}>
             <Ionicons name='location' size={16} color={colors.gray500} />
-            <Text style={styles.detailText}>{order.distance} away</Text>
+            <Text style={styles.detailText}>
+              {order.distance} away
+            </Text>
           </View>
           <View style={styles.detailRow}>
             <Ionicons name='fast-food' size={16} color={colors.gray500} />
-            <Text style={styles.detailText}>{order.itemsCount} items</Text>
+            <Text style={styles.detailText}>
+              {order.itemsCount} items
+            </Text>
           </View>
           <View style={styles.detailRow}>
             <Ionicons name='time' size={16} color={colors.gray500} />
@@ -118,7 +126,9 @@ const OrderNotification: React.FC<OrderNotificationProps> = ({
             onPress={handleReject}
           >
             <Ionicons name='close' size={20} color={colors.error} />
-            <Text style={[styles.actionText, styles.rejectText]}>Reject</Text>
+            <Text style={[styles.actionText, styles.rejectText]}>
+              Reject
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -126,7 +136,9 @@ const OrderNotification: React.FC<OrderNotificationProps> = ({
             onPress={handleAccept}
           >
             <Ionicons name='checkmark' size={20} color={colors.success} />
-            <Text style={[styles.actionText, styles.acceptText]}>Accept</Text>
+            <Text style={[styles.actionText, styles.acceptText]}>
+              Accept
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -134,71 +146,78 @@ const OrderNotification: React.FC<OrderNotificationProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    backgroundColor: colors.white,
-    borderRadius: 16,
-    marginHorizontal: 16,
-    marginVertical: 8,
-    padding: 16,
-    shadowColor: colors.black,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 8,
-    borderLeftWidth: 4,
-    borderLeftColor: colors.primary,
-  },
-  timerBadge: {
-    position: "absolute",
-    top: -10,
-    right: 16,
-    backgroundColor: colors.error,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    zIndex: 1,
-  },
-  timerText: { fontSize: 12, fontWeight: "bold", color: colors.white },
-  content: { flex: 1 },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  restaurantName: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: colors.gray800,
-    flex: 1,
-  },
-  amount: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: colors.primary,
-    marginLeft: 8,
-  },
-  details: { marginBottom: 16 },
-  detailRow: { flexDirection: "row", alignItems: "center", marginBottom: 4 },
-  detailText: { fontSize: 14, color: colors.gray600, marginLeft: 8 },
-  actions: { flexDirection: "row", justifyContent: "space-between" },
-  actionButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 12,
-    flex: 1,
-    marginHorizontal: 4,
-    borderWidth: 2,
-  },
-  rejectButton: { backgroundColor: colors.white, borderColor: colors.error },
-  acceptButton: { backgroundColor: colors.white, borderColor: colors.success },
-  actionText: { fontSize: 16, fontWeight: "600", marginLeft: 8 },
-  rejectText: { color: colors.error },
-  acceptText: { color: colors.success },
-});
+const getStyles = (colors: any, isDark: boolean) =>
+  StyleSheet.create({
+    container: {
+      backgroundColor: colors.card,
+      borderRadius: 16,
+      marginHorizontal: 16,
+      marginVertical: 8,
+      padding: 16,
+      shadowColor: isDark ? colors.primaryGlow : colors.shadow,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: isDark ? 0.3 : 0.2,
+      shadowRadius: isDark ? 14 : 8,
+      elevation: 8,
+      borderLeftWidth: 4,
+      borderLeftColor: colors.primary,
+    },
+    timerBadge: {
+      position: "absolute",
+      top: -10,
+      right: 16,
+      backgroundColor: colors.error,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 12,
+      zIndex: 1,
+    },
+    // Sits on a solid error-red badge in both themes, so this must stay a
+    // literal white rather than following colors.white (which inverts to
+    // a dark shade in dark mode and would make the countdown unreadable).
+    timerText: { fontSize: 12, fontWeight: "bold", color: "#FFFFFF" },
+    content: { flex: 1 },
+    header: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 12,
+    },
+    restaurantName: {
+      fontSize: 18,
+      fontWeight: "bold",
+      color: colors.gray900,
+      flex: 1,
+    },
+    amount: {
+      fontSize: 20,
+      fontWeight: "bold",
+      color: colors.primary,
+      marginLeft: 8,
+    },
+    details: { marginBottom: 16 },
+    detailRow: { flexDirection: "row", alignItems: "center", marginBottom: 4 },
+    detailText: { fontSize: 14, color: colors.gray600, marginLeft: 8 },
+    actions: { flexDirection: "row", justifyContent: "space-between" },
+    actionButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: 10,
+      paddingHorizontal: 20,
+      borderRadius: 12,
+      flex: 1,
+      marginHorizontal: 4,
+      borderWidth: 2,
+    },
+    rejectButton: { backgroundColor: colors.card, borderColor: colors.error },
+    acceptButton: {
+      backgroundColor: colors.card,
+      borderColor: colors.success,
+    },
+    actionText: { fontSize: 16, fontWeight: "600", marginLeft: 8 },
+    rejectText: { color: colors.error },
+    acceptText: { color: colors.success },
+  });
 
 export default OrderNotification;

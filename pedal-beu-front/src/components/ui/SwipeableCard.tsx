@@ -7,7 +7,7 @@ import {
   Animated,
   Dimensions,
 } from "react-native";
-import { colors } from "../../theme/colors";
+import { useTheme } from "../../context/ThemeContext";
 
 interface SwipeableCardProps {
   children: React.ReactNode;
@@ -27,6 +27,8 @@ const SwipeableCard: React.FC<SwipeableCardProps> = ({
   leftAction,
   rightAction,
 }) => {
+  const { colors, isDark } = useTheme();
+  const styles = getStyles(colors, isDark);
   const position = useRef(new Animated.ValueXY()).current;
 
   const panResponder = useRef(
@@ -129,41 +131,44 @@ const SwipeableCard: React.FC<SwipeableCardProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    position: "relative",
-    marginVertical: 8,
-  },
-  card: {
-    backgroundColor: colors.white,
-    borderRadius: 16,
-    padding: 16,
-    shadowColor: colors.black,
-    shadowOffset: {
-      width: 0,
-      height: 2,
+const getStyles = (colors: any, isDark: boolean) =>
+  StyleSheet.create({
+    container: {
+      position: "relative",
+      marginVertical: 8,
     },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  action: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    width: 80,
-    justifyContent: "center",
-    alignItems: "center",
-    borderRadius: 16,
-  },
-  leftAction: {
-    left: 0,
-    backgroundColor: colors.error,
-  },
-  rightAction: {
-    right: 0,
-    backgroundColor: colors.success,
-  },
-});
+    card: {
+      backgroundColor: colors.card,
+      borderRadius: 16,
+      padding: 16,
+      borderWidth: isDark ? 1 : 0,
+      borderColor: "rgba(255,255,255,0.08)",
+      shadowColor: isDark ? colors.primaryGlow : colors.shadow,
+      shadowOffset: {
+        width: 0,
+        height: 2,
+      },
+      shadowOpacity: isDark ? 0.2 : 0.1,
+      shadowRadius: isDark ? 10 : 8,
+      elevation: 4,
+    },
+    action: {
+      position: "absolute",
+      top: 0,
+      bottom: 0,
+      width: 80,
+      justifyContent: "center",
+      alignItems: "center",
+      borderRadius: 16,
+    },
+    leftAction: {
+      left: 0,
+      backgroundColor: colors.error,
+    },
+    rightAction: {
+      right: 0,
+      backgroundColor: colors.success,
+    },
+  });
 
 export default SwipeableCard;

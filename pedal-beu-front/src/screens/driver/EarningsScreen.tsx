@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
 } from "react-native";
-import { colors } from "../../theme/colors";
+import { useTheme } from "../../context/ThemeContext";
 import EarningsChart from "../../components/driver/EarningsChart";
 import { useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -34,6 +34,8 @@ interface Transaction {
 }
 
 const EarningsScreen: React.FC = () => {
+  const { colors, isDark } = useTheme();
+  const styles = getStyles(colors);
   const router = useRouter();
   const [timeRange, setTimeRange] = useState<"week" | "month" | "year">("week");
   const [loading, setLoading] = useState(true);
@@ -127,7 +129,7 @@ const EarningsScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle='dark-content' backgroundColor={colors.background} />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
       <ScrollView style={styles.scrollView}>
         <View style={styles.header}>
           <Text style={styles.title}>Earnings</Text>
@@ -290,7 +292,8 @@ const EarningsScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) =>
+  StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   scrollView: { flex: 1 },
   loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
@@ -324,7 +327,7 @@ const styles = StyleSheet.create({
     marginTop: -20,
     padding: 20,
     borderRadius: 20,
-    shadowColor: colors.black,
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 12,
@@ -383,7 +386,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     borderRadius: 16,
     padding: 20,
-    shadowColor: colors.black,
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 8,

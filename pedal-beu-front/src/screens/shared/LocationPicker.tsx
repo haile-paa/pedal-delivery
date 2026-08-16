@@ -13,7 +13,7 @@ import Animated, {
   withSpring,
 } from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
-import { colors } from "../../theme/colors";
+import { useTheme } from "../../context/ThemeContext";
 
 // Use your global app types:
 import { Address, Location } from "../../types";
@@ -29,6 +29,8 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
   recentLocations = [],
   placeholder = "Enter your address",
 }) => {
+  const { colors, isDark } = useTheme();
+  const styles = getStyles(colors);
   const [searchQuery, setSearchQuery] = useState("");
   const [isFocused, setIsFocused] = useState(false);
   const [suggestions, setSuggestions] = useState<Address[]>([]);
@@ -184,7 +186,8 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) =>
+  StyleSheet.create({
   container: { marginHorizontal: 16 },
   inputContainer: {
     flexDirection: "row",

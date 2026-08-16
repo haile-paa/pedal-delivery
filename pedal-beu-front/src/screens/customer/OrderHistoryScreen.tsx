@@ -10,7 +10,8 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { useAppState } from "../../context/AppStateContext";
-import { colors } from "../../theme/colors";
+import { useTheme } from "../../context/ThemeContext";
+import { useLanguage } from "../../context/LanguageContext";
 import OrderStatusBadge from "../../components/shared/OrderStatusBadge";
 import SwipeableCard from "../../components/ui/SwipeableCard";
 import { useRouter } from "expo-router";
@@ -18,6 +19,9 @@ import WebSocketService from "../../services/websocket.service";
 import { Order } from "../../types";
 
 const OrderHistoryScreen: React.FC = () => {
+  const { colors, isDark } = useTheme();
+  const { t } = useLanguage();
+  const styles = getStyles(colors);
   const router = useRouter();
   const { state, dispatch, actions } = useAppState();
   const [selectedFilter, setSelectedFilter] = useState("all");
@@ -45,7 +49,7 @@ const OrderHistoryScreen: React.FC = () => {
             }
           } catch (error) {
             console.error("Failed to load restaurant name:", error);
-            names[order.restaurant_id] = "Restaurant";
+            names[order.restaurant_id] = t("restaurantFallback");
           }
         }
       }
@@ -86,10 +90,10 @@ const OrderHistoryScreen: React.FC = () => {
   };
 
   const filters = [
-    { id: "all", label: "All Orders" },
-    { id: "pending", label: "Active" },
-    { id: "delivered", label: "Delivered" },
-    { id: "cancelled", label: "Cancelled" },
+    { id: "all", label: t("allOrders") },
+    { id: "pending", label: t("active") },
+    { id: "delivered", label: t("delivered") },
+    { id: "cancelled", label: t("cancelled") },
   ];
 
   const orders = state.customer?.orders || [];
@@ -119,25 +123,26 @@ const OrderHistoryScreen: React.FC = () => {
       pathname: "/(customer)/order-traking",
       params: {
         orderId: order.id,
-        restaurantName: restaurantNames[order.restaurant_id] || "Restaurant",
+        restaurantName:
+          restaurantNames[order.restaurant_id] || t("restaurantFallback"),
       },
     });
   };
 
   const renderRightAction = () => (
     <View style={styles.rightAction}>
-      <Text style={styles.actionText}>Reorder</Text>
+      <Text style={styles.actionText}>{t("reorder")}</Text>
     </View>
   );
 
   const renderOrderItem = ({ item }: { item: Order }) => {
     const formatDate = (dateStr?: string) => {
-      if (!dateStr) return "Unknown date";
+      if (!dateStr) return t("unknownDate");
       try {
         const d = new Date(dateStr);
         return d.toLocaleDateString();
       } catch {
-        return "Invalid date";
+        return t("invalidDate");
       }
     };
 
@@ -165,14 +170,15 @@ const OrderHistoryScreen: React.FC = () => {
         >
           <View style={styles.orderHeader}>
             <Text style={styles.restaurantName}>
-              {restaurantNames[item.restaurant_id] || "Restaurant"}
+              {restaurantNames[item.restaurant_id] || t("restaurantFallback")}
             </Text>
             <OrderStatusBadge status={item.status} />
           </View>
 
           <View style={styles.orderDetails}>
             <Text style={styles.orderId}>
-              Order #{item.order_number || item.id.substring(0, 8)}
+              {t("orderHash")}
+              {item.order_number || item.id.substring(0, 8)}
             </Text>
             <Text style={styles.orderDate}>
               {formatDate(item.created_at)} • {formatTime(item.created_at)}
@@ -187,20 +193,20 @@ const OrderHistoryScreen: React.FC = () => {
             ))}
             {(item.items || []).length > 2 && (
               <Text style={styles.moreItems}>
-                +{(item.items || []).length - 2} more items
+                +{(item.items || []).length - 2} {t("moreItems")}
               </Text>
             )}
           </View>
 
           <View style={styles.orderFooter}>
             <Text style={styles.totalAmount}>
-              {totalAmount.toFixed(2)} Birr
+              {totalAmount.toFixed(2)} {t("birr")}
             </Text>
             <TouchableOpacity
               style={styles.detailsButton}
               onPress={() => handleViewDetails(item)}
             >
-              <Text style={styles.detailsButtonText}>View Details</Text>
+              <Text style={styles.detailsButtonText}>{t("viewDetails")}</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -212,25 +218,27 @@ const OrderHistoryScreen: React.FC = () => {
     return (
       <View style={styles.loadingContainer}>
         <StatusBar
-          barStyle='dark-content'
+          barStyle={isDark ? "light-content" : "dark-content"}
           backgroundColor={colors.background}
         />
         <ActivityIndicator size='large' color={colors.primary} />
-        <Text style={styles.loadingText}>Loading your orders...</Text>
+        <Text style={styles.loadingText}>{t("loadingOrders")}</Text>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle='dark-content' backgroundColor={colors.background} />
+      <StatusBar
+        barStyle={isDark ? "light-content" : "dark-content"}
+        backgroundColor={colors.background}
+      />
 
       <ScrollView style={styles.scrollView}>
         <View style={styles.header}>
-          <Text style={styles.title}>Order History</Text>
+          <Text style={styles.title}>{t("orderHistory")}</Text>
           <Text style={styles.subtitle}>
-            {filteredOrders.length}{" "}
-            {filteredOrders.length === 1 ? "order" : "orders"} found
+            {filteredOrders.length} {t("ordersFound")}
           </Text>
         </View>
 
@@ -265,11 +273,11 @@ const OrderHistoryScreen: React.FC = () => {
         {/* Orders List */}
         {filteredOrders.length === 0 ? (
           <View style={styles.emptyState}>
-            <Text style={styles.emptyTitle}>No orders found</Text>
+            <Text style={styles.emptyTitle}>{t("noOrdersFound")}</Text>
             <Text style={styles.emptyMessage}>
               {selectedFilter === "all"
-                ? "You haven't placed any orders yet"
-                : `You don't have any ${selectedFilter} orders`}
+                ? t("noOrdersYet")
+                : t("noFilteredOrders")}
             </Text>
             <TouchableOpacity
               style={styles.browseButton}
@@ -292,176 +300,184 @@ const OrderHistoryScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: colors.background,
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: colors.gray600,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  header: {
-    paddingHorizontal: 20,
-    paddingTop: 60,
-    paddingBottom: 20,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: "bold",
-    color: colors.gray900,
-    marginBottom: 4,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: colors.gray600,
-  },
-  filtersContainer: {
-    marginBottom: 20,
-  },
-  filtersContent: {
-    paddingHorizontal: 20,
-    gap: 12,
-  },
-  filterButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: colors.white,
-    borderRadius: 20,
-    borderWidth: 2,
-    borderColor: colors.gray200,
-  },
-  filterButtonActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  filterText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: colors.gray600,
-  },
-  filterTextActive: {
-    color: colors.white,
-  },
-  ordersList: {
-    paddingHorizontal: 20,
-    paddingBottom: 40,
-  },
-  orderItem: {
-    padding: 16,
-  },
-  orderHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  restaurantName: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: colors.gray800,
-    flex: 1,
-  },
-  orderDetails: {
-    marginBottom: 12,
-  },
-  orderId: {
-    fontSize: 14,
-    color: colors.gray600,
-    marginBottom: 2,
-  },
-  orderDate: {
-    fontSize: 14,
-    color: colors.gray500,
-  },
-  orderItems: {
-    marginBottom: 16,
-  },
-  itemText: {
-    fontSize: 14,
-    color: colors.gray700,
-    marginBottom: 4,
-  },
-  moreItems: {
-    fontSize: 14,
-    color: colors.gray500,
-    fontStyle: "italic",
-  },
-  orderFooter: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: colors.gray200,
-  },
-  totalAmount: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: colors.primary,
-  },
-  detailsButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: colors.primary + "10",
-    borderRadius: 8,
-  },
-  detailsButtonText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: colors.primary,
-  },
-  rightAction: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: colors.success,
-    borderRadius: 16,
-  },
-  actionText: {
-    color: colors.white,
-    fontWeight: "bold",
-  },
-  emptyState: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 40,
-    paddingVertical: 60,
-  },
-  emptyTitle: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: colors.gray700,
-    marginBottom: 8,
-  },
-  emptyMessage: {
-    fontSize: 16,
-    color: colors.gray500,
-    textAlign: "center",
-    marginBottom: 24,
-    lineHeight: 24,
-  },
-  browseButton: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 12,
-  },
-  browseButtonText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: colors.white,
-  },
-});
+const getStyles = (colors: any) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      backgroundColor: colors.background,
+    },
+    loadingText: {
+      marginTop: 16,
+      fontSize: 16,
+      color: colors.gray600,
+    },
+    scrollView: {
+      flex: 1,
+    },
+    header: {
+      paddingHorizontal: 20,
+      paddingTop: 60,
+      paddingBottom: 20,
+    },
+    title: {
+      fontSize: 28,
+      fontWeight: "bold",
+      color: colors.gray900,
+      marginBottom: 4,
+    },
+    subtitle: {
+      fontSize: 16,
+      color: colors.gray600,
+    },
+    filtersContainer: {
+      marginBottom: 20,
+    },
+    filtersContent: {
+      paddingHorizontal: 20,
+      gap: 12,
+    },
+    filterButton: {
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      backgroundColor: colors.white,
+      borderRadius: 20,
+      borderWidth: 2,
+      borderColor: colors.gray200,
+      // See AnimatedButton.tsx: Android fake-bolds the Amharic fallback font
+      // after measuring at normal weight, so a tight pill clips the tail of
+      // the label (e.g. "ንቁ" renders as "ን"). overflow:visible stops the clip.
+      overflow: "visible",
+    },
+    filterButtonActive: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    filterText: {
+      fontSize: 14,
+      fontWeight: "600",
+      color: colors.gray600,
+      includeFontPadding: false,
+    },
+    filterTextActive: {
+      color: colors.white,
+    },
+    ordersList: {
+      paddingHorizontal: 20,
+      paddingBottom: 40,
+    },
+    orderItem: {
+      padding: 16,
+    },
+    orderHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 12,
+    },
+    restaurantName: {
+      fontSize: 18,
+      fontWeight: "bold",
+      color: colors.gray800,
+      flex: 1,
+    },
+    orderDetails: {
+      marginBottom: 12,
+    },
+    orderId: {
+      fontSize: 14,
+      color: colors.gray600,
+      marginBottom: 2,
+    },
+    orderDate: {
+      fontSize: 14,
+      color: colors.gray500,
+    },
+    orderItems: {
+      marginBottom: 16,
+    },
+    itemText: {
+      fontSize: 14,
+      color: colors.gray700,
+      marginBottom: 4,
+    },
+    moreItems: {
+      fontSize: 14,
+      color: colors.gray500,
+      fontStyle: "italic",
+    },
+    orderFooter: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      paddingTop: 12,
+      borderTopWidth: 1,
+      borderTopColor: colors.gray200,
+    },
+    totalAmount: {
+      fontSize: 18,
+      fontWeight: "bold",
+      color: colors.primary,
+    },
+    detailsButton: {
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      backgroundColor: colors.primary + "10",
+      borderRadius: 8,
+      overflow: "visible",
+    },
+    detailsButtonText: {
+      fontSize: 14,
+      fontWeight: "600",
+      color: colors.primary,
+      includeFontPadding: false,
+    },
+    rightAction: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      backgroundColor: colors.success,
+      borderRadius: 16,
+    },
+    actionText: {
+      color: colors.white,
+      fontWeight: "bold",
+    },
+    emptyState: {
+      alignItems: "center",
+      justifyContent: "center",
+      paddingHorizontal: 40,
+      paddingVertical: 60,
+    },
+    emptyTitle: {
+      fontSize: 24,
+      fontWeight: "bold",
+      color: colors.gray700,
+      marginBottom: 8,
+    },
+    emptyMessage: {
+      fontSize: 16,
+      color: colors.gray500,
+      textAlign: "center",
+      marginBottom: 24,
+      lineHeight: 24,
+    },
+    browseButton: {
+      backgroundColor: colors.primary,
+      paddingHorizontal: 24,
+      paddingVertical: 12,
+      borderRadius: 12,
+    },
+    browseButtonText: {
+      fontSize: 16,
+      fontWeight: "600",
+      color: colors.white,
+    },
+  });
 
 export default OrderHistoryScreen;

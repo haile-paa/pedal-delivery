@@ -15,7 +15,8 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useRouter, Stack } from "expo-router";
 import MapView, { Marker, Polyline } from "react-native-maps";
-import { colors } from "../../theme/colors";
+import { useTheme } from "../../context/ThemeContext";
+import { useLanguage } from "../../context/LanguageContext";
 import ProgressStepper from "../../components/ui/ProgressStepper";
 import AnimatedButton from "../../components/ui/AnimatedButton";
 import RateOrderModal from "../../components/customer/RateOrderModal";
@@ -81,6 +82,9 @@ interface OrderDetails {
 const AUTO_CANCEL_MINUTES = 30;
 
 const OrderTrackingScreen: React.FC = () => {
+  const { colors, isDark } = useTheme();
+  const { t } = useLanguage();
+  const styles = getStyles(colors, isDark);
   const router = useRouter();
   const { orderId, restaurantName } = useLocalSearchParams<{
     orderId: string;
@@ -181,10 +185,10 @@ const OrderTrackingScreen: React.FC = () => {
   }, []);
 
   const statusSteps = [
-    { title: "Order Placed", description: "Restaurant confirmed" },
-    { title: "Preparing", description: "Food being prepared" },
-    { title: "On The Way", description: "Driver picked up" },
-    { title: "Delivered", description: "Enjoy your meal!" },
+    { title: t("orderPlaced"), description: t("restaurantConfirmed") },
+    { title: t("preparingLabel"), description: t("foodBeingPrepared") },
+    { title: t("onTheWay"), description: t("driverPickedUp") },
+    { title: t("delivered"), description: t("enjoyYourMeal") },
   ];
 
   const statusIcons: Record<OrderStatus["status"], string> = {
@@ -229,7 +233,7 @@ const OrderTrackingScreen: React.FC = () => {
 
   useEffect(() => {
     if (!orderId) {
-      Alert.alert("Error", "No order ID provided");
+      Alert.alert(t("errorTitle"), t("noOrderIdProvided"));
       router.back();
       return;
     }
@@ -246,7 +250,7 @@ const OrderTrackingScreen: React.FC = () => {
 
     const paymentRefreshInterval = setInterval(() => {
       fetchOrderDetails().catch((refreshError) => {
-        console.warn("Background order refresh failed:", refreshError);
+        console.warn(t("bgRefreshFailedLog"), refreshError);
       });
     }, 15000);
 
@@ -301,8 +305,7 @@ const OrderTrackingScreen: React.FC = () => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          reason:
-            "Order automatically cancelled: no driver accepted within 30 minutes",
+          reason: t("autoCancelReason"),
         }),
       });
 
@@ -314,8 +317,8 @@ const OrderTrackingScreen: React.FC = () => {
           payload: { orderId, status: "cancelled" },
         });
         Alert.alert(
-          "Order Cancelled",
-          "Your order was automatically cancelled because no driver accepted within 30 minutes.",
+          t("orderCancelledTitle"),
+          t("autoCancelMessage"),
         );
       } else {
         console.warn("Auto‑cancel failed:", data.error);
@@ -335,7 +338,7 @@ const OrderTrackingScreen: React.FC = () => {
       await setupWebSocket();
     } catch (err) {
       console.error("Initialization error:", err);
-      setError("Failed to load order details. Please try again.");
+      setError(t("loadOrderDetailsFailed"));
     } finally {
       setLoading(false);
     }
@@ -368,7 +371,7 @@ const OrderTrackingScreen: React.FC = () => {
     try {
       const token = await AsyncStorage.getItem("accessToken");
       if (!token) {
-        throw new Error("You are not logged in");
+        throw new Error(t("notLoggedIn"));
       }
 
       const orderRes = await fetch(`${API_BASE_URL}/orders/${orderId}`, {
@@ -379,7 +382,7 @@ const OrderTrackingScreen: React.FC = () => {
       });
       const orderData = await orderRes.json();
       if (!orderRes.ok) {
-        throw new Error(orderData.message || "Failed to fetch order");
+        throw new Error(orderData.message || t("fetchOrderFailed"));
       }
 
       console.log("Order data from backend:", orderData);
@@ -392,7 +395,7 @@ const OrderTrackingScreen: React.FC = () => {
       );
       const restaurantData = await restaurantRes.json();
       if (!restaurantRes.ok) {
-        throw new Error("Failed to fetch restaurant");
+        throw new Error(t("fetchRestaurantFailed"));
       }
 
       const details: OrderDetails = {
@@ -477,9 +480,9 @@ const OrderTrackingScreen: React.FC = () => {
   const handleDriverAssigned = (data: any) => {
     setDriverInfo(data.driver);
     Alert.alert(
-      "Driver Assigned!",
-      `${data.driver.name} has accepted your order and will be arriving soon.`,
-      [{ text: "OK" }],
+      t("driverAssignedTitle"),
+      `${data.driver.name} ${t("driverAssignedDesc")}`,
+      [{ text: t("ok") }],
     );
   };
 
@@ -514,7 +517,7 @@ const OrderTrackingScreen: React.FC = () => {
       );
     });
     if (data.message) {
-      Alert.alert("Status Update", data.message, [{ text: "OK" }]);
+      Alert.alert(t("statusUpdateTitle"), data.message, [{ text: t("ok") }]);
     }
   };
 
@@ -524,8 +527,8 @@ const OrderTrackingScreen: React.FC = () => {
       console.warn("Failed to refresh order after acceptance:", refreshError);
     });
     Alert.alert(
-      "Order Accepted",
-      "The restaurant has accepted your order and started preparing it.",
+      t("orderAcceptedTitle"),
+      t("orderAcceptedDesc"),
     );
   };
 
@@ -541,7 +544,7 @@ const OrderTrackingScreen: React.FC = () => {
     fetchOrderDetails().catch((refreshError) => {
       console.warn("Failed to refresh order when ready:", refreshError);
     });
-    Alert.alert("Order Ready", "Your order is ready for pickup!");
+    Alert.alert(t("orderReadyTitle"), t("orderReadyDesc"));
   };
 
   const handleOrderPickedUp = (data: any) => {
@@ -550,8 +553,8 @@ const OrderTrackingScreen: React.FC = () => {
       console.warn("Failed to refresh order after pickup:", refreshError);
     });
     Alert.alert(
-      "On the Way!",
-      "Your order has been picked up and is on its way to you!",
+      t("onTheWayTitle"),
+      t("onTheWayDesc"),
     );
   };
 
@@ -561,11 +564,11 @@ const OrderTrackingScreen: React.FC = () => {
       console.warn("Failed to refresh order after delivery:", refreshError);
     });
     Alert.alert(
-      "Order Delivered!",
-      "Your order has been delivered. Enjoy your meal!",
+      t("orderDeliveredTitle"),
+      t("orderDeliveredDesc"),
       [
         {
-          text: "Rate Order",
+          text: t("rateOrder"),
           onPress: () => setShowRatingModal(true),
         },
       ],
@@ -582,13 +585,13 @@ const OrderTrackingScreen: React.FC = () => {
 
   const handleCallDriver = () => {
     if (!driverInfo) {
-      Alert.alert("No Driver", "Driver has not been assigned yet.");
+      Alert.alert(t("noDriverTitle"), t("driverNotAssignedYet"));
       return;
     }
-    Alert.alert("Call Driver", `Would you like to call ${driverInfo.name}?`, [
-      { text: "Cancel", style: "cancel" },
+    Alert.alert(t("callDriverTitle"), `${t("callDriverPrompt")} ${driverInfo.name}?`, [
+      { text: t("cancel"), style: "cancel" },
       {
-        text: "Call",
+        text: t("callAction"),
         onPress: () => {
           Linking.openURL(`tel:${driverInfo.phone}`);
         },
@@ -598,23 +601,23 @@ const OrderTrackingScreen: React.FC = () => {
 
   const handleMessageDriver = () => {
     if (!driverInfo) {
-      Alert.alert("No Driver", "Driver has not been assigned yet.");
+      Alert.alert(t("noDriverTitle"), t("driverNotAssignedYet"));
       return;
     }
     Linking.openURL(`sms:${driverInfo.phone}`);
   };
 
   const handleCancelOrder = async () => {
-    Alert.alert("Cancel Order", "Are you sure you want to cancel this order?", [
-      { text: "No", style: "cancel" },
+    Alert.alert(t("cancelOrderTitle"), t("cancelOrderConfirm"), [
+      { text: t("noAction"), style: "cancel" },
       {
-        text: "Yes, Cancel",
+        text: t("yesCancel"),
         style: "destructive",
         onPress: async () => {
           try {
             const token = await AsyncStorage.getItem("accessToken");
             if (!token) {
-              Alert.alert("Error", "You are not logged in");
+              Alert.alert(t("errorTitle"), t("notLoggedIn"));
               return;
             }
 
@@ -627,7 +630,7 @@ const OrderTrackingScreen: React.FC = () => {
                   "Content-Type": "application/json",
                 },
                 body: JSON.stringify({
-                  reason: "Customer requested cancellation",
+                  reason: t("customerRequestedCancellation"),
                 }),
               },
             );
@@ -643,17 +646,17 @@ const OrderTrackingScreen: React.FC = () => {
               });
 
               Alert.alert(
-                "Order Cancelled",
-                data.message || "Your order has been cancelled successfully.",
+                t("orderCancelledTitle"),
+                data.message || t("orderCancelledSuccess"),
               );
               setTimeout(() => {
                 router.replace("/(customer)/home");
               }, 2000);
             } else {
-              throw new Error(data.error || "Failed to cancel order");
+              throw new Error(data.error || t("cancelOrderFailed"));
             }
           } catch (error: any) {
-            Alert.alert("Error", error.message || "Failed to cancel order");
+            Alert.alert(t("errorTitle"), error.message || t("cancelOrderFailed"));
           }
         },
       },
@@ -661,19 +664,19 @@ const OrderTrackingScreen: React.FC = () => {
   };
 
   const handleContactRestaurant = () => {
-    Alert.alert("Contact Restaurant", "This feature is coming soon!", [
-      { text: "OK" },
+    Alert.alert(t("contactRestaurantTitle"), t("featureComingSoon"), [
+      { text: t("ok") },
     ]);
   };
 
   const handleViewOrderDetails = () => {
-    Alert.alert("Order Details", "Full order details feature coming soon!", [
-      { text: "OK" },
+    Alert.alert(t("orderDetailsTitle"), t("orderDetailsFeatureComingSoon"), [
+      { text: t("ok") },
     ]);
   };
 
   const handleHelp = () => {
-    Alert.alert("Help", "Help feature coming soon!", [{ text: "OK" }]);
+    Alert.alert(t("helpTitle"), t("helpFeatureComingSoon"), [{ text: t("ok") }]);
   };
 
   const handleRetry = () => {
@@ -695,11 +698,11 @@ const OrderTrackingScreen: React.FC = () => {
     return (
       <View style={styles.loadingContainer}>
         <StatusBar
-          barStyle='dark-content'
+          barStyle={isDark ? 'light-content' : 'dark-content'}
           backgroundColor={colors.background}
         />
         <ActivityIndicator size='large' color={colors.primary} />
-        <Text style={styles.loadingText}>Loading order details...</Text>
+        <Text style={styles.loadingText}>{t("loadingOrderDetails")}</Text>
       </View>
     );
   }
@@ -708,20 +711,20 @@ const OrderTrackingScreen: React.FC = () => {
     return (
       <View style={styles.errorContainer}>
         <StatusBar
-          barStyle='dark-content'
+          barStyle={isDark ? 'light-content' : 'dark-content'}
           backgroundColor={colors.background}
         />
         <Ionicons name='alert-circle' size={64} color={colors.error} />
-        <Text style={styles.errorTitle}>Something went wrong</Text>
+        <Text style={styles.errorTitle}>{t("somethingWentWrong")}</Text>
         <Text style={styles.errorMessage}>{error}</Text>
         <TouchableOpacity style={styles.retryButton} onPress={handleRetry}>
-          <Text style={styles.retryButtonText}>Try Again</Text>
+          <Text style={styles.retryButtonText}>{t("tryAgain")}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.goBackButton}
           onPress={() => router.back()}
         >
-          <Text style={styles.goBackButtonText}>Go Back</Text>
+          <Text style={styles.goBackButtonText}>{t("goBack")}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -731,21 +734,21 @@ const OrderTrackingScreen: React.FC = () => {
     return (
       <View style={styles.container}>
         <StatusBar
-          barStyle='dark-content'
+          barStyle={isDark ? 'light-content' : 'dark-content'}
           backgroundColor={colors.background}
         />
-        <Stack.Screen options={{ title: "Order Cancelled" }} />
+        <Stack.Screen options={{ title: t("orderCancelledTitle") }} />
         <View style={styles.centeredContent}>
           <Ionicons name='close-circle' size={80} color={colors.error} />
-          <Text style={styles.cancelledTitle}>Order Cancelled</Text>
+          <Text style={styles.cancelledTitle}>{t("orderCancelledTitle")}</Text>
           <Text style={styles.cancelledMessage}>
-            Your order has been cancelled successfully.
+            {t("orderCancelledSuccess")}
           </Text>
           <Text style={styles.cancelledSubMessage}>
-            Any payments made will be refunded within 3-5 business days.
+            {t("refundNotice")}
           </Text>
           <AnimatedButton
-            title='Back to Home'
+            title={t("backToHome")}
             onPress={() => router.replace("/(customer)/home")}
             style={styles.homeButton}
           />
@@ -758,27 +761,27 @@ const OrderTrackingScreen: React.FC = () => {
     return (
       <View style={styles.container}>
         <StatusBar
-          barStyle='dark-content'
+          barStyle={isDark ? 'light-content' : 'dark-content'}
           backgroundColor={colors.background}
         />
-        <Stack.Screen options={{ title: "Order Delivered" }} />
+        <Stack.Screen options={{ title: t("orderDeliveredTitleShort") }} />
         <View style={styles.centeredContent}>
           <Ionicons name='checkmark-circle' size={80} color={colors.success} />
-          <Text style={styles.deliveredTitle}>🎉 Order Delivered!</Text>
+          <Text style={styles.deliveredTitle}>🎉 {t("orderDeliveredTitleShort")}</Text>
           <Text style={styles.deliveredMessage}>
-            Your food has been delivered. Enjoy your meal!
+            {t("foodDeliveredEnjoy")}
           </Text>
           {orderDetails && (
             <View style={styles.deliverySummary}>
-              <Text style={styles.summaryTitle}>Order Summary</Text>
+              <Text style={styles.summaryTitle}>{t("orderSummary")}</Text>
               <Text style={styles.summaryText}>
-                Restaurant: {orderDetails.restaurant_name}
+                {t("restaurantFallback")}: {orderDetails.restaurant_name}
               </Text>
               <Text style={styles.summaryText}>
-                Total: {orderDetails.total_amount.toFixed(2)} Birr
+                {t("totalLabel")}: {orderDetails.total_amount.toFixed(2)} {t("birr")}
               </Text>
               <Text style={styles.summaryText}>
-                Delivered at:{" "}
+                {t("deliveredAt")}:{" "}
                 {new Date(orderDetails.created_at).toLocaleTimeString()}
               </Text>
             </View>
@@ -788,18 +791,18 @@ const OrderTrackingScreen: React.FC = () => {
               <View style={styles.thanksForRating}>
                 <Ionicons name='star' size={20} color={colors.warning} />
                 <Text style={styles.thanksForRatingText}>
-                  Thanks for rating your order!
+                  {t("thanksForRating")}
                 </Text>
               </View>
             ) : (
               <AnimatedButton
-                title='Rate Your Order'
+                title={t("rateYourOrder")}
                 onPress={() => setShowRatingModal(true)}
                 style={styles.rateButton}
               />
             )}
             <AnimatedButton
-              title='Back to Home'
+              title={t("backToHome")}
               onPress={() => router.replace("/(customer)/home")}
               variant='outline'
               style={styles.homeButton}
@@ -824,9 +827,9 @@ const OrderTrackingScreen: React.FC = () => {
       <StatusBar barStyle='light-content' backgroundColor={colors.primary} />
       <Stack.Screen
         options={{
-          title: "Track Order",
+          title: t("trackOrder"),
           headerStyle: { backgroundColor: colors.primary },
-          headerTintColor: colors.white,
+          headerTintColor: "#FFFFFF",
         }}
       />
 
@@ -848,31 +851,31 @@ const OrderTrackingScreen: React.FC = () => {
             <Marker
               coordinate={restaurantLocation}
               title={
-                orderDetails?.restaurant_name || restaurantName || "Restaurant"
+                orderDetails?.restaurant_name || restaurantName || t("restaurantFallback")
               }
-              description='Pickup location'
+              description={t("pickupLocation")}
             >
               <View style={styles.restaurantMarker}>
-                <Ionicons name='restaurant' size={20} color={colors.white} />
+                <Ionicons name='restaurant' size={20} color="#FFFFFF" />
               </View>
             </Marker>
           )}
           {driverLocation && (
             <Marker
               coordinate={driverLocation}
-              title={driverInfo?.name || "Driver"}
-              description='Your delivery driver'
+              title={driverInfo?.name || t("driverLabel")}
+              description={t("yourDeliveryDriver")}
             >
               <View style={styles.driverMarker}>
-                <Ionicons name='bicycle' size={20} color={colors.white} />
+                <Ionicons name='bicycle' size={20} color="#FFFFFF" />
               </View>
             </Marker>
           )}
           {userLocation && (
             <Marker
               coordinate={userLocation}
-              title='You'
-              description='Delivery location'
+              title={t("youLabel")}
+              description={t("deliveryDestination")}
               pinColor={colors.primary}
             />
           )}
@@ -898,7 +901,7 @@ const OrderTrackingScreen: React.FC = () => {
             ]}
           />
           <Text style={styles.connectionText}>
-            {webSocketConnected ? "Live Tracking" : "Reconnecting..."}
+            {webSocketConnected ? t("liveTracking") : t("reconnecting")}
           </Text>
         </View>
       </View>
@@ -910,11 +913,11 @@ const OrderTrackingScreen: React.FC = () => {
       >
         <View style={styles.statusHeader}>
           {!driverInfo && (
-            <View style={styles.timeRemaining}>
-              <Text style={styles.timeLabel}>Auto‑cancel in</Text>
-              <Text style={styles.timeValue}>{timeRemaining} min</Text>
-            </View>
-          )}
+              <View style={styles.timeRemaining}>
+                <Text style={styles.timeLabel}>{t("autoCancelIn")}</Text>
+                <Text style={styles.timeValue}>{timeRemaining} {t("minAbbrev")}</Text>
+              </View>
+            )}
           <View style={styles.currentStatus}>
             <Ionicons
               name={statusIcons[currentStatus] as any}
@@ -941,7 +944,7 @@ const OrderTrackingScreen: React.FC = () => {
 
         {driverInfo ? (
           <View style={styles.driverInfoCard}>
-            <Text style={styles.sectionTitle}>Your Driver</Text>
+            <Text style={styles.sectionTitle}>{t("yourDriver")}</Text>
             <View style={styles.driverInfo}>
               <View style={styles.driverAvatar}>
                 {driverInfo.profile_picture ? (
@@ -964,7 +967,7 @@ const OrderTrackingScreen: React.FC = () => {
                   </Text>
                   <Text style={styles.rating}>
                     ⭐ {driverInfo.rating.toFixed(1)} (
-                    {driverInfo.completed_deliveries} deliveries)
+                    {driverInfo.completed_deliveries} {t("deliveriesLabel")})
                   </Text>
                 </View>
               </View>
@@ -974,8 +977,8 @@ const OrderTrackingScreen: React.FC = () => {
                 style={styles.callDriverButton}
                 onPress={handleCallDriver}
               >
-                <Ionicons name='call' size={20} color={colors.white} />
-                <Text style={styles.callDriverText}>Call Driver</Text>
+                <Ionicons name='call' size={20} color="#FFFFFF" />
+                <Text style={styles.callDriverText}>{t("callDriverTitle")}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.messageDriverButton}
@@ -986,7 +989,7 @@ const OrderTrackingScreen: React.FC = () => {
                   size={20}
                   color={colors.primary}
                 />
-                <Text style={styles.messageDriverText}>Message</Text>
+                <Text style={styles.messageDriverText}>{t("messageLabel")}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -994,7 +997,7 @@ const OrderTrackingScreen: React.FC = () => {
           <View style={styles.noDriverCard}>
             <Ionicons name='time' size={24} color={colors.gray500} />
             <Text style={styles.noDriverText}>
-              Waiting for a driver to accept your order...
+              {t("waitingForDriver")}
             </Text>
             <ActivityIndicator size='small' color={colors.primary} />
           </View>
@@ -1002,7 +1005,7 @@ const OrderTrackingScreen: React.FC = () => {
 
         {orderDetails && (
           <View style={styles.orderDetailsCard}>
-            <Text style={styles.sectionTitle}>Order Details</Text>
+            <Text style={styles.sectionTitle}>{t("orderDetailsTitle")}</Text>
             <View style={styles.orderInfoRow}>
               <Ionicons name='restaurant' size={20} color={colors.gray600} />
               <Text style={styles.orderInfoText}>
@@ -1018,7 +1021,7 @@ const OrderTrackingScreen: React.FC = () => {
             <View style={styles.orderInfoRow}>
               <Ionicons name='time' size={20} color={colors.gray600} />
               <Text style={styles.orderInfoText}>
-                Ordered at{" "}
+                {t("orderedAt")}{" "}
                 {new Date(orderDetails.created_at).toLocaleTimeString()}
               </Text>
             </View>
@@ -1037,9 +1040,9 @@ const OrderTrackingScreen: React.FC = () => {
                 }
               />
               <Text style={styles.orderInfoText}>
-                Payment: {orderDetails.payment_status || "pending"}
+                {t("paymentLabel")}: {orderDetails.payment_status || t("pendingLabel")}
                 {orderDetails.payment_method
-                  ? ` via ${orderDetails.payment_method.replace("_", " ")}`
+                  ? ` ${t("viaLabel")} ${orderDetails.payment_method.replace("_", " ")}`
                   : ""}
               </Text>
             </View>
@@ -1051,7 +1054,7 @@ const OrderTrackingScreen: React.FC = () => {
                   color={colors.gray600}
                 />
                 <Text style={styles.orderInfoText}>
-                  Ref: {orderDetails.payment_verification.transaction_reference}
+                  {t("refLabel")}: {orderDetails.payment_verification.transaction_reference}
                 </Text>
               </View>
             )}
@@ -1068,9 +1071,9 @@ const OrderTrackingScreen: React.FC = () => {
                   color={colors.gray600}
                 />
                 <Text style={styles.orderInfoText}>
-                  Payment screenshot submitted
+                  {t("paymentScreenshotSubmitted")}
                   {orderDetails.payment_verification.status === "pending_review"
-                    ? " for admin review"
+                    ? ` ${t("forAdminReview")}`
                     : ""}
                 </Text>
               </TouchableOpacity>
@@ -1079,7 +1082,7 @@ const OrderTrackingScreen: React.FC = () => {
               style={styles.viewOrderButton}
               onPress={handleViewOrderDetails}
             >
-              <Text style={styles.viewOrderText}>View Full Order Details</Text>
+              <Text style={styles.viewOrderText}>{t("viewFullOrderDetails")}</Text>
               <Ionicons
                 name='chevron-forward'
                 size={20}
@@ -1095,14 +1098,14 @@ const OrderTrackingScreen: React.FC = () => {
               style={styles.restaurantContactButton}
               onPress={handleContactRestaurant}
             >
-              <Ionicons name='business' size={20} color={colors.white} />
+              <Ionicons name='business' size={20} color="#FFFFFF" />
               <Text style={styles.restaurantContactText}>
-                Contact Restaurant
+                {t("contactRestaurantTitle")}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.helpButton} onPress={handleHelp}>
               <Ionicons name='help-circle' size={20} color={colors.primary} />
-              <Text style={styles.helpText}>Help</Text>
+              <Text style={styles.helpText}>{t("helpTitle")}</Text>
             </TouchableOpacity>
           </View>
           {canCancelOrder() && (
@@ -1110,7 +1113,7 @@ const OrderTrackingScreen: React.FC = () => {
               style={styles.cancelButton}
               onPress={handleCancelOrder}
             >
-              <Text style={styles.cancelButtonText}>Cancel Order</Text>
+              <Text style={styles.cancelButtonText}>{t("cancelOrderTitle")}</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -1119,7 +1122,8 @@ const OrderTrackingScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any, isDark: boolean) =>
+  StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -1165,7 +1169,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   retryButtonText: {
-    color: colors.white,
+    // Sits on a solid colors.primary button in both themes.
+    color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "bold",
   },
@@ -1199,7 +1204,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
-    shadowColor: colors.black,
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
@@ -1264,7 +1269,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderWidth: 3,
     borderColor: colors.white,
-    shadowColor: colors.black,
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 4,
@@ -1279,7 +1284,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderWidth: 3,
     borderColor: colors.white,
-    shadowColor: colors.black,
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 4,
@@ -1318,7 +1323,8 @@ const styles = StyleSheet.create({
   driverInitial: {
     fontSize: 24,
     fontWeight: "bold",
-    color: colors.white,
+    // Sits on a solid colors.primary avatar circle in both themes.
+    color: "#FFFFFF",
   },
   driverDetails: {
     flex: 1,
@@ -1367,7 +1373,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   callDriverText: {
-    color: colors.white,
+    // Sits on a solid colors.primary button in both themes.
+    color: "#FFFFFF",
     fontSize: 14,
     fontWeight: "600",
   },
@@ -1452,7 +1459,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   restaurantContactText: {
-    color: colors.white,
+    // Sits on a solid colors.info button in both themes.
+    color: "#FFFFFF",
     fontSize: 14,
     fontWeight: "600",
   },

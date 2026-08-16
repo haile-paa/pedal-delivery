@@ -1,7 +1,7 @@
 import React from "react";
 import { View, TextInput, StyleSheet, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { colors } from "../../theme/colors";
+import { useTheme } from "../../context/ThemeContext";
 
 interface SearchBarWithFiltersProps {
   value: string;
@@ -16,6 +16,9 @@ const SearchBarWithFilters: React.FC<SearchBarWithFiltersProps> = ({
   placeholder = "Search...",
   onFiltersPress,
 }) => {
+  const { colors, isDark } = useTheme();
+  const styles = getStyles(colors, isDark);
+
   return (
     <View style={styles.container}>
       <View style={styles.searchContainer}>
@@ -36,36 +39,37 @@ const SearchBarWithFilters: React.FC<SearchBarWithFiltersProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  searchContainer: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: colors.gray50,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: colors.gray200,
-  },
-  input: {
-    flex: 1,
-    marginLeft: 8,
-    fontSize: 16,
-    color: colors.gray800,
-  },
-  filterButton: {
-    backgroundColor: colors.gray50,
-    padding: 8,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.gray200,
-  },
-});
+const getStyles = (colors: any, isDark: boolean) =>
+  StyleSheet.create({
+    container: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+    },
+    searchContainer: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: isDark ? colors.gray100 : colors.gray50,
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderWidth: 1,
+      borderColor: isDark ? "rgba(255,255,255,0.1)" : colors.gray200,
+    },
+    input: {
+      flex: 1,
+      marginLeft: 8,
+      fontSize: 16,
+      color: colors.gray900,
+    },
+    filterButton: {
+      backgroundColor: isDark ? colors.gray100 : colors.gray50,
+      padding: 8,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: isDark ? "rgba(255,255,255,0.1)" : colors.gray200,
+    },
+  });
 
 export default SearchBarWithFilters;

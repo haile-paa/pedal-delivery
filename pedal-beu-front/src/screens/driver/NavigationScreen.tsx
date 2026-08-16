@@ -11,7 +11,7 @@ import {
   Linking,
 } from "react-native";
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
-import { colors } from "../../theme/colors";
+import { useTheme } from "../../context/ThemeContext";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import * as Location from "expo-location";
@@ -51,6 +51,8 @@ interface OrderLocations {
 }
 
 const NavigationScreen: React.FC = () => {
+  const { colors, isDark } = useTheme();
+  const styles = getStyles(colors);
   const router = useRouter();
   const params = useLocalSearchParams<{ orderId: string }>();
 
@@ -526,7 +528,9 @@ const NavigationScreen: React.FC = () => {
                     size={16}
                     color={colors.gray700}
                   />
-                  <Text style={styles.secondaryButtonText}>Get Directions</Text>
+                  <Text style={styles.secondaryButtonText}>
+                    Get Directions
+                  </Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -567,7 +571,8 @@ const NavigationScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) =>
+  StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -586,7 +591,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     justifyContent: "center",
     alignItems: "center",
-    shadowColor: colors.black,
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 6,
@@ -612,7 +617,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginTop: 4,
-    shadowColor: colors.black,
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 6,
@@ -622,7 +627,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     borderRadius: 20,
     padding: 16,
-    shadowColor: colors.black,
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 12,
@@ -667,7 +672,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     borderRadius: 20,
     padding: 16,
-    shadowColor: colors.black,
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 12,

@@ -32,6 +32,12 @@ export const colors = {
   background: "#FFFFFF",
   surface: "#F8FAFC",
   card: "#FFFFFF",
+
+  // Elevation helpers — kept separate from `black`/`white` (which invert
+  // between themes for text/icon purposes) so shadows and card borders
+  // stay visually correct instead of turning invisible/white in dark mode.
+  shadow: "#000000",
+  cardBorder: "transparent",
 };
 
 // Dark palette. Mirrors every key in `colors` above (same primary/semantic
@@ -70,6 +76,13 @@ export const darkColors: typeof colors = {
   background: "#121216",
   surface: "#1A1A20",
   card: "#1E1E24",
+
+  // In dark mode, a plain black shadow is invisible against a dark
+  // background, which is a big part of why dark screens can look flat.
+  // Use a soft violet glow instead, plus a faint hairline border so cards
+  // read as distinct surfaces even without a visible drop shadow.
+  shadow: "#A78BFA",
+  cardBorder: "rgba(255, 255, 255, 0.08)",
 };
 
 export type Colors = typeof colors;

@@ -12,10 +12,12 @@ import {
   ScrollView,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { colors } from "../../theme/colors";
+import { useTheme } from "../../context/ThemeContext";
 import { authAPI } from "../../../lib/api";
 
 const DriverPhoneInput: React.FC = () => {
+  const { colors, isDark } = useTheme();
+  const styles = getStyles(colors);
   const router = useRouter();
   const [login, setLogin] = useState(""); // username OR phone number
   const [password, setPassword] = useState("");
@@ -62,7 +64,7 @@ const DriverPhoneInput: React.FC = () => {
       style={styles.container}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
-      <StatusBar barStyle='dark-content' backgroundColor={colors.background} />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
@@ -137,7 +139,8 @@ const DriverPhoneInput: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) =>
+  StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,

@@ -17,7 +17,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import { colors } from "../../theme/colors";
+import { useTheme } from "../../context/ThemeContext";
 import { useAppState } from "../../context/AppStateContext";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { API_BASE_URL } from "../../utils/constants";
@@ -28,6 +28,8 @@ const { width: screenWidth } = Dimensions.get("window");
 // verification step. PhoneVerificationScreen.tsx is left in place, unused,
 // in case the phone-OTP flow needs to be restored later.
 const EmailVerificationScreen: React.FC = () => {
+  const { colors, isDark } = useTheme();
+  const styles = getStyles(colors);
   const router = useRouter();
   const params = useLocalSearchParams();
   const { role, phone, email } = params as {
@@ -221,7 +223,7 @@ const EmailVerificationScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle='dark-content' backgroundColor={colors.background} />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
 
       <View style={styles.header}>
         <Image
@@ -307,7 +309,8 @@ const EmailVerificationScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) =>
+  StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,

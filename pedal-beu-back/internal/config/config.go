@@ -1,12 +1,25 @@
 package config
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"log"
 	"sync"
 	"time"
 
 	"github.com/spf13/viper"
 )
+
+// generateRandomSecret returns a cryptographically random hex string of
+// the given byte length (e.g. 32 -> 64 hex characters). Used only as a
+// non-production fallback when JWT_SECRET isn't set.
+func generateRandomSecret(numBytes int) (string, error) {
+	b := make([]byte, numBytes)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
+}
 
 type Config struct {
 	Server   ServerConfig   `mapstructure:"server"`
@@ -127,6 +140,12 @@ func Load() *Config {
 		_ = viper.BindEnv("cloudinary.api_secret", "CLOUDINARY_API_SECRET")
 		_ = viper.BindEnv("shipday.api_key", "SHIPDAY_API_KEY")
 		_ = viper.BindEnv("shipday.base_url", "SHIPDAY_BASE_URL")
+		// JWT — previously unbound, meaning JWT_SECRET set on Render was
+		// silently ignored and every deploy signed tokens with an empty
+		// secret. Now explicitly wired to env vars.
+		_ = viper.BindEnv("jwt.secret", "JWT_SECRET")
+		_ = viper.BindEnv("jwt.expire_hours", "JWT_EXPIRE_HOURS")
+		_ = viper.BindEnv("jwt.refresh_exp_hours", "JWT_REFRESH_EXP_HOURS")
 
 		// Set defaults
 		viper.SetDefault("server.port", "8080")
@@ -146,6 +165,26 @@ func Load() *Config {
 		instance = &Config{}
 		if err := viper.Unmarshal(instance); err != nil {
 			log.Fatalf("Unable to decode config: %v", err)
+		}
+
+		if instance.JWT.Secret == "" {
+			if instance.Server.Environment == "production" {
+				// Refuse to start rather than silently sign every token
+				// with an empty key, which lets anyone forge a valid
+				// login. Set JWT_SECRET in the environment (Render:
+				// Environment tab, or /etc/secrets) before deploying.
+				log.Fatal("JWT_SECRET is not set. Refusing to start in production with an empty JWT secret.")
+			}
+			// Dev/local fallback: generate a random secret for this
+			// process only, so `go run` still works without setup.
+			// Every restart invalidates existing sessions — set
+			// JWT_SECRET in .env for a stable local secret.
+			generated, err := generateRandomSecret(32)
+			if err != nil {
+				log.Fatalf("Failed to generate a temporary JWT secret: %v", err)
+			}
+			instance.JWT.Secret = generated
+			log.Println("WARNING: JWT_SECRET is not set. Using a temporary, randomly generated secret for this run only — all sessions will be invalidated on restart. Set JWT_SECRET in .env to fix this.")
 		}
 	})
 

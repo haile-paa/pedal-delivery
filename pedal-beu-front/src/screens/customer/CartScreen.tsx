@@ -10,7 +10,8 @@ import {
 } from "react-native";
 import { useAppState } from "../../context/AppStateContext";
 import { useRouter } from "expo-router";
-import { colors } from "../../theme/colors";
+import { useTheme } from "../../context/ThemeContext";
+import { useLanguage } from "../../context/LanguageContext";
 import SwipeableCard from "../../components/ui/SwipeableCard";
 import CartCounter from "../../components/customer/CartCounter";
 import AnimatedButton from "../../components/ui/AnimatedButton";
@@ -18,6 +19,9 @@ import CheckoutBottomSheet from "../../components/customer/CheckoutBottomSheet";
 import { Restaurant, Order } from "../../types";
 
 const CartScreen: React.FC = () => {
+  const { colors, isDark } = useTheme();
+  const { t } = useLanguage();
+  const styles = getStyles(colors);
   const router = useRouter();
   const { state, dispatch, actions } = useAppState(); // 👈 added actions
 
@@ -93,12 +97,12 @@ const CartScreen: React.FC = () => {
 
   const handleRemoveItem = (id: string, selectedAddonsIds?: string[]) => {
     Alert.alert(
-      "Remove Item",
-      "Are you sure you want to remove this item from your cart?",
+      t("removeItemTitle"),
+      t("removeItemConfirm"),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: t("cancel"), style: "cancel" },
         {
-          text: "Remove",
+          text: t("remove"),
           style: "destructive",
           onPress: () => {
             dispatch({
@@ -115,12 +119,12 @@ const CartScreen: React.FC = () => {
     if (state.customer.cart.length === 0) return;
 
     Alert.alert(
-      "Clear Cart",
-      "Are you sure you want to clear your entire cart?",
+      t("clearCartTitle"),
+      t("clearCartConfirm"),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: t("cancel"), style: "cancel" },
         {
-          text: "Clear All",
+          text: t("clearAll"),
           style: "destructive",
           onPress: () => {
             dispatch({ type: "CLEAR_CART" });
@@ -132,7 +136,7 @@ const CartScreen: React.FC = () => {
 
   const loadRestaurantData = async () => {
     if (state.customer.cart.length === 0) {
-      Alert.alert("Empty Cart", "Your cart is empty. Add some items first!");
+      Alert.alert(t("emptyCartTitle"), t("emptyCartDesc"));
       return;
     }
     if (currentRestaurant) {
@@ -145,15 +149,15 @@ const CartScreen: React.FC = () => {
       return;
     }
     Alert.alert(
-      "Restaurant Information Needed",
-      "We need restaurant information to proceed with checkout. Please go back to the restaurant page and try again.",
+      t("restaurantInfoNeededTitle"),
+      t("restaurantInfoNeededDesc"),
       [
         {
-          text: "Go Back",
+          text: t("goBack"),
           onPress: () => router.back(),
         },
         {
-          text: "Clear Cart",
+          text: t("clearCartTitle"),
           style: "destructive",
           onPress: () => {
             dispatch({ type: "CLEAR_CART" });
@@ -203,7 +207,7 @@ const CartScreen: React.FC = () => {
 
   const renderLeftAction = () => (
     <View style={styles.leftAction}>
-      <Text style={styles.actionText}>Remove</Text>
+      <Text style={styles.actionText}>{t("remove")}</Text>
     </View>
   );
 
@@ -211,16 +215,14 @@ const CartScreen: React.FC = () => {
     return (
       <View style={styles.emptyContainer}>
         <StatusBar
-          barStyle='dark-content'
+          barStyle={isDark ? 'light-content' : 'dark-content'}
           backgroundColor={colors.background}
         />
         <View style={styles.emptyContent}>
-          <Text style={styles.emptyTitle}>Your cart is empty</Text>
-          <Text style={styles.emptySubtitle}>
-            Add delicious food from restaurants to get started!
-          </Text>
+          <Text style={styles.emptyTitle}>{t("cartEmptyTitle")}</Text>
+          <Text style={styles.emptySubtitle}>{t("cartEmptyDesc")}</Text>
           <AnimatedButton
-            title='Browse Restaurants'
+            title={t("browseRestaurants")}
             onPress={() => router.back()}
             style={styles.browseButton}
           />
@@ -237,13 +239,13 @@ const CartScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle='dark-content' backgroundColor={colors.background} />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
 
       <ScrollView style={styles.scrollView}>
         <View style={styles.header}>
-          <Text style={styles.title}>Your Cart</Text>
+          <Text style={styles.title}>{t("yourCart")}</Text>
           <TouchableOpacity onPress={handleClearCart}>
-            <Text style={styles.clearButton}>Clear All</Text>
+            <Text style={styles.clearButton}>{t("clearAll")}</Text>
           </TouchableOpacity>
         </View>
 
@@ -267,12 +269,12 @@ const CartScreen: React.FC = () => {
                   </Text>
                   {item.special_instructions && (
                     <Text style={styles.itemInstructions}>
-                      Note: {item.special_instructions}
+                      {t("note")}: {item.special_instructions}
                     </Text>
                   )}
                   {item.selected_addons && item.selected_addons.length > 0 && (
                     <Text style={styles.itemVariation}>
-                      Add-ons:{" "}
+                      {t("addons")}:{" "}
                       {item.selected_addons.map((a) => a.name).join(", ")}
                     </Text>
                   )}
@@ -301,27 +303,27 @@ const CartScreen: React.FC = () => {
 
         <View style={styles.summarySection}>
           <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Subtotal</Text>
+            <Text style={styles.summaryLabel}>{t("subtotal")}</Text>
             <Text style={styles.summaryValue}>{subtotal.toFixed(2)}Birr</Text>
           </View>
           <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Delivery Fee</Text>
+            <Text style={styles.summaryLabel}>{t("deliveryFee")}</Text>
             <Text style={styles.summaryValue}>
               {deliveryFee.toFixed(2)}Birr
             </Text>
           </View>
           <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Service Charge (5%)</Text>
+            <Text style={styles.summaryLabel}>{t("serviceCharge")} (5%)</Text>
             <Text style={styles.summaryValue}>
               {serviceCharge.toFixed(2)}Birr
             </Text>
           </View>
           <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Tax (10%)</Text>
+            <Text style={styles.summaryLabel}>{t("tax")} (10%)</Text>
             <Text style={styles.summaryValue}>{tax.toFixed(2)}Birr</Text>
           </View>
           <View style={[styles.summaryRow, styles.totalRow]}>
-            <Text style={styles.totalLabel}>Total</Text>
+            <Text style={styles.totalLabel}>{t("total")}</Text>
             <Text style={styles.totalValue}>{grandTotal.toFixed(2)}Birr</Text>
           </View>
         </View>
@@ -339,12 +341,12 @@ const CartScreen: React.FC = () => {
               (total, item) => total + item.quantity,
               0,
             ) === 1
-              ? "item"
-              : "items"}
+              ? t("itemSingular")
+              : t("itemPlural")}
           </Text>
         </View>
         <AnimatedButton
-          title={isLoadingRestaurant ? "Loading..." : "Proceed to Checkout"}
+          title={isLoadingRestaurant ? t("loadingEllipsis") : t("proceedToCheckout")}
           onPress={handleCheckout}
           fullWidth
           size='large'
@@ -372,7 +374,8 @@ const CartScreen: React.FC = () => {
 };
 
 // ---- styles remain exactly as before ----
-const styles = StyleSheet.create({
+const getStyles = (colors: any) =>
+  StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -517,7 +520,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderTopWidth: 1,
     borderTopColor: colors.gray200,
-    shadowColor: colors.black,
+    shadowColor: colors.shadow,
     shadowOffset: {
       width: 0,
       height: -2,

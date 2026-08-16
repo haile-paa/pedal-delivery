@@ -10,21 +10,26 @@ import {
   Image,
   Alert,
   ActivityIndicator,
-  Linking,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { useAppState } from "../../context/AppStateContext";
 import { useRouter } from "expo-router";
-import { colors } from "../../theme/colors";
+import { useTheme } from "../../context/ThemeContext";
+import { useLanguage } from "../../context/LanguageContext";
 import { Ionicons } from "@expo/vector-icons";
 import AnimatedButton from "../../components/ui/AnimatedButton";
+import HelpSupportModal from "../../components/ui/HelpSupportModal";
 import api, { authAPI, favoritesAPI } from "../../../lib/api";
 
 const CustomerProfileScreen = () => {
+  const { colors, isDark } = useTheme();
+  const { t } = useLanguage();
+  const styles = getStyles(colors);
   const router = useRouter();
   const { state, dispatch } = useAppState();
   const [loading, setLoading] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [helpModalVisible, setHelpModalVisible] = useState(false);
 
   const fetchProfile = async () => {
     try {
@@ -34,7 +39,7 @@ const CustomerProfileScreen = () => {
         type: "UPDATE_USER",
         payload: {
           ...data,
-          name: data.profile?.first_name || data.username || "User",
+          name: data.profile?.first_name || data.username || t("guest"),
         },
       });
     } catch (error: any) {
@@ -95,15 +100,15 @@ const CustomerProfileScreen = () => {
   const addressesCount = addresses.length;
 
   const updateProfile = async () => {
-    Alert.alert("Update", "Edit profile feature coming soon!");
+    Alert.alert(t("updateTitle"), t("editProfileComingSoon"));
   };
 
   const handlePickAvatar = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
       Alert.alert(
-        "Permission Required",
-        "Please allow photo access to update your profile picture.",
+        t("permissionRequiredTitle"),
+        t("photoPermissionDesc"),
       );
       return;
     }
@@ -136,8 +141,8 @@ const CustomerProfileScreen = () => {
     } catch (error) {
       console.error("Avatar upload error:", error);
       Alert.alert(
-        "Error",
-        "Could not update your profile picture. Please try again.",
+        t("errorTitle"),
+        t("avatarUpdateFailed"),
       );
     } finally {
       setUploadingAvatar(false);
@@ -145,10 +150,10 @@ const CustomerProfileScreen = () => {
   };
 
   const handleLogout = () => {
-    Alert.alert("Logout", "Are you sure you want to logout?", [
-      { text: "Cancel", style: "cancel" },
+    Alert.alert(t("logoutTitle"), t("logoutConfirm"), [
+      { text: t("cancel"), style: "cancel" },
       {
-        text: "Logout",
+        text: t("logoutTitle"),
         style: "destructive",
         onPress: () => {
           dispatch({ type: "LOGOUT" });
@@ -161,56 +166,41 @@ const CustomerProfileScreen = () => {
   const menuItems = [
     {
       id: "orders",
-      title: "My Orders",
+      title: t("myOrders"),
       icon: "receipt-outline" as const,
       onPress: () => router.push("/(customer)/order-history"),
     },
     {
       id: "addresses",
-      title: "Saved Addresses",
+      title: t("savedAddresses"),
       icon: "location-outline" as const,
-      onPress: () => Alert.alert("Coming Soon"),
+      onPress: () => Alert.alert(t("comingSoonTitle")),
       badge: addressesCount,
     },
     {
       id: "favorites",
-      title: "Favorite Restaurants",
+      title: t("favoriteRestaurants"),
       icon: "heart-outline" as const,
       onPress: () => router.push("/(customer)/favorites" as any),
       badge: favoriteCount,
     },
     {
       id: "settings",
-      title: "Settings",
+      title: t("settings"),
       icon: "settings-outline" as const,
       onPress: () => router.push("/(customer)/settings" as any),
     },
     {
       id: "support",
-      title: "Help & Support",
+      title: t("helpAndSupport"),
       icon: "help-circle-outline" as const,
-      onPress: () =>
-        Alert.alert(
-          "Help & Support",
-          "Need a hand? Reach us any time:\n\n📞 Call: +251 900 000 000\n✉️ Email: support@beupedal.com\n💬 Live chat: available 8am–10pm daily",
-          [
-            {
-              text: "Call Support",
-              onPress: () => Linking.openURL("tel:+251900000000"),
-            },
-            {
-              text: "Email Support",
-              onPress: () => Linking.openURL("mailto:support@beupedal.com"),
-            },
-            { text: "Close", style: "cancel" },
-          ],
-        ),
+      onPress: () => setHelpModalVisible(true),
     },
   ];
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle='dark-content' backgroundColor={colors.background} />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
       <ScrollView style={styles.scrollView}>
         <View style={styles.profileHeader}>
           <View style={styles.avatarContainer}>
@@ -232,9 +222,9 @@ const CustomerProfileScreen = () => {
               disabled={uploadingAvatar}
             >
               {uploadingAvatar ? (
-                <ActivityIndicator size='small' color={colors.white} />
+                <ActivityIndicator size='small' color="#FFFFFF" />
               ) : (
-                <Ionicons name='camera' size={16} color={colors.white} />
+                <Ionicons name='camera' size={16} color="#FFFFFF" />
               )}
             </TouchableOpacity>
           </View>
@@ -245,24 +235,24 @@ const CustomerProfileScreen = () => {
             style={styles.editProfileButton}
             onPress={updateProfile}
           >
-            <Text style={styles.editProfileText}>Edit Profile</Text>
+            <Text style={styles.editProfileText}>{t("editProfile")}</Text>
           </TouchableOpacity>
         </View>
 
         <View style={styles.statsContainer}>
           <View style={styles.statItem}>
             <Text style={styles.statValue}>{ordersCount}</Text>
-            <Text style={styles.statLabel}>Orders</Text>
+            <Text style={styles.statLabel}>{t("orders")}</Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
             <Text style={styles.statValue}>{favoriteCount}</Text>
-            <Text style={styles.statLabel}>Favorites</Text>
+            <Text style={styles.statLabel}>{t("favorites")}</Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
             <Text style={styles.statValue}>{addressesCount}</Text>
-            <Text style={styles.statLabel}>Addresses</Text>
+            <Text style={styles.statLabel}>{t("addresses")}</Text>
           </View>
         </View>
 
@@ -295,7 +285,7 @@ const CustomerProfileScreen = () => {
 
         <View style={styles.logoutContainer}>
           <AnimatedButton
-            title='Logout'
+            title={t("logoutTitle")}
             onPress={handleLogout}
             variant='outline'
             loading={loading}
@@ -303,11 +293,17 @@ const CustomerProfileScreen = () => {
           />
         </View>
       </ScrollView>
+
+      <HelpSupportModal
+        visible={helpModalVisible}
+        onClose={() => setHelpModalVisible(false)}
+      />
     </View>
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) =>
+  StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -341,7 +337,7 @@ const styles = StyleSheet.create({
   avatarText: {
     fontSize: 40,
     fontWeight: "bold",
-    color: colors.white,
+    color: "#FFFFFF", // sits on a solid primary-colored circle in both themes
   },
   editButton: {
     position: "absolute",
@@ -379,11 +375,16 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     borderColor: colors.primary,
+    // Android fake-bolds the Amharic fallback font after measuring the pill
+    // at normal weight, which then clips the tail of the label (e.g.
+    // "መገለጫ አስተካክል" renders as just "መገለጫ"). overflow:visible fixes it.
+    overflow: "visible",
   },
   editProfileText: {
     fontSize: 14,
     fontWeight: "600",
     color: colors.primary,
+    includeFontPadding: false,
   },
   statsContainer: {
     flexDirection: "row",
@@ -452,7 +453,7 @@ const styles = StyleSheet.create({
   badgeText: {
     fontSize: 12,
     fontWeight: "600",
-    color: colors.white,
+    color: "#FFFFFF", // sits on a solid primary-colored pill in both themes
   },
   logoutContainer: {
     alignItems: "center",
@@ -462,6 +463,7 @@ const styles = StyleSheet.create({
   logoutButton: {
     minWidth: 200,
     marginBottom: 16,
+    overflow: "visible",
   },
   versionText: {
     fontSize: 12,

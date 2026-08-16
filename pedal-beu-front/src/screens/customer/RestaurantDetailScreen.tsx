@@ -12,7 +12,7 @@ import {
   Alert,
 } from "react-native";
 import { useAppState } from "../../context/AppStateContext";
-import { colors } from "../../theme/colors";
+import { useTheme } from "../../context/ThemeContext";
 import {
   Restaurant,
   MenuItem,
@@ -24,10 +24,14 @@ import CategoryFilter from "../../components/customer/CategoryFilter";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import CheckoutBottomSheet from "../../components/customer/CheckoutBottomSheet";
+import { useLanguage } from "../../context/LanguageContext";
 import { restaurantAPI } from "../../../lib/restaurant";
 import { favoritesAPI } from "../../../lib/api";
 
 const RestaurantDetailScreen: React.FC = () => {
+  const { colors, isDark } = useTheme();
+  const { t } = useLanguage();
+  const styles = getStyles(colors, isDark);
   const router = useRouter();
   const params = useLocalSearchParams();
   const restaurantId = params.id as string;
@@ -85,7 +89,7 @@ const RestaurantDetailScreen: React.FC = () => {
     } catch (error) {
       console.error("Toggle favorite error:", error);
       setIsFavorite(wasFavorite); // revert on failure
-      Alert.alert("Error", "Could not update favorites. Please try again.");
+      Alert.alert(t("errorTitle"), t("favoritesUpdateFailed"));
     } finally {
       setFavoriteLoading(false);
     }
@@ -101,8 +105,8 @@ const RestaurantDetailScreen: React.FC = () => {
       const restaurantResponse = await restaurantAPI.getById(restaurantId);
       if (!restaurantResponse.success || !restaurantResponse.data) {
         Alert.alert(
-          "Error",
-          restaurantResponse.error || "Restaurant not found",
+          t("errorTitle"),
+          restaurantResponse.error || t("restaurantNotFound"),
         );
         router.back();
         return;
@@ -129,7 +133,7 @@ const RestaurantDetailScreen: React.FC = () => {
       }
     } catch (error) {
       console.error("Error loading restaurant:", error);
-      Alert.alert("Error", "Failed to load restaurant details");
+      Alert.alert(t("errorTitle"), t("loadRestaurantFailed"));
     } finally {
       setLoading(false);
     }
@@ -209,10 +213,10 @@ const RestaurantDetailScreen: React.FC = () => {
     if (!restaurant) return;
 
     if (!state.auth.user) {
-      Alert.alert("Login Required", "Please log in to place an order", [
-        { text: "Cancel", style: "cancel" },
+      Alert.alert(t("loginRequiredTitle"), t("loginRequiredDesc"), [
+        { text: t("cancel"), style: "cancel" },
         {
-          text: "Login",
+          text: t("loginButton"),
           onPress: () => router.push("/(auth)/welcome"),
         },
       ]);
@@ -220,19 +224,19 @@ const RestaurantDetailScreen: React.FC = () => {
     }
 
     if (state.customer.cart.length === 0) {
-      Alert.alert("Empty Cart", "Please add items to your cart first");
+      Alert.alert(t("emptyCartTitle"), t("addItemsFirstPrompt"));
       return;
     }
 
     const cartTotal = getCartTotal();
     if (restaurant.min_order && cartTotal < restaurant.min_order) {
       Alert.alert(
-        "Minimum Order Required",
-        `Minimum order for this restaurant is ${
+        t("minimumOrderTitle"),
+        `${t("minimumOrderDesc1")} ${
           restaurant.min_order
-        }Birr. Please add ${(restaurant.min_order - cartTotal).toFixed(
+        } ${t("birr")}. ${t("minimumOrderDesc2")} ${(restaurant.min_order - cartTotal).toFixed(
           2,
-        )}Birr more.`,
+        )} ${t("birr")} ${t("minimumOrderDesc3")}`,
       );
       return;
     }
@@ -290,7 +294,7 @@ const RestaurantDetailScreen: React.FC = () => {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size='large' color={colors.primary} />
-        <Text style={styles.loadingText}>Loading restaurant details...</Text>
+        <Text style={styles.loadingText}>{t("loadingRestaurantDetails")}</Text>
       </View>
     );
   }
@@ -299,13 +303,13 @@ const RestaurantDetailScreen: React.FC = () => {
     return (
       <View style={styles.errorContainer}>
         <MaterialIcons name='error-outline' size={64} color={colors.error} />
-        <Text style={styles.errorText}>Restaurant not found</Text>
+        <Text style={styles.errorText}>{t("restaurantNotFound")}</Text>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => router.back()}
         >
-          <Ionicons name='arrow-back' size={20} color={colors.white} />
-          <Text style={styles.backButtonText}>Go Back</Text>
+          <Ionicons name='arrow-back' size={20} color="#FFFFFF" />
+          <Text style={styles.backButtonText}>{t("goBack")}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -327,7 +331,7 @@ const RestaurantDetailScreen: React.FC = () => {
           style={styles.backButtonHeader}
           onPress={() => router.back()}
         >
-          <Ionicons name='arrow-back' size={24} color={colors.white} />
+          <Ionicons name='arrow-back' size={24} color="#FFFFFF" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{restaurant.name}</Text>
         <TouchableOpacity
@@ -376,7 +380,7 @@ const RestaurantDetailScreen: React.FC = () => {
             <View style={styles.statusBadge}>
               <View style={styles.statusIndicator} />
               <Text style={styles.statusText}>
-                {restaurant.is_active ? "Open now" : "Closed"}
+                {restaurant.is_active ? t("openNow") : t("closedLabel")}
               </Text>
             </View>
           </View>
@@ -395,7 +399,7 @@ const RestaurantDetailScreen: React.FC = () => {
           <View style={styles.hoursContainer}>
             <Ionicons name='time-outline' size={20} color={colors.gray600} />
             <Text style={styles.hoursText}>
-              {restaurant.cuisine_type?.join(", ") || "Various cuisines"}
+              {restaurant.cuisine_type?.join(", ") || t("variousCuisines")}
             </Text>
           </View>
         </View>
@@ -411,7 +415,7 @@ const RestaurantDetailScreen: React.FC = () => {
         )}
 
         <View style={styles.menuContainer}>
-          <Text style={styles.menuTitle}>Menu</Text>
+          <Text style={styles.menuTitle}>{t("menuLabel")}</Text>
           {filteredItems.length > 0 ? (
             filteredItems.map((item) => {
               const quantity = getItemQuantity(item.id);
@@ -462,7 +466,7 @@ const RestaurantDetailScreen: React.FC = () => {
                         disabled={!item.is_available}
                       >
                         <Text style={styles.addButtonText}>
-                          {item.is_available ? "Add" : "Unavailable"}
+                          {item.is_available ? t("add") : t("unavailable")}
                         </Text>
                       </TouchableOpacity>
                     )}
@@ -477,9 +481,9 @@ const RestaurantDetailScreen: React.FC = () => {
                 size={64}
                 color={colors.gray400}
               />
-              <Text style={styles.emptyMenuText}>No menu items available</Text>
+              <Text style={styles.emptyMenuText}>{t("noMenuItems")}</Text>
               <Text style={styles.emptyMenuSubtext}>
-                Check back later for menu updates
+                {t("checkBackMenuUpdates")}
               </Text>
             </View>
           )}
@@ -491,17 +495,17 @@ const RestaurantDetailScreen: React.FC = () => {
       {cartCount > 0 && (
         <View style={styles.checkoutBar}>
           <View style={styles.cartInfo}>
-            <Text style={styles.cartCount}>{cartCount} items</Text>
+            <Text style={styles.cartCount}>{cartCount} {t("itemPlural")}</Text>
             <Text style={styles.cartTotal}>
-              {grandTotal.toFixed(2)}Birr Total
+              {grandTotal.toFixed(2)} {t("birr")} {t("totalLabel")}
             </Text>
           </View>
           <TouchableOpacity
             style={styles.checkoutButton}
             onPress={handleCheckout}
           >
-            <Text style={styles.checkoutButtonText}>Go to Checkout</Text>
-            <Ionicons name='arrow-forward' size={20} color={colors.white} />
+            <Text style={styles.checkoutButtonText}>{t("goToCheckout")}</Text>
+            <Ionicons name='arrow-forward' size={20} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
       )}
@@ -526,7 +530,8 @@ const RestaurantDetailScreen: React.FC = () => {
 };
 
 // ---- styles remain exactly as before ----
-const styles = StyleSheet.create({
+const getStyles = (colors: any, isDark: boolean) =>
+  StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -566,7 +571,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   backButtonText: {
-    color: colors.white,
+    // Sits on a solid colors.primary button in both themes.
+    color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "600",
   },
@@ -584,7 +590,8 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: "bold",
-    color: colors.white,
+    // Sits on a solid colors.primary header bar in both themes.
+    color: "#FFFFFF",
   },
   headerRight: {
     width: 40,
@@ -602,7 +609,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginTop: -20,
     borderRadius: 16,
-    shadowColor: colors.black,
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 12,
@@ -710,7 +717,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 12,
     marginBottom: 12,
-    shadowColor: colors.black,
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 8,
@@ -765,7 +772,8 @@ const styles = StyleSheet.create({
   quantityButtonText: {
     fontSize: 16,
     fontWeight: "bold",
-    color: colors.white,
+    // Sits on a solid colors.primary circle in both themes.
+    color: "#FFFFFF",
   },
   quantityText: {
     fontSize: 14,
@@ -784,7 +792,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.gray400,
   },
   addButtonText: {
-    color: colors.white,
+    // Sits on a solid colors.primary pill in both themes.
+    color: "#FFFFFF",
     fontSize: 14,
     fontWeight: "600",
   },
@@ -821,7 +830,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderTopWidth: 1,
     borderTopColor: colors.gray200,
-    shadowColor: colors.black,
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
@@ -850,7 +859,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   checkoutButtonText: {
-    color: colors.white,
+    // Sits on a solid colors.primary bar in both themes.
+    color: "#FFFFFF",
     fontSize: 14,
     fontWeight: "bold",
   },

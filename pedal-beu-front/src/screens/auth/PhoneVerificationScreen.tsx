@@ -17,7 +17,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import { colors } from "../../theme/colors";
+import { useTheme } from "../../context/ThemeContext";
 import { useAppState } from "../../context/AppStateContext";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { API_BASE_URL } from "../../utils/constants";
@@ -25,6 +25,8 @@ import { API_BASE_URL } from "../../utils/constants";
 const { width: screenWidth } = Dimensions.get("window");
 
 const PhoneVerificationScreen: React.FC = () => {
+  const { colors, isDark } = useTheme();
+  const styles = getStyles(colors);
   const router = useRouter();
   const params = useLocalSearchParams();
   const { role, phone } = params as {
@@ -228,7 +230,7 @@ const PhoneVerificationScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle='dark-content' backgroundColor={colors.background} />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
 
       <View style={styles.header}>
         <Image
@@ -313,7 +315,8 @@ const PhoneVerificationScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) =>
+  StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,

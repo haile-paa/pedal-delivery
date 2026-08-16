@@ -12,7 +12,8 @@ import {
 } from "react-native";
 import { useAppState } from "../../context/AppStateContext";
 import { Restaurant } from "../../types";
-import { colors } from "../../theme/colors";
+import { useTheme } from "../../context/ThemeContext";
+import { useLanguage } from "../../context/LanguageContext";
 import RestaurantCard from "../../components/customer/RestaurantCard";
 import SearchBarWithFilters from "../../components/ui/SearchBarWithFilters";
 import CategoryFilter from "../../components/customer/CategoryFilter";
@@ -24,6 +25,9 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 
 const HomeScreen: React.FC = () => {
+  const { colors, isDark } = useTheme();
+  const { t } = useLanguage();
+  const styles = getStyles(colors);
   const { state, dispatch } = useAppState();
   const router = useRouter();
   const [filteredRestaurants, setFilteredRestaurants] = useState<Restaurant[]>(
@@ -59,8 +63,10 @@ const HomeScreen: React.FC = () => {
 
   const getUserFirstName = () => {
     const user = state.auth.user;
-    if (!user) return "Guest";
-    return user.firstName || user.name || user.profile?.first_name || "Guest";
+    if (!user) return t("guest");
+    return (
+      user.firstName || user.name || user.profile?.first_name || t("guest")
+    );
   };
 
   const cleanupFetch = () => {
@@ -320,7 +326,9 @@ const HomeScreen: React.FC = () => {
 
   const handleToggleFavorite = useCallback(
     async (restaurant: Restaurant) => {
-      const isFav = state.customer.favoriteRestaurants.includes(restaurant.id);
+      const isFav = state.customer.favoriteRestaurants.includes(
+        restaurant.id,
+      );
       try {
         if (isFav) {
           await favoritesAPI.removeFavorite(restaurant.id);
@@ -366,7 +374,7 @@ const HomeScreen: React.FC = () => {
       return (
         <View style={styles.locationContainer}>
           <Ionicons name='location-outline' size={16} color={colors.gray600} />
-          <Text style={styles.locationText}>Getting your location...</Text>
+          <Text style={styles.locationText}>{t("gettingLocation")}</Text>
         </View>
       );
     }
@@ -380,7 +388,7 @@ const HomeScreen: React.FC = () => {
             style={styles.enableLocationButton}
             onPress={requestLocationPermission}
           >
-            <Text style={styles.enableLocationText}>Retry</Text>
+            <Text style={styles.enableLocationText}>{t("retry")}</Text>
           </TouchableOpacity>
         </View>
       );
@@ -390,7 +398,7 @@ const HomeScreen: React.FC = () => {
       return (
         <View style={styles.locationContainer}>
           <Ionicons name='location' size={16} color={colors.primary} />
-          <Text style={styles.locationText}>Showing restaurants near you</Text>
+          <Text style={styles.locationText}>{t("showingNearby")}</Text>
           <TouchableOpacity
             style={styles.refreshLocationButton}
             onPress={getCurrentLocation}
@@ -404,12 +412,12 @@ const HomeScreen: React.FC = () => {
     return (
       <View style={styles.locationContainer}>
         <Ionicons name='location-outline' size={16} color={colors.gray600} />
-        <Text style={styles.locationText}>Location not enabled</Text>
+        <Text style={styles.locationText}>{t("locationNotEnabled")}</Text>
         <TouchableOpacity
           style={styles.enableLocationButton}
           onPress={requestLocationPermission}
         >
-          <Text style={styles.enableLocationText}>Enable</Text>
+          <Text style={styles.enableLocationText}>{t("enable")}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -425,13 +433,13 @@ const HomeScreen: React.FC = () => {
         <Ionicons name='restaurant-outline' size={64} color={colors.gray400} />
         <Text style={styles.emptyStateText}>
           {state.restaurants.list.length === 0
-            ? "No restaurants available"
-            : "No restaurants match your search"}
+            ? t("noRestaurantsAvailable")
+            : t("noRestaurantsMatch")}
         </Text>
         <Text style={styles.emptyStateSubtext}>
           {state.restaurants.list.length === 0
-            ? "Please check back later or contact support"
-            : "Try adjusting your search or filters"}
+            ? t("checkBackLater")
+            : t("adjustSearchFilters")}
         </Text>
       </View>
     );
@@ -439,28 +447,16 @@ const HomeScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle='dark-content' backgroundColor={colors.background} />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
 
       {/* Header */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.greeting}>Hello, {getUserFirstName()} 👋</Text>
-          <Text style={styles.subtitle}>
-            What would you like to order today?
+          <Text style={styles.greeting}>
+            {t("helloGreeting")}, {getUserFirstName()} 👋
           </Text>
+          <Text style={styles.subtitle}>{t("whatToOrderToday")}</Text>
         </View>
-        {state.auth.user && (
-          <TouchableOpacity
-            style={styles.profileButton}
-            onPress={() => router.push("/(customer)/profile")}
-          >
-            <Ionicons
-              name='person-circle-outline'
-              size={32}
-              color={colors.primary}
-            />
-          </TouchableOpacity>
-        )}
       </View>
 
       {/* Location Status */}
@@ -471,9 +467,9 @@ const HomeScreen: React.FC = () => {
         <SearchBarWithFilters
           value={searchQuery}
           onChangeText={setSearchQuery}
-          placeholder='Search restaurants or cuisines...'
+          placeholder={t("searchRestaurantsPlaceholder")}
           onFiltersPress={() => {
-            Alert.alert("Filters", "Filter functionality coming soon!");
+            Alert.alert(t("filters"), t("filtersComingSoon"));
           }}
         />
       </View>
@@ -495,7 +491,9 @@ const HomeScreen: React.FC = () => {
       <View style={styles.restaurantsSection}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>
-            {selectedCategory === "All" ? "All Restaurants" : selectedCategory}
+            {selectedCategory === "All"
+              ? t("allRestaurants")
+              : selectedCategory}
             <Text style={styles.restaurantCount}>
               {" "}
               ({filteredRestaurants.length})
@@ -529,7 +527,8 @@ const HomeScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) =>
+  StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -552,9 +551,6 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 16,
     color: colors.gray600,
-  },
-  profileButton: {
-    padding: 4,
   },
   locationContainer: {
     flexDirection: "row",

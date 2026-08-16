@@ -23,10 +23,10 @@ import Animated, {
 } from "react-native-reanimated";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { colors } from "../../theme/colors";
+import { useTheme } from "../../context/ThemeContext";
 import AnimatedButton from "../../components/ui/AnimatedButton";
 import { LinearGradient } from "expo-linear-gradient";
-import * as Location from "expo-location"; // ✅ Import Location
+import * as Location from "expo-location";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAppState } from "../../context/AppStateContext";
 import { API_BASE_URL } from "../../utils/constants";
@@ -34,6 +34,8 @@ import { API_BASE_URL } from "../../utils/constants";
 const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
 
 const WelcomeScreen: React.FC = () => {
+  const { colors, isDark } = useTheme();
+  const styles = getStyles(colors);
   const router = useRouter();
   const { dispatch } = useAppState();
   const [showPhoneScreen, setShowPhoneScreen] = useState(false);
@@ -510,273 +512,274 @@ const WelcomeScreen: React.FC = () => {
 };
 
 // Styles remain exactly the same as before
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  screen: {
-    width: screenWidth,
-    height: screenHeight,
-    flex: 1,
-  },
-  screen1: {
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  screen2: {
-    flex: 1,
-  },
-  screenContent: {
-    flex: 1,
-    width: "100%",
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 24,
-  },
-  screen2Content: {
-    flex: 1,
-    paddingHorizontal: 24,
-    paddingTop: 80,
-    paddingBottom: 40,
-  },
-  logoContainer: {
-    alignItems: "center",
-    marginBottom: -10,
-  },
-  logoImage: {
-    width: 350,
-    height: 350,
-  },
-  pulseCircle: {
-    position: "absolute",
-    width: 280,
-    height: 280,
-    borderRadius: 140,
-    borderWidth: 2,
-    borderColor: "rgba(255, 255, 255, 0.3)",
-  },
-  textContainer: {
-    alignItems: "center",
-    marginBottom: 60,
-  },
-  buttonContainer: {
-    width: "100%",
-    alignItems: "center",
-    position: "absolute",
-    bottom: 60,
-  },
-  nextButton: {
-    marginBottom: 16,
-  },
-  backButton: {
-    position: "absolute",
-    top: 60,
-    left: 24,
-    zIndex: 10,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "rgba(255, 255, 255, 0.9)",
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  backButtonText: {
-    fontSize: 24,
-    color: colors.gray800,
-  },
-  driverTopButtonContainer: {
-    alignSelf: "center",
-    marginTop: 20,
-    marginBottom: 40,
-    width: "100%",
-    maxWidth: 350,
-  },
-  driverTopButton: {
-    borderRadius: 20,
-    overflow: "hidden",
-    shadowColor: "#FF6B6B",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  driverTopButtonGradient: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderRadius: 20,
-    alignItems: "center",
-  },
-  driverTopButtonText: {
-    color: colors.white,
-    fontSize: 16,
-    fontWeight: "700",
-  },
-  titleContainer: {
-    alignItems: "center",
-    marginBottom: 40,
-  },
-  phoneTitle: {
-    fontSize: 28,
-    fontWeight: "800",
-    color: colors.gray900,
-    textAlign: "center",
-    marginBottom: 12,
-    letterSpacing: -0.5,
-  },
-  phoneSubtitle: {
-    fontSize: 14,
-    color: colors.gray600,
-    textAlign: "center",
-    lineHeight: 20,
-    maxWidth: 300,
-  },
-  phoneInputContainer: {
-    alignItems: "center",
-    marginBottom: 40,
-  },
-  phoneInputWrapper: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: colors.white,
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    height: 60,
-    width: "100%",
-    maxWidth: 350,
-    borderWidth: 1,
-    borderColor: colors.gray200,
-  },
-  countryCodeContainer: {
-    marginRight: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: colors.gray50,
-    borderRadius: 8,
-  },
-  countryCodeText: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: colors.gray800,
-  },
-  phoneInput: {
-    flex: 1,
-    fontSize: 18,
-    color: colors.gray900,
-    height: "100%",
-    padding: 0,
-    margin: 0,
-  },
-  phoneHint: {
-    fontSize: 14,
-    color: colors.gray500,
-    marginTop: 12,
-    textAlign: "center",
-  },
-  nextButtonContainer: {
-    alignItems: "center",
-    marginTop: 40,
-  },
-  nextButtonArrow: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    overflow: "hidden",
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    elevation: 8,
-  },
-  nextButtonDisabled: {
-    opacity: 0.5,
-  },
-  nextButtonArrowGradient: {
-    width: "100%",
-    height: "100%",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  nextButtonArrowText: {
-    fontSize: 32,
-    color: colors.white,
-    fontWeight: "300",
-  },
-  nextButtonLabel: {
-    fontSize: 16,
-    color: colors.gray600,
-    marginTop: 16,
-    fontWeight: "500",
-  },
-  buttonDisabled: {
-    opacity: 0.7,
-  },
-  signInButton: {
-    width: "100%",
-    maxWidth: 350,
-    borderRadius: 16,
-    overflow: "hidden",
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    elevation: 8,
-  },
-  signInButtonGradient: {
-    paddingVertical: 18,
-    alignItems: "center",
-  },
-  signInButtonText: {
-    color: colors.white,
-    fontSize: 16,
-    fontWeight: "700",
-  },
-  dividerContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    width: "100%",
-    maxWidth: 350,
-    alignSelf: "center",
-    marginVertical: 24,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: colors.gray300,
-  },
-  dividerText: {
-    marginHorizontal: 12,
-    fontSize: 13,
-    fontWeight: "600",
-    color: colors.gray500,
-  },
-  createAccountButton: {
-    width: "100%",
-    maxWidth: 350,
-    alignSelf: "center",
-    borderRadius: 16,
-    borderWidth: 2,
-    borderColor: colors.primary,
-    paddingVertical: 16,
-    alignItems: "center",
-    marginBottom: 20,
-  },
-  createAccountButtonText: {
-    color: colors.primary,
-    fontSize: 16,
-    fontWeight: "700",
-  },
-  driverLinkText: {
-    textAlign: "center",
-    fontSize: 14,
-    color: colors.gray600,
-    fontWeight: "500",
-  },
-});
+const getStyles = (colors: any) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    screen: {
+      width: screenWidth,
+      height: screenHeight,
+      flex: 1,
+    },
+    screen1: {
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    screen2: {
+      flex: 1,
+    },
+    screenContent: {
+      flex: 1,
+      width: "100%",
+      justifyContent: "center",
+      alignItems: "center",
+      paddingHorizontal: 24,
+    },
+    screen2Content: {
+      flex: 1,
+      paddingHorizontal: 24,
+      paddingTop: 80,
+      paddingBottom: 40,
+    },
+    logoContainer: {
+      alignItems: "center",
+      marginBottom: -10,
+    },
+    logoImage: {
+      width: 350,
+      height: 350,
+    },
+    pulseCircle: {
+      position: "absolute",
+      width: 280,
+      height: 280,
+      borderRadius: 140,
+      borderWidth: 2,
+      borderColor: "rgba(255, 255, 255, 0.3)",
+    },
+    textContainer: {
+      alignItems: "center",
+      marginBottom: 60,
+    },
+    buttonContainer: {
+      width: "100%",
+      alignItems: "center",
+      position: "absolute",
+      bottom: 60,
+    },
+    nextButton: {
+      marginBottom: 16,
+    },
+    backButton: {
+      position: "absolute",
+      top: 60,
+      left: 24,
+      zIndex: 10,
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: "rgba(255, 255, 255, 0.9)",
+      justifyContent: "center",
+      alignItems: "center",
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 3,
+    },
+    backButtonText: {
+      fontSize: 24,
+      color: colors.gray800,
+    },
+    driverTopButtonContainer: {
+      alignSelf: "center",
+      marginTop: 20,
+      marginBottom: 40,
+      width: "100%",
+      maxWidth: 350,
+    },
+    driverTopButton: {
+      borderRadius: 20,
+      overflow: "hidden",
+      shadowColor: "#FF6B6B",
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 6,
+    },
+    driverTopButtonGradient: {
+      paddingHorizontal: 20,
+      paddingVertical: 16,
+      borderRadius: 20,
+      alignItems: "center",
+    },
+    driverTopButtonText: {
+      color: colors.white,
+      fontSize: 16,
+      fontWeight: "700",
+    },
+    titleContainer: {
+      alignItems: "center",
+      marginBottom: 40,
+    },
+    phoneTitle: {
+      fontSize: 28,
+      fontWeight: "800",
+      color: colors.gray900,
+      textAlign: "center",
+      marginBottom: 12,
+      letterSpacing: -0.5,
+    },
+    phoneSubtitle: {
+      fontSize: 14,
+      color: colors.gray600,
+      textAlign: "center",
+      lineHeight: 20,
+      maxWidth: 300,
+    },
+    phoneInputContainer: {
+      alignItems: "center",
+      marginBottom: 40,
+    },
+    phoneInputWrapper: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: colors.white,
+      borderRadius: 16,
+      paddingHorizontal: 16,
+      height: 60,
+      width: "100%",
+      maxWidth: 350,
+      borderWidth: 1,
+      borderColor: colors.gray200,
+    },
+    countryCodeContainer: {
+      marginRight: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      backgroundColor: colors.gray50,
+      borderRadius: 8,
+    },
+    countryCodeText: {
+      fontSize: 18,
+      fontWeight: "600",
+      color: colors.gray800,
+    },
+    phoneInput: {
+      flex: 1,
+      fontSize: 18,
+      color: colors.gray900,
+      height: "100%",
+      padding: 0,
+      margin: 0,
+    },
+    phoneHint: {
+      fontSize: 14,
+      color: colors.gray500,
+      marginTop: 12,
+      textAlign: "center",
+    },
+    nextButtonContainer: {
+      alignItems: "center",
+      marginTop: 40,
+    },
+    nextButtonArrow: {
+      width: 70,
+      height: 70,
+      borderRadius: 35,
+      overflow: "hidden",
+      shadowColor: colors.primary,
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.3,
+      shadowRadius: 16,
+      elevation: 8,
+    },
+    nextButtonDisabled: {
+      opacity: 0.5,
+    },
+    nextButtonArrowGradient: {
+      width: "100%",
+      height: "100%",
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    nextButtonArrowText: {
+      fontSize: 32,
+      color: colors.white,
+      fontWeight: "300",
+    },
+    nextButtonLabel: {
+      fontSize: 16,
+      color: colors.gray600,
+      marginTop: 16,
+      fontWeight: "500",
+    },
+    buttonDisabled: {
+      opacity: 0.7,
+    },
+    signInButton: {
+      width: "100%",
+      maxWidth: 350,
+      borderRadius: 16,
+      overflow: "hidden",
+      shadowColor: colors.primary,
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.3,
+      shadowRadius: 16,
+      elevation: 8,
+    },
+    signInButtonGradient: {
+      paddingVertical: 18,
+      alignItems: "center",
+    },
+    signInButtonText: {
+      color: colors.white,
+      fontSize: 16,
+      fontWeight: "700",
+    },
+    dividerContainer: {
+      flexDirection: "row",
+      alignItems: "center",
+      width: "100%",
+      maxWidth: 350,
+      alignSelf: "center",
+      marginVertical: 24,
+    },
+    dividerLine: {
+      flex: 1,
+      height: 1,
+      backgroundColor: colors.gray300,
+    },
+    dividerText: {
+      marginHorizontal: 12,
+      fontSize: 13,
+      fontWeight: "600",
+      color: colors.gray500,
+    },
+    createAccountButton: {
+      width: "100%",
+      maxWidth: 350,
+      alignSelf: "center",
+      borderRadius: 16,
+      borderWidth: 2,
+      borderColor: colors.primary,
+      paddingVertical: 16,
+      alignItems: "center",
+      marginBottom: 20,
+    },
+    createAccountButtonText: {
+      color: colors.primary,
+      fontSize: 16,
+      fontWeight: "700",
+    },
+    driverLinkText: {
+      textAlign: "center",
+      fontSize: 14,
+      color: colors.gray600,
+      fontWeight: "500",
+    },
+  });
 
 export default WelcomeScreen;

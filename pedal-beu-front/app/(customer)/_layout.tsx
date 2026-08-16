@@ -1,8 +1,10 @@
 import { Tabs } from "expo-router";
+import { View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../../src/context/ThemeContext";
 import { useLanguage } from "../../src/context/LanguageContext";
+import GlobalThemeToggle from "../../src/components/ui/GlobalThemeToggle";
 
 export default function CustomerLayout() {
   // Some Android phones reserve a system nav bar (3-button or gesture pill)
@@ -16,7 +18,8 @@ export default function CustomerLayout() {
   const { t } = useLanguage();
 
   return (
-    <Tabs
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <Tabs
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: colors.primary,
@@ -99,6 +102,8 @@ export default function CustomerLayout() {
           headerShown: false,
         }}
       />
-    </Tabs>
+      </Tabs>
+      <GlobalThemeToggle />
+    </View>
   );
 }

@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "pedal-beu-front",
+    "name": "Pedal Delivery",
     "slug": "pedal-beu-front",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -9,9 +9,23 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.pedaldelivery.app",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Pedal Delivery uses your location to show nearby restaurants, track deliveries, and help drivers navigate to pickup and drop-off points.",
+        "NSCameraUsageDescription": "Pedal Delivery needs camera access so you can take photos for your profile, documents, or delivery proof.",
+        "NSPhotoLibraryUsageDescription": "Pedal Delivery needs photo library access so you can upload photos for your profile or documents."
+      }
     },
     "android": {
+      "package": "com.pedaldelivery.app",
+      "versionCode": 1,
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "CAMERA"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#FDF6E6",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -39,7 +53,20 @@
           }
         }
       ],
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Pedal Delivery uses your location to show nearby restaurants, track deliveries, and help drivers navigate."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Pedal Delivery needs photo library access so you can upload photos for your profile or documents.",
+          "cameraPermission": "Pedal Delivery needs camera access so you can take photos for your profile or documents."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

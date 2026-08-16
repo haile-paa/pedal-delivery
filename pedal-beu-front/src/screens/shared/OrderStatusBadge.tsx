@@ -6,7 +6,7 @@ import Animated, {
   withSequence,
   withTiming,
 } from "react-native-reanimated";
-import { colors } from "../../theme/colors";
+import { useTheme } from "../../context/ThemeContext";
 import { OrderStatus } from "../../types";
 
 interface OrderStatusBadgeProps {
@@ -18,6 +18,8 @@ const OrderStatusBadge: React.FC<OrderStatusBadgeProps> = ({
   status,
   animated = true,
 }) => {
+  const { colors, isDark } = useTheme();
+  const styles = getStyles(colors);
   const scaleAnim = useSharedValue(1);
   const rotationAnim = useSharedValue(0);
 
@@ -114,7 +116,8 @@ const OrderStatusBadge: React.FC<OrderStatusBadgeProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) =>
+  StyleSheet.create({
   container: {
     flexDirection: "row",
     alignItems: "center",

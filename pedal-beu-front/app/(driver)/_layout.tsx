@@ -1,19 +1,24 @@
 import { Tabs } from "expo-router";
+import { View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../../src/context/ThemeContext";
-import { useLanguage } from "../../src/context/LanguageContext";
+import GlobalThemeToggle from "../../src/components/ui/GlobalThemeToggle";
 
+// Driver-facing screens are English-only for now — the Amharic dictionary
+// was written for the customer app, so tab labels here are hardcoded
+// rather than run through useLanguage/t() to avoid showing translations
+// that haven't actually been built out for the driver flow.
 export default function DriverLayout() {
   // See app/(customer)/_layout.tsx — same reasoning: pad by the bottom
   // safe-area inset so the tab bar clears a phone's on-screen system nav
   // bar where one is reserved, and stays unchanged where it isn't.
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
-  const { t } = useLanguage();
 
   return (
-    <Tabs
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <Tabs
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: colors.primary,
@@ -35,7 +40,7 @@ export default function DriverLayout() {
       <Tabs.Screen
         name='dashboard'
         options={{
-          title: t("dashboard"),
+          title: "Dashboard",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name='speedometer-outline' size={size} color={color} />
           ),
@@ -44,7 +49,7 @@ export default function DriverLayout() {
       <Tabs.Screen
         name='available-orders'
         options={{
-          title: t("orders"),
+          title: "Orders",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name='list-outline' size={size} color={color} />
           ),
@@ -53,7 +58,7 @@ export default function DriverLayout() {
       <Tabs.Screen
         name='earnings'
         options={{
-          title: t("earnings"),
+          title: "Earnings",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name='cash-outline' size={size} color={color} />
           ),
@@ -62,7 +67,7 @@ export default function DriverLayout() {
       <Tabs.Screen
         name='profile'
         options={{
-          title: t("profile"),
+          title: "Profile",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name='person-outline' size={size} color={color} />
           ),
@@ -103,6 +108,8 @@ export default function DriverLayout() {
           headerShown: false,
         }}
       />
-    </Tabs>
+      </Tabs>
+      <GlobalThemeToggle showLanguageToggle={false} />
+    </View>
   );
 }

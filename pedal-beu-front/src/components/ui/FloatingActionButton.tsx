@@ -7,7 +7,7 @@ import Animated, {
   withSequence,
 } from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
-import { colors } from "../../theme/colors";
+import { useTheme } from "../../context/ThemeContext";
 
 interface FloatingActionButtonProps {
   onPress: () => void;
@@ -25,6 +25,8 @@ const FloatingActionButton: React.FC<FloatingActionButtonProps> = ({
   style,
   size = 56,
 }) => {
+  const { colors, isDark } = useTheme();
+  const styles = getStyles(colors, isDark);
   const scale = useSharedValue(1);
   const rotation = useSharedValue(0);
 
@@ -76,30 +78,31 @@ const FloatingActionButton: React.FC<FloatingActionButtonProps> = ({
           animatedStyle,
         ]}
       >
-        <Ionicons name={icon as any} size={size * 0.5} color={colors.white} />
+        <Ionicons name={icon as any} size={size * 0.5} color="#FFFFFF" />
       </Animated.View>
     </TouchableOpacity>
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    position: "absolute",
-    zIndex: 1000,
-  },
-  button: {
-    backgroundColor: colors.primary,
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: colors.black,
-    shadowOffset: {
-      width: 0,
-      height: 4,
+const getStyles = (colors: any, isDark: boolean) =>
+  StyleSheet.create({
+    container: {
+      position: "absolute",
+      zIndex: 1000,
     },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-});
+    button: {
+      backgroundColor: colors.primary,
+      justifyContent: "center",
+      alignItems: "center",
+      shadowColor: isDark ? colors.primaryGlow : colors.shadow,
+      shadowOffset: {
+        width: 0,
+        height: 4,
+      },
+      shadowOpacity: isDark ? 0.5 : 0.3,
+      shadowRadius: isDark ? 12 : 8,
+      elevation: 8,
+    },
+  });
 
 export default FloatingActionButton;

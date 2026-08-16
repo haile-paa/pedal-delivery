@@ -15,7 +15,7 @@ import {
   type AppStateStatus,
 } from "react-native";
 import * as Location from "expo-location";
-import { colors } from "../../theme/colors";
+import { useTheme } from "../../context/ThemeContext";
 import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import WebSocketService from "../../services/websocket.service";
@@ -199,6 +199,8 @@ const CURRENT_ORDER_STATUS_LABELS: Record<string, string> = {
 };
 
 const AvailableOrdersScreen: React.FC = () => {
+  const { colors, isDark } = useTheme();
+  const styles = getStyles(colors);
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const [availableOrders, setAvailableOrders] = useState<Order[]>([]);
@@ -980,7 +982,7 @@ const AvailableOrdersScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle='dark-content' backgroundColor={colors.background} />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
 
       {/* Header */}
       <View style={styles.header}>
@@ -1247,7 +1249,8 @@ const AvailableOrdersScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) =>
+  StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -1312,7 +1315,7 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 16,
     backgroundColor: colors.primary,
-    shadowColor: colors.black,
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,
     shadowRadius: 10,
@@ -1410,7 +1413,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     borderRadius: 16,
     padding: 16,
-    shadowColor: colors.black,
+    shadowColor: colors.shadow,
     shadowOffset: {
       width: 0,
       height: 2,
@@ -1634,7 +1637,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderTopWidth: 1,
     borderTopColor: colors.gray200,
-    shadowColor: colors.black,
+    shadowColor: colors.shadow,
     shadowOffset: {
       width: 0,
       height: -2,

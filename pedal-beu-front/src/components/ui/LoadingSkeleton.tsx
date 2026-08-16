@@ -7,7 +7,7 @@ import Animated, {
   withTiming,
   withSequence,
 } from "react-native-reanimated";
-import { colors } from "../../theme/colors";
+import { useTheme } from "../../context/ThemeContext";
 
 const { width: screenWidth } = Dimensions.get("window");
 
@@ -20,11 +20,14 @@ const LoadingSkeleton: React.FC<LoadingSkeletonProps> = ({
   type = "restaurant",
   count = 1,
 }) => {
+  const { colors, isDark } = useTheme();
+  const styles = getStyles(colors, isDark);
+
   if (type === "restaurant") {
     return (
       <View style={styles.container}>
         {Array.from({ length: count }).map((_, index) => (
-          <RestaurantSkeleton key={index} />
+          <RestaurantSkeleton key={index} styles={styles} />
         ))}
       </View>
     );
@@ -33,7 +36,9 @@ const LoadingSkeleton: React.FC<LoadingSkeletonProps> = ({
   return null;
 };
 
-const RestaurantSkeleton: React.FC = () => {
+const RestaurantSkeleton: React.FC<{ styles: ReturnType<typeof getStyles> }> = ({
+  styles,
+}) => {
   const opacity = useSharedValue(0.3);
 
   const animatedStyle = useAnimatedStyle(() => {
@@ -45,11 +50,11 @@ const RestaurantSkeleton: React.FC = () => {
   React.useEffect(() => {
     opacity.value = withRepeat(
       withSequence(
-        withTiming(0.7, { duration: 800 }),
-        withTiming(0.3, { duration: 800 })
+        withTiming(0.8, { duration: 800 }),
+        withTiming(0.3, { duration: 800 }),
       ),
       -1,
-      true
+      true,
     );
   }, []);
 
@@ -68,48 +73,51 @@ const RestaurantSkeleton: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    paddingHorizontal: 16,
-  },
-  restaurantContainer: {
-    backgroundColor: colors.gray200,
-    borderRadius: 16,
-    marginVertical: 8,
-    overflow: "hidden",
-  },
-  imageSkeleton: {
-    width: "100%",
-    height: 160,
-    backgroundColor: colors.gray300,
-  },
-  content: {
-    padding: 16,
-  },
-  titleSkeleton: {
-    height: 20,
-    backgroundColor: colors.gray300,
-    borderRadius: 4,
-    marginBottom: 8,
-    width: "70%",
-  },
-  subtitleSkeleton: {
-    height: 16,
-    backgroundColor: colors.gray300,
-    borderRadius: 4,
-    marginBottom: 12,
-    width: "50%",
-  },
-  tagsContainer: {
-    flexDirection: "row",
-  },
-  tagSkeleton: {
-    height: 20,
-    width: 60,
-    backgroundColor: colors.gray300,
-    borderRadius: 10,
-    marginRight: 8,
-  },
-});
+const getStyles = (colors: any, isDark: boolean) =>
+  StyleSheet.create({
+    container: {
+      paddingHorizontal: 16,
+    },
+    restaurantContainer: {
+      backgroundColor: colors.card,
+      borderRadius: 16,
+      marginVertical: 8,
+      overflow: "hidden",
+      borderWidth: isDark ? 1 : 0,
+      borderColor: "rgba(255,255,255,0.06)",
+    },
+    imageSkeleton: {
+      width: "100%",
+      height: 160,
+      backgroundColor: isDark ? colors.gray200 : colors.gray300,
+    },
+    content: {
+      padding: 16,
+    },
+    titleSkeleton: {
+      height: 20,
+      backgroundColor: isDark ? colors.gray200 : colors.gray300,
+      borderRadius: 4,
+      marginBottom: 8,
+      width: "70%",
+    },
+    subtitleSkeleton: {
+      height: 16,
+      backgroundColor: isDark ? colors.gray200 : colors.gray300,
+      borderRadius: 4,
+      marginBottom: 12,
+      width: "50%",
+    },
+    tagsContainer: {
+      flexDirection: "row",
+    },
+    tagSkeleton: {
+      height: 20,
+      width: 60,
+      backgroundColor: isDark ? colors.gray200 : colors.gray300,
+      borderRadius: 10,
+      marginRight: 8,
+    },
+  });
 
 export default LoadingSkeleton;

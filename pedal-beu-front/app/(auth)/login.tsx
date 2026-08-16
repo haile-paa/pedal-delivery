@@ -18,7 +18,8 @@ import {
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { colors } from "../../src/theme/colors";
+import { useTheme } from "../../src/context/ThemeContext";
+import { useLanguage } from "../../src/context/LanguageContext";
 import { authAPI } from "../../lib/api";
 import { LinearGradient } from "expo-linear-gradient";
 import { useAppState } from "../../src/context/AppStateContext";
@@ -27,6 +28,9 @@ import { API_BASE_URL } from "../../src/utils/constants";
 const LoginScreen: React.FC = () => {
   const router = useRouter();
   const params = useLocalSearchParams();
+  const { colors, isDark } = useTheme();
+  const { t } = useLanguage();
+  const styles = getStyles(colors, isDark);
 
   // Extract and validate params
   const phoneParam = params.phone;
@@ -49,7 +53,7 @@ const LoginScreen: React.FC = () => {
 
   const handleLogin = async () => {
     if (!password) {
-      Alert.alert("Error", "Please enter your password");
+      Alert.alert(t("errorTitle"), t("enterPasswordPrompt"));
       return;
     }
 
@@ -73,7 +77,7 @@ const LoginScreen: React.FC = () => {
         const accessToken = tokens.accessToken || tokens.access_token;
 
         if (!accessToken) {
-          Alert.alert("Error", "Login succeeded but no token was returned.");
+          Alert.alert(t("errorTitle"), t("loginNoTokenError"));
           return;
         }
 
@@ -98,11 +102,11 @@ const LoginScreen: React.FC = () => {
           router.push("/(customer)/home" as any);
         }
       } else {
-        Alert.alert("Error", response.error || "Login failed");
+        Alert.alert(t("errorTitle"), response.error || t("loginFailed"));
       }
     } catch (error: any) {
       console.error("Login error:", error);
-      Alert.alert("Error", error.message || "Login failed. Please try again.");
+      Alert.alert(t("errorTitle"), error.message || t("loginFailedRetry"));
     } finally {
       setLoading(false);
     }
@@ -110,12 +114,12 @@ const LoginScreen: React.FC = () => {
 
   const handleForgotPassword = () => {
     Alert.prompt(
-      "Forgot Password",
-      "Enter your email address to reset your password:",
+      t("forgotPasswordTitle"),
+      t("forgotPasswordPrompt"),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: t("cancel"), style: "cancel" },
         {
-          text: "Send OTP",
+          text: t("sendOtp"),
           onPress: (value?: string) => {
             if (value) {
               (async () => {
@@ -130,18 +134,15 @@ const LoginScreen: React.FC = () => {
                   );
                   const data = await res.json();
                   if (res.ok) {
-                    Alert.alert(
-                      "Success",
-                      "A reset code was sent to your email.",
-                    );
+                    Alert.alert(t("successTitle"), t("resetCodeSent"));
                   } else {
                     Alert.alert(
-                      "Error",
-                      data.error || "Failed to send reset code",
+                      t("errorTitle"),
+                      data.error || t("resetCodeFailed"),
                     );
                   }
                 } catch (error: any) {
-                  Alert.alert("Error", "Server error. Please try again.");
+                  Alert.alert(t("errorTitle"), t("serverErrorRetry"));
                 }
               })();
             }
@@ -160,24 +161,25 @@ const LoginScreen: React.FC = () => {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
       <LinearGradient colors={["#667eea", "#764ba2"]} style={styles.header}>
-        <Text style={styles.headerTitle}>Welcome Back</Text>
+        <Text style={styles.headerTitle}>{t("welcomeBack")}</Text>
         <Text style={styles.headerSubtitle}>
-          Login as {role === "driver" ? "driver" : "customer"}
+          {t("loginAs")} {role === "driver" ? t("driverLabel") : t("customerLabel")}
         </Text>
       </LinearGradient>
 
       <View style={styles.formContainer}>
         <View style={styles.phoneDisplay}>
-          <Text style={styles.phoneLabel}>Phone Number</Text>
+          <Text style={styles.phoneLabel}>{t("phoneNumber")}</Text>
           <Text style={styles.phoneValue}>+251 {phone}</Text>
         </View>
 
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Password</Text>
+          <Text style={styles.label}>{t("passwordLabel")}</Text>
           <View style={styles.passwordWrapper}>
             <TextInput
               style={styles.passwordInput}
-              placeholder='Enter your password'
+              placeholder={t("enterPasswordPlaceholder")}
+              placeholderTextColor={colors.gray400}
               value={password}
               onChangeText={setPassword}
               secureTextEntry={!showPassword}
@@ -201,7 +203,7 @@ const LoginScreen: React.FC = () => {
           onPress={handleForgotPassword}
           disabled={loading}
         >
-          <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+          <Text style={styles.forgotPasswordText}>{t("forgotPasswordLink")}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -216,9 +218,9 @@ const LoginScreen: React.FC = () => {
             style={styles.loginButtonGradient}
           >
             {loading ? (
-              <ActivityIndicator color={colors.white} size='small' />
+              <ActivityIndicator color="#FFFFFF" size='small' />
             ) : (
-              <Text style={styles.loginButtonText}>Login</Text>
+              <Text style={styles.loginButtonText}>{t("loginButton")}</Text>
             )}
           </LinearGradient>
         </TouchableOpacity>
@@ -228,7 +230,7 @@ const LoginScreen: React.FC = () => {
           onPress={() => router.back()}
           disabled={loading}
         >
-          <Text style={styles.backButtonText}>← Back</Text>
+          <Text style={styles.backButtonText}>← {t("back")}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -242,8 +244,8 @@ const LoginScreen: React.FC = () => {
           disabled={loading}
         >
           <Text style={styles.registerText}>
-            Don't have an account?{" "}
-            <Text style={styles.registerLinkText}>Register</Text>
+            {t("noAccountPrompt")}{" "}
+            <Text style={styles.registerLinkText}>{t("registerLink")}</Text>
           </Text>
         </TouchableOpacity>
       </View>
@@ -251,139 +253,145 @@ const LoginScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  header: {
-    paddingTop: 60,
-    paddingBottom: 40,
-    paddingHorizontal: 24,
-    borderBottomLeftRadius: 30,
-    borderBottomRightRadius: 30,
-  },
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: "bold",
-    color: colors.white,
-    marginBottom: 8,
-  },
-  headerSubtitle: {
-    fontSize: 16,
-    color: "rgba(255, 255, 255, 0.8)",
-  },
-  formContainer: {
-    padding: 24,
-    marginTop: 20,
-  },
-  phoneDisplay: {
-    backgroundColor: colors.white,
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 24,
-    shadowColor: colors.black,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  phoneLabel: {
-    fontSize: 14,
-    color: colors.gray600,
-    marginBottom: 4,
-  },
-  phoneValue: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: colors.gray900,
-  },
-  inputGroup: {
-    marginBottom: 20,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: colors.gray700,
-    marginBottom: 8,
-  },
-  input: {
-    backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: colors.gray300,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
-    color: colors.gray900,
-  },
-  passwordWrapper: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: colors.gray300,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-  },
-  passwordInput: {
-    flex: 1,
-    paddingVertical: 14,
-    fontSize: 16,
-    color: colors.gray900,
-  },
-  forgotPassword: {
-    alignSelf: "flex-end",
-    marginBottom: 24,
-  },
-  forgotPasswordText: {
-    color: colors.primary,
-    fontSize: 14,
-    fontWeight: "500",
-  },
-  loginButton: {
-    marginBottom: 20,
-    borderRadius: 12,
-    overflow: "hidden",
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  loginButtonGradient: {
-    paddingVertical: 16,
-    alignItems: "center",
-  },
-  loginButtonText: {
-    color: colors.white,
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  backButton: {
-    alignItems: "center",
-    padding: 12,
-    marginBottom: 20,
-  },
-  backButtonText: {
-    color: colors.primary,
-    fontSize: 16,
-    fontWeight: "500",
-  },
-  registerLink: {
-    alignItems: "center",
-  },
-  registerText: {
-    color: colors.gray600,
-    fontSize: 14,
-  },
-  registerLinkText: {
-    color: colors.primary,
-    fontWeight: "600",
-  },
-});
+const getStyles = (colors: any, isDark: boolean) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    header: {
+      paddingTop: 60,
+      paddingBottom: 40,
+      paddingHorizontal: 24,
+      borderBottomLeftRadius: 30,
+      borderBottomRightRadius: 30,
+    },
+    headerTitle: {
+      fontSize: 28,
+      fontWeight: "bold",
+      // Sits on a fixed purple gradient in both themes, so this stays a
+      // literal white rather than following colors.white (which inverts
+      // to a dark shade in dark mode).
+      color: "#FFFFFF",
+      marginBottom: 8,
+    },
+    headerSubtitle: {
+      fontSize: 16,
+      color: "rgba(255, 255, 255, 0.8)",
+    },
+    formContainer: {
+      padding: 24,
+      marginTop: 20,
+    },
+    phoneDisplay: {
+      backgroundColor: colors.card,
+      padding: 16,
+      borderRadius: 12,
+      marginBottom: 24,
+      borderWidth: isDark ? 1 : 0,
+      borderColor: "rgba(255,255,255,0.08)",
+      shadowColor: isDark ? colors.primaryGlow : colors.shadow,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: isDark ? 0.2 : 0.1,
+      shadowRadius: isDark ? 10 : 8,
+      elevation: 3,
+    },
+    phoneLabel: {
+      fontSize: 14,
+      color: colors.gray600,
+      marginBottom: 4,
+    },
+    phoneValue: {
+      fontSize: 18,
+      fontWeight: "600",
+      color: colors.gray900,
+    },
+    inputGroup: {
+      marginBottom: 20,
+    },
+    label: {
+      fontSize: 14,
+      fontWeight: "600",
+      color: colors.gray700,
+      marginBottom: 8,
+    },
+    input: {
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.gray300,
+      borderRadius: 12,
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+      fontSize: 16,
+      color: colors.gray900,
+    },
+    passwordWrapper: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.gray300,
+      borderRadius: 12,
+      paddingHorizontal: 16,
+    },
+    passwordInput: {
+      flex: 1,
+      paddingVertical: 14,
+      fontSize: 16,
+      color: colors.gray900,
+    },
+    forgotPassword: {
+      alignSelf: "flex-end",
+      marginBottom: 24,
+    },
+    forgotPasswordText: {
+      color: colors.primary,
+      fontSize: 14,
+      fontWeight: "500",
+    },
+    loginButton: {
+      marginBottom: 20,
+      borderRadius: 12,
+      overflow: "hidden",
+      shadowColor: colors.primary,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: isDark ? 0.45 : 0.3,
+      shadowRadius: 8,
+      elevation: 5,
+    },
+    loginButtonGradient: {
+      paddingVertical: 16,
+      alignItems: "center",
+    },
+    loginButtonText: {
+      color: "#FFFFFF",
+      fontSize: 16,
+      fontWeight: "600",
+    },
+    buttonDisabled: {
+      opacity: 0.6,
+    },
+    backButton: {
+      alignItems: "center",
+      padding: 12,
+      marginBottom: 20,
+    },
+    backButtonText: {
+      color: colors.primary,
+      fontSize: 16,
+      fontWeight: "500",
+    },
+    registerLink: {
+      alignItems: "center",
+    },
+    registerText: {
+      color: colors.gray600,
+      fontSize: 14,
+    },
+    registerLinkText: {
+      color: colors.primary,
+      fontWeight: "600",
+    },
+  });
 
 export default LoginScreen;

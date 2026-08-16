@@ -11,8 +11,10 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { colors } from "../../theme/colors";
+import { useTheme } from "../../context/ThemeContext";
+import { useLanguage } from "../../context/LanguageContext";
 import { useAppState } from "../../context/AppStateContext";
 import { favoritesAPI } from "../../../lib/api";
 import { Restaurant } from "../../types";
@@ -20,6 +22,14 @@ import RestaurantCard from "../../components/customer/RestaurantCard";
 
 const FavoritesScreen: React.FC = () => {
   const router = useRouter();
+  const { colors, isDark } = useTheme();
+  const { t } = useLanguage();
+  // The header previously used a fixed paddingVertical with no regard for
+  // the status bar / notch height, so on phones with a taller safe area
+  // the top of "Favorite Restaurants" and the back button rendered partly
+  // under the status bar. Padding by insets.top fixes it across devices.
+  const insets = useSafeAreaInsets();
+  const styles = getStyles(colors, insets.top);
   const { dispatch } = useAppState();
   const [favorites, setFavorites] = useState<Restaurant[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,13 +65,16 @@ const FavoritesScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle='dark-content' backgroundColor={colors.white} />
+      <StatusBar
+        barStyle={isDark ? "light-content" : "dark-content"}
+        backgroundColor={colors.white}
+      />
 
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name='arrow-back' size={24} color={colors.gray900} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Favorite Restaurants</Text>
+        <Text style={styles.headerTitle}>{t("favoriteRestaurants")}</Text>
         <View style={styles.headerRight} />
       </View>
 
@@ -72,10 +85,8 @@ const FavoritesScreen: React.FC = () => {
       ) : favorites.length === 0 ? (
         <View style={styles.centerContainer}>
           <Ionicons name='heart-outline' size={64} color={colors.gray300} />
-          <Text style={styles.emptyTitle}>No favorites yet</Text>
-          <Text style={styles.emptySubtitle}>
-            Tap the heart on any restaurant to save it here.
-          </Text>
+          <Text style={styles.emptyTitle}>{t("noFavoritesYet")}</Text>
+          <Text style={styles.emptySubtitle}>{t("noFavoritesDesc")}</Text>
         </View>
       ) : (
         <FlatList
@@ -99,7 +110,7 @@ const FavoritesScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any, insetTop: number) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -109,7 +120,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingTop: insetTop + 14,
+    paddingBottom: 14,
     borderBottomWidth: 1,
     borderBottomColor: colors.gray200,
     backgroundColor: colors.white,

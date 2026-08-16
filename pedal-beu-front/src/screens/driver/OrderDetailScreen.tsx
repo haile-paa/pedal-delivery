@@ -10,7 +10,7 @@ import {
   ActivityIndicator,
   Linking,
 } from "react-native";
-import { colors } from "../../theme/colors";
+import { useTheme } from "../../context/ThemeContext";
 import ProgressStepper from "../../components/ui/ProgressStepper";
 import AnimatedButton from "../../components/ui/AnimatedButton";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -52,6 +52,8 @@ interface OrderDetails {
 }
 
 const OrderDetailScreen: React.FC = () => {
+  const { colors, isDark } = useTheme();
+  const styles = getStyles(colors);
   const router = useRouter();
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
   const [order, setOrder] = useState<OrderDetails | null>(null);
@@ -245,7 +247,7 @@ const OrderDetailScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle='dark-content' backgroundColor={colors.background} />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
@@ -394,7 +396,8 @@ const OrderDetailScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) =>
+  StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   scrollView: { flex: 1, paddingHorizontal: 20 },
   scrollContent: { paddingBottom: 180 },
@@ -425,7 +428,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     borderRadius: 16,
     padding: 20,
-    shadowColor: colors.black,
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
@@ -443,7 +446,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     borderRadius: 16,
     padding: 20,
-    shadowColor: colors.black,
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
@@ -485,7 +488,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderTopWidth: 1,
     borderTopColor: colors.gray200,
-    shadowColor: colors.black,
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.1,
     shadowRadius: 8,

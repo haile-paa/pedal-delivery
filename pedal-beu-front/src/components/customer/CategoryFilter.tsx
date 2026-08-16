@@ -11,7 +11,9 @@ import Animated, {
   useAnimatedStyle,
   withSpring,
 } from "react-native-reanimated";
-import { colors } from "../../theme/colors";
+import { LinearGradient } from "expo-linear-gradient";
+import { useTheme } from "../../context/ThemeContext";
+import { useLanguage } from "../../context/LanguageContext";
 
 interface CategoryFilterProps {
   categories: string[];
@@ -24,6 +26,9 @@ const CategoryFilter: React.FC<CategoryFilterProps> = ({
   selectedCategory,
   onCategorySelect,
 }) => {
+  const { colors, isDark } = useTheme();
+  const styles = getStyles(colors, isDark);
+
   return (
     <ScrollView
       horizontal
@@ -37,6 +42,9 @@ const CategoryFilter: React.FC<CategoryFilterProps> = ({
           isSelected={category === selectedCategory}
           onPress={() => onCategorySelect(category)}
           index={index}
+          colors={colors}
+          isDark={isDark}
+          styles={styles}
         />
       ))}
     </ScrollView>
@@ -48,10 +56,13 @@ interface CategoryItemProps {
   isSelected: boolean;
   onPress: () => void;
   index: number;
+  colors: any;
+  isDark: boolean;
+  styles: ReturnType<typeof getStyles>;
 }
 
 const CategoryItem: React.FC<CategoryItemProps> = React.memo(
-  ({ category, isSelected, onPress, index }) => {
+  ({ category, isSelected, onPress, colors, isDark, styles }) => {
     const scale = useSharedValue(1);
 
     const animatedStyle = useAnimatedStyle(() => {
@@ -67,59 +78,77 @@ const CategoryItem: React.FC<CategoryItemProps> = React.memo(
       onPress();
     };
 
+    // "All" is an internal sentinel value used for comparisons/filtering
+    // throughout HomeScreen — only its displayed label gets translated here.
+    // Every other category is a real cuisine name from the restaurant data
+    // (e.g. "Mexican", "Pizza") and is intentionally left as-is.
+    const { t } = useLanguage();
+    const label = category === "All" ? t("allCategory") : category;
+
     return (
-      <TouchableOpacity onPress={handlePress}>
-        <Animated.View
-          style={[
-            styles.item,
-            isSelected ? styles.itemSelected : styles.itemNormal,
-            animatedStyle,
-          ]}
-        >
-          <Text
-            style={[
-              styles.text,
-              isSelected ? styles.textSelected : styles.textNormal,
-            ]}
-          >
-            {category}
-          </Text>
+      <TouchableOpacity onPress={handlePress} activeOpacity={0.85}>
+        <Animated.View style={[styles.itemWrap, animatedStyle]}>
+          {isSelected ? (
+            <LinearGradient
+              colors={
+                isDark
+                  ? [colors.secondary, colors.primary]
+                  : [colors.primary, colors.primaryGlow]
+              }
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={[styles.item, styles.itemSelected]}
+            >
+              <Text style={[styles.text, styles.textSelected]}>{label}</Text>
+            </LinearGradient>
+          ) : (
+            <View style={[styles.item, styles.itemNormal]}>
+              <Text style={[styles.text, styles.textNormal]}>{label}</Text>
+            </View>
+          )}
         </Animated.View>
       </TouchableOpacity>
     );
-  }
+  },
 );
 
-const styles = StyleSheet.create({
-  container: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  item: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginRight: 8,
-    borderWidth: 2,
-  },
-  itemNormal: {
-    backgroundColor: colors.white,
-    borderColor: colors.gray200,
-  },
-  itemSelected: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  text: {
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  textNormal: {
-    color: colors.gray600,
-  },
-  textSelected: {
-    color: colors.white,
-  },
-});
+const getStyles = (colors: any, isDark: boolean) =>
+  StyleSheet.create({
+    container: {
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+    },
+    itemWrap: {
+      marginRight: 8,
+      borderRadius: 20,
+      shadowColor: isDark ? colors.primaryGlow : "transparent",
+      shadowOffset: { width: 0, height: 3 },
+      shadowOpacity: isDark ? 0.35 : 0,
+      shadowRadius: 8,
+    },
+    item: {
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderRadius: 20,
+      borderWidth: isDark ? 1 : 2,
+    },
+    itemNormal: {
+      backgroundColor: colors.card,
+      borderColor: isDark ? "rgba(255,255,255,0.1)" : colors.gray200,
+    },
+    itemSelected: {
+      borderColor: "transparent",
+    },
+    text: {
+      fontSize: 14,
+      fontWeight: "600",
+    },
+    textNormal: {
+      color: colors.gray600,
+    },
+    textSelected: {
+      color: "#FFFFFF",
+    },
+  });
 
 export default CategoryFilter;

@@ -7,7 +7,7 @@ import Animated, {
   withSequence,
   withTiming,
 } from "react-native-reanimated";
-import { colors } from "../../theme/colors";
+import { useTheme } from "../../context/ThemeContext";
 import { Ionicons } from "@expo/vector-icons";
 
 interface OnlineToggleProps {
@@ -21,6 +21,8 @@ const OnlineToggle: React.FC<OnlineToggleProps> = ({
   onToggle,
   showLabel = true,
 }) => {
+  const { colors, isDark } = useTheme();
+  const styles = getStyles(colors, isDark);
   const translateX = useSharedValue(isOnline ? 40 : 0);
   const scaleAnim = useSharedValue(1);
   const pulseAnim = useSharedValue(1);
@@ -95,62 +97,63 @@ const OnlineToggle: React.FC<OnlineToggleProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  labelContainer: {
-    marginRight: 12,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: colors.gray600,
-  },
-  labelActive: {
-    color: colors.success,
-  },
-  toggleContainer: {
-    width: 80,
-    height: 40,
-    borderRadius: 20,
-    padding: 4,
-    position: "relative",
-    justifyContent: "center",
-  },
-  containerOnline: {
-    backgroundColor: colors.success + "30",
-    borderWidth: 2,
-    borderColor: colors.success,
-  },
-  containerOffline: {
-    backgroundColor: colors.gray100,
-    borderWidth: 2,
-    borderColor: colors.gray300,
-  },
-  toggleCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.white,
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: colors.black,
-    shadowOffset: {
-      width: 0,
-      height: 2,
+const getStyles = (colors: any, isDark: boolean) =>
+  StyleSheet.create({
+    container: {
+      flexDirection: "row",
+      alignItems: "center",
     },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  pulse: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: colors.success,
-    borderRadius: 20,
-    opacity: 0.3,
-  },
-});
+    labelContainer: {
+      marginRight: 12,
+    },
+    label: {
+      fontSize: 14,
+      fontWeight: "600",
+      color: colors.gray600,
+    },
+    labelActive: {
+      color: colors.success,
+    },
+    toggleContainer: {
+      width: 80,
+      height: 40,
+      borderRadius: 20,
+      padding: 4,
+      position: "relative",
+      justifyContent: "center",
+    },
+    containerOnline: {
+      backgroundColor: colors.success + "30",
+      borderWidth: 2,
+      borderColor: colors.success,
+    },
+    containerOffline: {
+      backgroundColor: colors.gray100,
+      borderWidth: 2,
+      borderColor: colors.gray300,
+    },
+    toggleCircle: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: colors.card,
+      justifyContent: "center",
+      alignItems: "center",
+      shadowColor: isDark ? colors.primaryGlow : colors.shadow,
+      shadowOffset: {
+        width: 0,
+        height: 2,
+      },
+      shadowOpacity: isDark ? 0.35 : 0.2,
+      shadowRadius: isDark ? 8 : 4,
+      elevation: 4,
+    },
+    pulse: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: colors.success,
+      borderRadius: 20,
+      opacity: 0.3,
+    },
+  });
 
 export default OnlineToggle;

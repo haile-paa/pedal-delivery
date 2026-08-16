@@ -14,7 +14,7 @@ import {
 import * as ImagePicker from "expo-image-picker";
 import { useAppState } from "../../context/AppStateContext";
 import { useRouter } from "expo-router";
-import { colors } from "../../theme/colors";
+import { useTheme } from "../../context/ThemeContext";
 import { Ionicons } from "@expo/vector-icons";
 import RatingStars from "../../components/driver/RatingStars";
 import AnimatedButton from "../../components/ui/AnimatedButton";
@@ -45,6 +45,8 @@ interface DriverProfile {
 }
 
 const DriverProfileScreen: React.FC = () => {
+  const { colors, isDark } = useTheme();
+  const styles = getStyles(colors);
   const router = useRouter();
   const { state, dispatch } = useAppState();
   const [profile, setProfile] = useState<DriverProfile | null>(null);
@@ -142,10 +144,7 @@ const DriverProfileScreen: React.FC = () => {
       });
     } catch (error) {
       console.error("Avatar upload error:", error);
-      Alert.alert(
-        "Error",
-        "Could not update your profile picture. Please try again.",
-      );
+      Alert.alert("Error", "Could not update your profile picture. Please try again.");
     } finally {
       setUploadingAvatar(false);
     }
@@ -191,15 +190,15 @@ const DriverProfileScreen: React.FC = () => {
       onPress: () =>
         Alert.alert(
           "Help & Support",
-          "Need a hand? Reach us any time:\n\n📞 Call: +251 900 000 000\n✉️ Email: support@beupedal.com\n💬 Live chat: available 8am–10pm daily",
+          "Need a hand? Reach us any time:\n\n📞 Call: +251 909 585 090\n✉️ Email: wubealuke888@gmail.com\n💬 Live chat: available 8am–10pm daily",
           [
             {
               text: "Call Support",
-              onPress: () => Linking.openURL("tel:+251900000000"),
+              onPress: () => Linking.openURL("tel:+251909585090"),
             },
             {
               text: "Email Support",
-              onPress: () => Linking.openURL("mailto:support@beupedal.com"),
+              onPress: () => Linking.openURL("mailto:wubealuke888@gmail.com"),
             },
             { text: "Close", style: "cancel" },
           ],
@@ -232,7 +231,7 @@ const DriverProfileScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle='dark-content' backgroundColor={colors.background} />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
       <ScrollView style={styles.scrollView}>
         <View style={styles.profileHeader}>
           <View style={styles.avatarContainer}>
@@ -379,7 +378,8 @@ const DriverProfileScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) =>
+  StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   scrollView: { flex: 1 },
   loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
@@ -463,7 +463,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     borderRadius: 16,
     padding: 20,
-    shadowColor: colors.black,
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 8,

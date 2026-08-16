@@ -8,11 +8,13 @@ import {
   TouchableOpacity,
   Alert,
 } from "react-native";
-import { colors } from "../../theme/colors";
+import { useTheme } from "../../context/ThemeContext";
 import DocumentUpload from "../../components/driver/DocumentUpload";
 import { useRouter } from "expo-router";
 
 const DocumentsScreen: React.FC = () => {
+  const { colors, isDark } = useTheme();
+  const styles = getStyles(colors);
   const router = useRouter();
   const [documents, setDocuments] = useState([
     {
@@ -122,7 +124,7 @@ const DocumentsScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle='dark-content' backgroundColor={colors.background} />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
 
       <ScrollView style={styles.scrollView}>
         {/* Header */}
@@ -275,7 +277,8 @@ const DocumentsScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) =>
+  StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -319,7 +322,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     borderRadius: 16,
     padding: 20,
-    shadowColor: colors.black,
+    shadowColor: colors.shadow,
     shadowOffset: {
       width: 0,
       height: 2,
@@ -348,7 +351,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
     marginBottom: 12,
-    shadowColor: colors.black,
+    shadowColor: colors.shadow,
     shadowOffset: {
       width: 0,
       height: 2,

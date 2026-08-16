@@ -11,8 +11,9 @@ import {
   Alert,
 } from "react-native";
 import * as Location from "expo-location";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAppState } from "../../context/AppStateContext";
-import { colors } from "../../theme/colors";
+import { useTheme } from "../../context/ThemeContext";
 import OnlineToggle from "../../components/driver/OnlineToggle";
 import OrderNotification from "../../components/driver/OrderNotification";
 import FloatingActionButton from "../../components/ui/FloatingActionButton";
@@ -77,7 +78,8 @@ const QuickActionButton: React.FC<{
   label: string;
   color: string;
   onPress: () => void;
-}> = ({ icon, label, color, onPress }) => {
+  styles: any;
+}> = ({ icon, label, color, onPress, styles }) => {
   const scale = useRef(new Animated.Value(1)).current;
 
   const animateTo = (toValue: number) => {
@@ -108,6 +110,15 @@ const QuickActionButton: React.FC<{
 };
 
 const DriverDashboard: React.FC = () => {
+  const { colors, isDark } = useTheme();
+  // The floating dark-mode toggle (see GlobalThemeToggle, mounted in
+  // app/(driver)/_layout.tsx) is absolutely positioned top-right above
+  // everything. The header used to put the Online/Offline switch in that
+  // same top-right corner with a fixed paddingTop, so on several phones
+  // the two overlapped. Padding by insets.top pushes the header down to
+  // clear the pill regardless of status-bar/notch height.
+  const insets = useSafeAreaInsets();
+  const styles = getStyles(colors, insets.top);
   const router = useRouter();
   const { state, dispatch } = useAppState();
   const [notifications, setNotifications] = useState<NotificationOrder[]>([]);
@@ -432,24 +443,24 @@ const DriverDashboard: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle='dark-content' backgroundColor={colors.background} />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
       <ScrollView style={styles.scrollView}>
         <View style={styles.header}>
-          <View>
-            <Text style={styles.greeting}>
-              Welcome back, {state.auth.user?.name || "Driver"}! 🚗
-            </Text>
+          <Text style={styles.greeting}>
+            Welcome back, {state.auth.user?.name || "Driver"}! 🚗
+          </Text>
+          <View style={styles.headerBottomRow}>
             <Text style={styles.subtitle}>
               {state.driver.isOnline
                 ? `Online for ${formatTime(timeOnline)}`
                 : "Go online to start earning"}
             </Text>
+            <OnlineToggle
+              isOnline={state.driver.isOnline}
+              onToggle={handleToggleOnline}
+              showLabel={true}
+            />
           </View>
-          <OnlineToggle
-            isOnline={state.driver.isOnline}
-            onToggle={handleToggleOnline}
-            showLabel={true}
-          />
         </View>
 
         <View style={styles.statsContainer}>
@@ -485,18 +496,21 @@ const DriverDashboard: React.FC = () => {
               label='Available Orders'
               color={colors.primary}
               onPress={() => router.push("/(driver)/available-orders" as any)}
+              styles={styles}
             />
             <QuickActionButton
               icon='💰'
               label='Earnings'
               color={colors.success}
               onPress={() => router.push("/(driver)/earnings" as any)}
+              styles={styles}
             />
             <QuickActionButton
               icon='👤'
               label='Profile'
               color={colors.secondary}
               onPress={() => router.push("/(driver)/profile" as any)}
+              styles={styles}
             />
           </View>
         </View>
@@ -559,15 +573,16 @@ const DriverDashboard: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any, insetTop: number) =>
+  StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   scrollView: { flex: 1 },
   header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
     paddingHorizontal: 20,
-    paddingTop: 60,
+    // Cleared far enough to sit below the floating dark-mode toggle
+    // (see the comment where insets.top is read above) on top of the
+    // usual status-bar clearance.
+    paddingTop: insetTop + 56,
     paddingBottom: 20,
     backgroundColor: colors.white,
   },
@@ -577,7 +592,12 @@ const styles = StyleSheet.create({
     color: colors.gray900,
     marginBottom: 4,
   },
-  subtitle: { fontSize: 14, color: colors.gray600 },
+  headerBottomRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  subtitle: { fontSize: 14, color: colors.gray600, flexShrink: 1 },
   statsContainer: {
     flexDirection: "row",
     backgroundColor: colors.white,
