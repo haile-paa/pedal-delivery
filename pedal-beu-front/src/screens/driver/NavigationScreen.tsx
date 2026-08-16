@@ -15,6 +15,7 @@ import { useTheme } from "../../context/ThemeContext";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import * as Location from "expo-location";
+import { useKeepAwake } from "expo-keep-awake";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import WebSocketService from "../../services/websocket.service";
@@ -51,6 +52,10 @@ interface OrderLocations {
 }
 
 const NavigationScreen: React.FC = () => {
+  // Keeps the screen on while navigating a delivery — automatically
+  // deactivates when the driver leaves this screen.
+  useKeepAwake();
+
   const { colors, isDark } = useTheme();
   const styles = getStyles(colors);
   const router = useRouter();

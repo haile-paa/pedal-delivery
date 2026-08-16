@@ -11,6 +11,7 @@ import {
   Alert,
 } from "react-native";
 import * as Location from "expo-location";
+import { useKeepAwake } from "expo-keep-awake";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAppState } from "../../context/AppStateContext";
 import { useTheme } from "../../context/ThemeContext";
@@ -110,6 +111,8 @@ const QuickActionButton: React.FC<{
 };
 
 const DriverDashboard: React.FC = () => {
+  useKeepAwake();
+
   const { colors, isDark } = useTheme();
   // The floating dark-mode toggle (see GlobalThemeToggle, mounted in
   // app/(driver)/_layout.tsx) is absolutely positioned top-right above

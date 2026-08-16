@@ -11,6 +11,7 @@ import {
   Linking,
 } from "react-native";
 import { useTheme } from "../../context/ThemeContext";
+import { useKeepAwake } from "expo-keep-awake";
 import ProgressStepper from "../../components/ui/ProgressStepper";
 import AnimatedButton from "../../components/ui/AnimatedButton";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -52,6 +53,8 @@ interface OrderDetails {
 }
 
 const OrderDetailScreen: React.FC = () => {
+  useKeepAwake();
+
   const { colors, isDark } = useTheme();
   const styles = getStyles(colors);
   const router = useRouter();

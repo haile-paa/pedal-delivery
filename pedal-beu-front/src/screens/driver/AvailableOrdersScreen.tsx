@@ -15,6 +15,7 @@ import {
   type AppStateStatus,
 } from "react-native";
 import * as Location from "expo-location";
+import { useKeepAwake } from "expo-keep-awake";
 import { useTheme } from "../../context/ThemeContext";
 import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
@@ -199,6 +200,8 @@ const CURRENT_ORDER_STATUS_LABELS: Record<string, string> = {
 };
 
 const AvailableOrdersScreen: React.FC = () => {
+  useKeepAwake();
+
   const { colors, isDark } = useTheme();
   const styles = getStyles(colors);
   const router = useRouter();

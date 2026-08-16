@@ -14,6 +14,7 @@ import {
   Platform,
 } from "react-native";
 import { useLocalSearchParams, useRouter, Stack } from "expo-router";
+import { useKeepAwake } from "expo-keep-awake";
 import MapView, { Marker, Polyline } from "react-native-maps";
 import { useTheme } from "../../context/ThemeContext";
 import { useLanguage } from "../../context/LanguageContext";
@@ -82,6 +83,8 @@ interface OrderDetails {
 const AUTO_CANCEL_MINUTES = 30;
 
 const OrderTrackingScreen: React.FC = () => {
+  useKeepAwake();
+
   const { colors, isDark } = useTheme();
   const { t } = useLanguage();
   const styles = getStyles(colors, isDark);
