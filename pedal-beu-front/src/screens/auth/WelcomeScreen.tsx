@@ -347,9 +347,22 @@ const WelcomeScreen: React.FC = () => {
         backgroundColor={showPhoneScreen ? "#f8fafc" : "#667eea"}
       />
 
-      {showPhoneScreen ? (
-        <View key="phone-screen" style={[styles.screen, styles.screen2]}>
+      {/* Both screens stay mounted at all times; only their visibility and
+          interactivity toggle. Never conditionally mount/unmount these —
+          doing so previously crashed the app on Android (Fabric tried to
+          re-parent the LinearGradient background between the two trees). */}
+      <View
+        key="phone-screen"
+        style={[
+          styles.screen,
+          styles.screenAbsolute,
+          styles.screen2,
+          !showPhoneScreen && styles.screenHidden,
+        ]}
+        pointerEvents={showPhoneScreen ? "auto" : "none"}
+      >
           <LinearGradient
+            key="phone-screen-bg"
             colors={["#f8fafc", "#e2e8f0"]}
             style={StyleSheet.absoluteFill}
           />
@@ -467,9 +480,18 @@ const WelcomeScreen: React.FC = () => {
             </TouchableOpacity>
           </View>
         </View>
-      ) : (
-        <View key="welcome-screen" style={[styles.screen, styles.screen1]}>
+      <View
+        key="welcome-screen"
+        style={[
+          styles.screen,
+          styles.screenAbsolute,
+          styles.screen1,
+          showPhoneScreen && styles.screenHidden,
+        ]}
+        pointerEvents={showPhoneScreen ? "none" : "auto"}
+      >
           <LinearGradient
+            key="welcome-screen-bg"
             colors={["#667eea", "#764ba2"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
@@ -506,7 +528,6 @@ const WelcomeScreen: React.FC = () => {
             </View>
           </View>
         </View>
-      )}
     </View>
   );
 };
@@ -522,6 +543,16 @@ const getStyles = (colors: any) =>
       width: screenWidth,
       height: screenHeight,
       flex: 1,
+    },
+    screenAbsolute: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+    },
+    screenHidden: {
+      opacity: 0,
     },
     screen1: {
       justifyContent: "center",
