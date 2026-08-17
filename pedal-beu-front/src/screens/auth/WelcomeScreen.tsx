@@ -10,6 +10,7 @@ import {
   TextInput,
   Alert,
   Keyboard,
+  InteractionManager,
 } from "react-native";
 import Animated, {
   useSharedValue,
@@ -20,6 +21,7 @@ import Animated, {
   interpolate,
   withRepeat,
   Easing,
+  cancelAnimation,
 } from "react-native-reanimated";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -43,6 +45,7 @@ const WelcomeScreen: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState(""); // kept for the old email+phone-first flow — see below (commented out)
   const [loading, setLoading] = useState(false);
+  const phoneInputRef = useRef<TextInput>(null);
 
   const handlePhoneNumberChange = useCallback((text: string) => {
     const cleaned = text.replace(/[^0-9]/g, "");
@@ -59,6 +62,17 @@ const WelcomeScreen: React.FC = () => {
   const textSlide = useSharedValue(50);
   const pulseAnim = useSharedValue(0);
 
+  const startPulse = useCallback(() => {
+    pulseAnim.value = withDelay(
+      1000,
+      withRepeat(
+        withTiming(1, { duration: 2000, easing: Easing.inOut(Easing.sin) }),
+        -1,
+        true,
+      ),
+    );
+  }, []);
+
   React.useEffect(() => {
     logoScale.value = withDelay(
       300,
@@ -70,23 +84,46 @@ const WelcomeScreen: React.FC = () => {
       withSpring(0, { damping: 15, stiffness: 100 }),
     );
 
-    pulseAnim.value = withDelay(
-      1000,
-      withRepeat(
-        withTiming(1, { duration: 2000, easing: Easing.inOut(Easing.sin) }),
-        -1,
-        true,
-      ),
-    );
+    startPulse();
+
+    // Belt-and-braces: make sure nothing is still animating on the UI
+    // thread once this screen unmounts.
+    return () => {
+      cancelAnimation(pulseAnim);
+      cancelAnimation(logoScale);
+      cancelAnimation(logoOpacity);
+      cancelAnimation(textSlide);
+    };
   }, []);
 
+  // The welcome screen's pulse circles animate on an infinite loop
+  // (withRepeat), which keeps writing to the UI thread every frame even
+  // while this screen is only opacity-hidden behind the phone screen (both
+  // stay mounted — see the render below). On Android's New Architecture
+  // that steady stream of Reanimated-driven UI-thread mounts can land in
+  // the same Fabric commit batch as a JS-driven one (e.g. the phone
+  // TextInput's autofocus/keyboard-open commit right after switching
+  // screens), which is a known class of Fabric mounting-race crash
+  // ("addViewAt: failed to insert view ... already has a parent"). Fully
+  // stopping the loop while it's not visible — and restarting it only
+  // once we're back — removes that source of contention instead of just
+  // hiding it with opacity.
   const goToPhoneScreen = () => {
+    cancelAnimation(pulseAnim);
     setShowPhoneScreen(true);
+
+    // Focus the phone input once the screen-switch commit has settled,
+    // instead of via autoFocus (which fired the keyboard open in the same
+    // beat as the mount/visibility change and made the race easier to hit).
+    InteractionManager.runAfterInteractions(() => {
+      phoneInputRef.current?.focus();
+    });
   };
 
   const goBackToWelcome = () => {
     Keyboard.dismiss();
     setShowPhoneScreen(false);
+    startPulse();
   };
 
   const validatePhoneNumber = (phone: string): boolean => {
@@ -378,6 +415,7 @@ const WelcomeScreen: React.FC = () => {
                 </View>
 
                 <TextInput
+                  ref={phoneInputRef}
                   style={styles.phoneInput}
                   placeholder='912345678'
                   placeholderTextColor={colors.gray400}
@@ -385,7 +423,6 @@ const WelcomeScreen: React.FC = () => {
                   onChangeText={handlePhoneNumberChange}
                   keyboardType='number-pad'
                   maxLength={9}
-                  autoFocus={true}
                   editable={!loading}
                   returnKeyType='next'
                   clearButtonMode='while-editing'
