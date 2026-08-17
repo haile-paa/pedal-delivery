@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  Dimensions,
   StatusBar,
   Image,
   TouchableOpacity,
@@ -31,8 +30,6 @@ import { LinearGradient } from "expo-linear-gradient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAppState } from "../../context/AppStateContext";
 import { API_BASE_URL } from "../../utils/constants";
-
-const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
 
 const WelcomeScreen: React.FC = () => {
   const { colors, isDark } = useTheme();
@@ -566,8 +563,6 @@ const getStyles = (colors: any) =>
       backgroundColor: colors.background,
     },
     screen: {
-      width: screenWidth,
-      height: screenHeight,
       flex: 1,
     },
     screenAbsolute: {
