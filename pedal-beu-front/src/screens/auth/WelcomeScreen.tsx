@@ -26,7 +26,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "../../context/ThemeContext";
 import AnimatedButton from "../../components/ui/AnimatedButton";
 import { LinearGradient } from "expo-linear-gradient";
-import * as Location from "expo-location";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAppState } from "../../context/AppStateContext";
 import { API_BASE_URL } from "../../utils/constants";
@@ -99,19 +98,11 @@ const WelcomeScreen: React.FC = () => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
   };
 
-  // ✅ Function to request location permission (runs in background)
-  const requestLocationPermission = async () => {
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status === "granted") {
-        console.log("Location permission granted");
-      } else {
-        console.log("Location permission denied");
-      }
-    } catch (error) {
-      console.warn("Error requesting location permission:", error);
-    }
-  };
+  // Location permission is requested by the destination screen
+  // (HomeScreen / DriverDashboard) after it has fully mounted. Requesting
+  // it here too used to fire the OS permission dialog at the same instant
+  // router.replace() was tearing down this screen and mounting the next
+  // one — that race crashed the app on Android. Do not add it back here.
 
   const handleSignIn = async () => {
     Keyboard.dismiss();
@@ -174,8 +165,6 @@ const WelcomeScreen: React.FC = () => {
             role: data.user.role,
           },
         });
-
-        requestLocationPermission();
 
         if (data.user.role === "driver") {
           router.replace("/(driver)/dashboard");
