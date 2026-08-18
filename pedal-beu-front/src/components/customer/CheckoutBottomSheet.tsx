@@ -287,6 +287,21 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
     });
   };
 
+  // Used instead of handleClose() right before router.push() to a new
+  // screen (order-tracking). handleClose()'s 300ms slide-down animation
+  // plays underneath the incoming screen anyway — it's never actually
+  // visible — but it was still running its native animation frames at the
+  // exact same time the stack navigator was mounting/transitioning to the
+  // new screen. Two concurrent native mutations like that (one from
+  // Animated on this sheet, one from the navigator's screen transition)
+  // is the same class of Fabric mounting race that crashed the welcome
+  // screen. Since there's nothing to animate toward once we're navigating
+  // away, just close instantly instead.
+  const closeImmediately = () => {
+    onClose();
+    translateY.setValue(0);
+  };
+
   const handlePlaceOrder = async () => {
     if (restaurant.min_order != null && cartTotal < restaurant.min_order)
       return;
@@ -374,7 +389,7 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
               restaurantId: restaurant.id,
             },
           });
-          handleClose();
+          closeImmediately();
           Alert.alert(
             "Payment Verified",
             `Your ${selectedPaymentMethod === "cbe" ? "CBE" : "Telebirr"} transfer was verified and your order is confirmed.`,
@@ -409,7 +424,7 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
               restaurantId: restaurant.id,
             },
           });
-          handleClose();
+          closeImmediately();
           Alert.alert(
             proofSubmitted
               ? "Payment Submitted for Review"
@@ -432,7 +447,7 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
           restaurantId: restaurant.id,
         },
       });
-      handleClose();
+      closeImmediately();
       Alert.alert(
         "Order Placed!",
         `Your order from ${restaurant.name} has been placed.`,
