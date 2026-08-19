@@ -12,6 +12,7 @@ import {
   Platform,
   AppState,
   ActivityIndicator,
+  InteractionManager,
   type AppStateStatus,
 } from "react-native";
 import * as Location from "expo-location";
@@ -425,25 +426,33 @@ const AvailableOrdersScreen: React.FC = () => {
       return [order, ...prev];
     });
 
-    // Show notification
-    Alert.alert(
-      "🎉 New Order Available!",
-      `New order from ${order.restaurant.name} for ${order.amount.toFixed(
-        2,
-      )} Birr`,
-      [
-        {
-          text: "Ignore",
-          style: "cancel",
-        },
-        {
-          text: "View",
-          onPress: () => {
-            // Optionally scroll to the order
+    // The Alert used to fire in the same tick as the setAvailableOrders()
+    // above, which inserts a brand-new row at the top of the list. That
+    // meant a new FlatList item mounting and a native AlertDialog attaching
+    // to the Activity window landed in the same Fabric commit — the same
+    // class of "addViewAt: ... already has a parent" crash we hit on the
+    // checkout screen. Deferring the alert until after the list insert has
+    // actually settled avoids the collision.
+    InteractionManager.runAfterInteractions(() => {
+      Alert.alert(
+        "🎉 New Order Available!",
+        `New order from ${order.restaurant.name} for ${order.amount.toFixed(
+          2,
+        )} Birr`,
+        [
+          {
+            text: "Ignore",
+            style: "cancel",
           },
-        },
-      ],
-    );
+          {
+            text: "View",
+            onPress: () => {
+              // Optionally scroll to the order
+            },
+          },
+        ],
+      );
+    });
   };
 
   const handleOrderCancelled = (data: { orderId: string }) => {

@@ -12,6 +12,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Platform,
+  InteractionManager,
 } from "react-native";
 import { useLocalSearchParams, useRouter, Stack } from "expo-router";
 import { useKeepAwake } from "expo-keep-awake";
@@ -482,11 +483,18 @@ const OrderTrackingScreen: React.FC = () => {
 
   const handleDriverAssigned = (data: any) => {
     setDriverInfo(data.driver);
-    Alert.alert(
-      t("driverAssignedTitle"),
-      `${data.driver.name} ${t("driverAssignedDesc")}`,
-      [{ text: t("ok") }],
-    );
+    // Setting driverInfo mounts a whole new driver-info card section that
+    // was previously absent. Deferring the Alert until that mount settles
+    // avoids the same Fabric mounting-race crash we hit on the checkout
+    // and available-orders screens (a structural mount + a native dialog
+    // landing in the same commit).
+    InteractionManager.runAfterInteractions(() => {
+      Alert.alert(
+        t("driverAssignedTitle"),
+        `${data.driver.name} ${t("driverAssignedDesc")}`,
+        [{ text: t("ok") }],
+      );
+    });
   };
 
   const handleDriverLocationUpdate = (data: any) => {
@@ -520,7 +528,9 @@ const OrderTrackingScreen: React.FC = () => {
       );
     });
     if (data.message) {
-      Alert.alert(t("statusUpdateTitle"), data.message, [{ text: t("ok") }]);
+      InteractionManager.runAfterInteractions(() => {
+        Alert.alert(t("statusUpdateTitle"), data.message, [{ text: t("ok") }]);
+      });
     }
   };
 
@@ -529,10 +539,12 @@ const OrderTrackingScreen: React.FC = () => {
     fetchOrderDetails().catch((refreshError) => {
       console.warn("Failed to refresh order after acceptance:", refreshError);
     });
-    Alert.alert(
-      t("orderAcceptedTitle"),
-      t("orderAcceptedDesc"),
-    );
+    InteractionManager.runAfterInteractions(() => {
+      Alert.alert(
+        t("orderAcceptedTitle"),
+        t("orderAcceptedDesc"),
+      );
+    });
   };
 
   const handleOrderPreparing = (data: any) => {
@@ -547,7 +559,9 @@ const OrderTrackingScreen: React.FC = () => {
     fetchOrderDetails().catch((refreshError) => {
       console.warn("Failed to refresh order when ready:", refreshError);
     });
-    Alert.alert(t("orderReadyTitle"), t("orderReadyDesc"));
+    InteractionManager.runAfterInteractions(() => {
+      Alert.alert(t("orderReadyTitle"), t("orderReadyDesc"));
+    });
   };
 
   const handleOrderPickedUp = (data: any) => {
@@ -555,10 +569,12 @@ const OrderTrackingScreen: React.FC = () => {
     fetchOrderDetails().catch((refreshError) => {
       console.warn("Failed to refresh order after pickup:", refreshError);
     });
-    Alert.alert(
-      t("onTheWayTitle"),
-      t("onTheWayDesc"),
-    );
+    InteractionManager.runAfterInteractions(() => {
+      Alert.alert(
+        t("onTheWayTitle"),
+        t("onTheWayDesc"),
+      );
+    });
   };
 
   const handleOrderDelivered = (data: any) => {
@@ -566,16 +582,18 @@ const OrderTrackingScreen: React.FC = () => {
     fetchOrderDetails().catch((refreshError) => {
       console.warn("Failed to refresh order after delivery:", refreshError);
     });
-    Alert.alert(
-      t("orderDeliveredTitle"),
-      t("orderDeliveredDesc"),
-      [
-        {
-          text: t("rateOrder"),
-          onPress: () => setShowRatingModal(true),
-        },
-      ],
-    );
+    InteractionManager.runAfterInteractions(() => {
+      Alert.alert(
+        t("orderDeliveredTitle"),
+        t("orderDeliveredDesc"),
+        [
+          {
+            text: t("rateOrder"),
+            onPress: () => setShowRatingModal(true),
+          },
+        ],
+      );
+    });
   };
 
   const calculateRoute = (driverLoc: {

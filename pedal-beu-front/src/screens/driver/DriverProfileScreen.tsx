@@ -48,7 +48,7 @@ const DriverProfileScreen: React.FC = () => {
   const { colors, isDark } = useTheme();
   const styles = getStyles(colors);
   const router = useRouter();
-  const { state, dispatch } = useAppState();
+  const { state, dispatch, actions } = useAppState();
   const [profile, setProfile] = useState<DriverProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -157,8 +157,14 @@ const DriverProfileScreen: React.FC = () => {
         text: "Logout",
         style: "destructive",
         onPress: () => {
-          dispatch({ type: "LOGOUT" });
-          router.replace("/(auth)/welcome" as any);
+          // Use the shared logout action (disconnects the WebSocket +
+          // clears stored tokens) instead of dispatching LOGOUT directly.
+          // For drivers this matters even more than for customers: the
+          // socket is what carries live GPS updates, so leaving it
+          // connected after "logging out" kept broadcasting location
+          // under the old session and could collide with the next
+          // login's screens as they were still mounting.
+          actions.logout();
         },
       },
     ]);

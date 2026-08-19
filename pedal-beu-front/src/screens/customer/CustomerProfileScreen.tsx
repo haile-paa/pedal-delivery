@@ -26,7 +26,7 @@ const CustomerProfileScreen = () => {
   const { t } = useLanguage();
   const styles = getStyles(colors);
   const router = useRouter();
-  const { state, dispatch } = useAppState();
+  const { state, dispatch, actions } = useAppState();
   const [loading, setLoading] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [helpModalVisible, setHelpModalVisible] = useState(false);
@@ -156,8 +156,15 @@ const CustomerProfileScreen = () => {
         text: t("logoutTitle"),
         style: "destructive",
         onPress: () => {
-          dispatch({ type: "LOGOUT" });
-          router.replace("/(auth)/welcome");
+          // Use the shared logout action instead of dispatching LOGOUT
+          // directly — this one also disconnects the WebSocket and clears
+          // the stored tokens. Dispatching LOGOUT alone left the old
+          // session's socket connection alive and the token still in
+          // AsyncStorage, which meant the very next login could race
+          // against leftover events from the previous session while
+          // HomeScreen was still settling into its first real mount —
+          // the intermittent "crashes once, then works on retry" bug.
+          actions.logout();
         },
       },
     ]);
