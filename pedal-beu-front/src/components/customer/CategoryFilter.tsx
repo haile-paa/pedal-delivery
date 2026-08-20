@@ -1,6 +1,5 @@
 import React from "react";
 import {
-  View,
   Text,
   StyleSheet,
   ScrollView,
@@ -88,24 +87,32 @@ const CategoryItem: React.FC<CategoryItemProps> = React.memo(
     return (
       <TouchableOpacity onPress={handlePress} activeOpacity={0.85}>
         <Animated.View style={[styles.itemWrap, animatedStyle]}>
-          {isSelected ? (
-            <LinearGradient
-              colors={
-                isDark
+          <LinearGradient
+            colors={
+              isSelected
+                ? isDark
                   ? [colors.secondary, colors.primary]
                   : [colors.primary, colors.primaryGlow]
+                : [colors.card, colors.card]
+            }
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={
+              isSelected
+                ? [styles.item, styles.itemSelected]
+                : [styles.item, styles.itemNormal]
+            }
+          >
+            <Text
+              style={
+                isSelected
+                  ? [styles.text, styles.textSelected]
+                  : [styles.text, styles.textNormal]
               }
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={[styles.item, styles.itemSelected]}
             >
-              <Text style={[styles.text, styles.textSelected]}>{label}</Text>
-            </LinearGradient>
-          ) : (
-            <View style={[styles.item, styles.itemNormal]}>
-              <Text style={[styles.text, styles.textNormal]}>{label}</Text>
-            </View>
-          )}
+              {label}
+            </Text>
+          </LinearGradient>
         </Animated.View>
       </TouchableOpacity>
     );

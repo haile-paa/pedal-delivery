@@ -40,12 +40,10 @@ const RestaurantCard: React.FC<Props> = ({
           }}
           style={styles.image}
         />
-        {isDark && (
-          <LinearGradient
-            colors={["transparent", "rgba(0,0,0,0.35)"]}
-            style={styles.imageShade}
-          />
-        )}
+        <LinearGradient
+          colors={["transparent", "rgba(0,0,0,0.35)"]}
+          style={[styles.imageShade, { opacity: isDark ? 1 : 0 }]}
+        />
       </View>
       <View style={styles.content}>
         <View style={styles.titleRow}>
