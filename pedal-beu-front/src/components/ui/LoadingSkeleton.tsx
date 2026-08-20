@@ -6,6 +6,7 @@ import Animated, {
   withRepeat,
   withTiming,
   withSequence,
+  cancelAnimation,
 } from "react-native-reanimated";
 import { useTheme } from "../../context/ThemeContext";
 
@@ -56,6 +57,10 @@ const RestaurantSkeleton: React.FC<{ styles: ReturnType<typeof getStyles> }> = (
       -1,
       true,
     );
+
+    return () => {
+      cancelAnimation(opacity);
+    };
   }, []);
 
   return (

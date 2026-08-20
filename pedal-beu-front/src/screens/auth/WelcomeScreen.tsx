@@ -105,8 +105,24 @@ const WelcomeScreen: React.FC = () => {
   // stopping the loop while it's not visible — and restarting it only
   // once we're back — removes that source of contention instead of just
   // hiding it with opacity.
-  const goToPhoneScreen = () => {
+  // Stops every Reanimated value driven from this screen. Call this
+  // synchronously, before any router.push/replace() fired from here —
+  // not just on unmount. The withRepeat pulse loop below keeps writing to
+  // the UI thread every frame; if a navigation-triggered Fabric commit
+  // lands in the same beat as one of those writes, Android throws
+  // "addViewAt: failed to insert view ... already has a parent". Calling
+  // this a beat before the navigation call (rather than relying solely on
+  // the useEffect cleanup, which only fires once React actually unmounts
+  // this screen) closes that race window.
+  const stopWelcomeAnimations = () => {
     cancelAnimation(pulseAnim);
+    cancelAnimation(logoScale);
+    cancelAnimation(logoOpacity);
+    cancelAnimation(textSlide);
+  };
+
+  const goToPhoneScreen = () => {
+    stopWelcomeAnimations();
     setShowPhoneScreen(true);
 
     // Focus the phone input once the screen-switch commit has settled,
@@ -200,6 +216,7 @@ const WelcomeScreen: React.FC = () => {
           },
         });
 
+        stopWelcomeAnimations();
         if (data.user.role === "driver") {
           router.replace("/(driver)/dashboard");
         } else {
@@ -217,6 +234,7 @@ const WelcomeScreen: React.FC = () => {
 
   const goToRegister = () => {
     Keyboard.dismiss();
+    stopWelcomeAnimations();
     router.push({
       pathname: "/(auth)/register",
       params: { role: "customer" },
@@ -225,6 +243,7 @@ const WelcomeScreen: React.FC = () => {
 
   const goToDriverForm = () => {
     Keyboard.dismiss();
+    stopWelcomeAnimations();
     router.push({
       pathname: "/(auth)/driver-form",
       params: {},

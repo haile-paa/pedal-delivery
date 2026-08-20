@@ -368,7 +368,11 @@ export const authAPI = {
 
   logout: async () => {
     try {
-      await api.post("/auth/logout");
+      // Backend only registers this under the authenticated /users group
+      // (see main.go: user.POST("/logout", ...)) — there is no /auth/logout
+      // route, so calling that 404'd and logout never actually invalidated
+      // anything server-side.
+      await api.post("/users/logout");
     } catch (error) {
       console.log("Logout error:", error);
     } finally {

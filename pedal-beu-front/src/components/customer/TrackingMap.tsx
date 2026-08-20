@@ -7,6 +7,7 @@ import Animated, {
   withRepeat,
   withTiming,
   Easing,
+  cancelAnimation,
 } from "react-native-reanimated";
 import { useTheme } from "../../context/ThemeContext";
 import { useLanguage } from "../../context/LanguageContext";
@@ -85,7 +86,14 @@ const TrackingMap: React.FC<TrackingMapProps> = ({
   const mapRef = useRef<MapView>(null);
   const pulseAnim = useSharedValue(1);
 
-  // Pulsing animation for driver marker
+  // Pulsing animation for driver marker. This runs on an infinite loop
+  // (withRepeat) and keeps writing to the UI thread every frame. Order
+  // tracking navigates away with router.replace("/(customer)/home") once
+  // an order completes/cancels — without cancelling this loop first, a
+  // still-in-flight animation frame can land in the same Fabric commit as
+  // that navigation's screen swap, which throws "addViewAt: failed to
+  // insert view ... already has a parent" on Android. Cancel on unmount so
+  // that can't happen.
   useEffect(() => {
     pulseAnim.value = withRepeat(
       withTiming(1.2, {
@@ -95,6 +103,10 @@ const TrackingMap: React.FC<TrackingMapProps> = ({
       -1,
       true
     );
+
+    return () => {
+      cancelAnimation(pulseAnim);
+    };
   }, []);
 
   // Fit map to show all markers

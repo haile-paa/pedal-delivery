@@ -725,17 +725,27 @@ const AvailableOrdersScreen: React.FC = () => {
           },
         });
 
-        // Navigate to order details
-        router.push({
-          pathname: "/(driver)/order-detail" as any,
-          params: { orderId },
-        });
+        // The setAvailableOrders() above removes this card from the list in
+        // this render pass. Navigating and showing a native Alert in the
+        // very same tick landed a screen mount + dialog attach in the same
+        // Fabric commit as that card removal — the same
+        // "addViewAt: ... already has a parent" crash fixed in
+        // handleNewOrder above, just triggered from the Accept button
+        // instead. Deferring both until after the list update has actually
+        // settled avoids the collision.
+        InteractionManager.runAfterInteractions(() => {
+          // Navigate to order details
+          router.push({
+            pathname: "/(driver)/order-detail" as any,
+            params: { orderId },
+          });
 
-        Alert.alert(
-          "✅ Order Accepted!",
-          "You have accepted the order. Navigate to the restaurant for pickup.",
-          [{ text: "Proceed" }],
-        );
+          Alert.alert(
+            "✅ Order Accepted!",
+            "You have accepted the order. Navigate to the restaurant for pickup.",
+            [{ text: "Proceed" }],
+          );
+        });
       } else {
         throw new Error(data.message || "Failed to accept order");
       }
@@ -824,17 +834,26 @@ const AvailableOrdersScreen: React.FC = () => {
       if (driverLocation) {
         startLocationUpdates();
       }
-      Alert.alert(
-        "✅ You're Online",
-        "You will now receive new order notifications",
-      );
     } else {
       if (locationInterval.current) {
         clearInterval(locationInterval.current);
       }
       WebSocketService.disconnect();
-      Alert.alert("⏸️ You're Offline", "You won't receive new orders");
     }
+
+    // Same reasoning as handleAcceptOrder above: setIsOnline() re-renders
+    // the header badge/dot in this pass, so the Alert is deferred until
+    // that's settled instead of firing in the same tick.
+    InteractionManager.runAfterInteractions(() => {
+      if (newStatus) {
+        Alert.alert(
+          "✅ You're Online",
+          "You will now receive new order notifications",
+        );
+      } else {
+        Alert.alert("⏸️ You're Offline", "You won't receive new orders");
+      }
+    });
   };
 
   const handleFilterPress = (filter: keyof typeof activeFilters) => {
