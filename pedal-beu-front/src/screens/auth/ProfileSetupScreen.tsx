@@ -8,6 +8,7 @@ import {
   ScrollView,
   StatusBar,
   Alert,
+  InteractionManager,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useTheme } from "../../context/ThemeContext";
@@ -69,24 +70,33 @@ const ProfileSetupScreen: React.FC = () => {
         },
       });
 
-      // Show success message
-      Alert.alert(
-        "Profile Completed!",
-        "Your profile has been set up successfully.",
-        [
-          {
-            text: "Continue",
-            onPress: () => {
-              // Navigate to the appropriate stack based on role
-              if (role === "customer") {
-                router.replace("/(customer)/home");
-              } else {
-                router.replace("/(driver)/dashboard");
-              }
+      // Show success message. dispatch(LOGIN_SUCCESS) just above re-renders
+      // this screen's tree from the updated app state; showing a native
+      // Alert in the same tick attaches a dialog window in that same
+      // Fabric commit — the same "addViewAt: ... already has a parent"
+      // crash class fixed via InteractionManager elsewhere in this app
+      // (see WelcomeScreen.handleSignIn, AppStateContext.logout). The
+      // subsequent router.replace() is already safely deferred since it
+      // only runs once the user taps "Continue", a separate later event.
+      InteractionManager.runAfterInteractions(() => {
+        Alert.alert(
+          "Profile Completed!",
+          "Your profile has been set up successfully.",
+          [
+            {
+              text: "Continue",
+              onPress: () => {
+                // Navigate to the appropriate stack based on role
+                if (role === "customer") {
+                  router.replace("/(customer)/home");
+                } else {
+                  router.replace("/(driver)/dashboard");
+                }
+              },
             },
-          },
-        ]
-      );
+          ]
+        );
+      });
     } catch (error) {
       Alert.alert("Error", "Failed to update profile. Please try again.");
     } finally {

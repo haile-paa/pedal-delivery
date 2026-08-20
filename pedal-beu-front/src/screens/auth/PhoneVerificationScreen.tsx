@@ -9,6 +9,7 @@ import {
   StatusBar,
   Alert,
   Image,
+  InteractionManager,
 } from "react-native";
 import Animated, {
   useSharedValue,
@@ -143,11 +144,19 @@ const PhoneVerificationScreen: React.FC = () => {
             },
           });
 
-          if (data.user.role === "driver" || role === "driver") {
-            router.replace(`/(driver)/dashboard`);
-          } else {
-            router.replace(`/(customer)/home`);
-          }
+          // Same Fabric mounting-race class fixed via InteractionManager
+          // elsewhere in this app (WelcomeScreen.handleSignIn,
+          // AppStateContext.logout): dispatch(LOGIN_SUCCESS) re-renders
+          // this screen's tree, so the navigator-stack swap below is
+          // deferred until that's settled instead of firing in the same
+          // tick.
+          InteractionManager.runAfterInteractions(() => {
+            if (data.user.role === "driver" || role === "driver") {
+              router.replace(`/(driver)/dashboard`);
+            } else {
+              router.replace(`/(customer)/home`);
+            }
+          });
         } else {
           console.log("User doesn't exist, navigating to registration...");
           router.push({

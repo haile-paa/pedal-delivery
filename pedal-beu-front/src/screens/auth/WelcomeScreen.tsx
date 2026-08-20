@@ -105,24 +105,8 @@ const WelcomeScreen: React.FC = () => {
   // stopping the loop while it's not visible — and restarting it only
   // once we're back — removes that source of contention instead of just
   // hiding it with opacity.
-  // Stops every Reanimated value driven from this screen. Call this
-  // synchronously, before any router.push/replace() fired from here —
-  // not just on unmount. The withRepeat pulse loop below keeps writing to
-  // the UI thread every frame; if a navigation-triggered Fabric commit
-  // lands in the same beat as one of those writes, Android throws
-  // "addViewAt: failed to insert view ... already has a parent". Calling
-  // this a beat before the navigation call (rather than relying solely on
-  // the useEffect cleanup, which only fires once React actually unmounts
-  // this screen) closes that race window.
-  const stopWelcomeAnimations = () => {
-    cancelAnimation(pulseAnim);
-    cancelAnimation(logoScale);
-    cancelAnimation(logoOpacity);
-    cancelAnimation(textSlide);
-  };
-
   const goToPhoneScreen = () => {
-    stopWelcomeAnimations();
+    cancelAnimation(pulseAnim);
     setShowPhoneScreen(true);
 
     // Focus the phone input once the screen-switch commit has settled,
@@ -216,12 +200,22 @@ const WelcomeScreen: React.FC = () => {
           },
         });
 
-        stopWelcomeAnimations();
-        if (data.user.role === "driver") {
-          router.replace("/(driver)/dashboard");
-        } else {
-          router.replace("/(customer)/home");
-        }
+        // dispatch(LOGIN_SUCCESS) resets/populates the whole app state and
+        // re-renders this screen's tree; router.replace() then swaps out
+        // the entire auth navigator for the customer/driver stack. Firing
+        // both in the same tick is the same class of Fabric mounting-race
+        // crash noted above for the location-permission dialog
+        // ("addViewAt: ... already has a parent") — see also
+        // AppStateContext.logout(), which has the mirror-image version of
+        // this bug on sign-out. Deferring the navigation until the state
+        // update has actually rendered avoids the collision.
+        InteractionManager.runAfterInteractions(() => {
+          if (data.user.role === "driver") {
+            router.replace("/(driver)/dashboard");
+          } else {
+            router.replace("/(customer)/home");
+          }
+        });
       } else {
         Alert.alert("Error", data.error || "Invalid phone number or password");
       }
@@ -234,7 +228,6 @@ const WelcomeScreen: React.FC = () => {
 
   const goToRegister = () => {
     Keyboard.dismiss();
-    stopWelcomeAnimations();
     router.push({
       pathname: "/(auth)/register",
       params: { role: "customer" },
@@ -243,7 +236,6 @@ const WelcomeScreen: React.FC = () => {
 
   const goToDriverForm = () => {
     Keyboard.dismiss();
-    stopWelcomeAnimations();
     router.push({
       pathname: "/(auth)/driver-form",
       params: {},

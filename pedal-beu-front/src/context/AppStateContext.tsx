@@ -6,6 +6,7 @@ import React, {
   ReactNode,
   useEffect,
 } from "react";
+import { InteractionManager } from "react-native";
 import {
   User,
   Order,
@@ -756,8 +757,23 @@ export const AppStateProvider: React.FC<{ children: ReactNode }> = ({
       // connect() again.
       WebSocketService.disconnect();
       await AsyncStorage.multiRemove(["accessToken", "refreshToken", "user"]);
+
+      // dispatch({ type: "LOGOUT" }) resets the ENTIRE app state (cart,
+      // orders, addresses, driver data, restaurants — everything) back to
+      // initialState in one go, which re-renders every screen currently
+      // mounted under (customer)/(driver) that reads useAppState(). Calling
+      // router.replace() to swap out that whole navigator stack in the same
+      // synchronous tick as that reset landed a huge tree-wide re-render and
+      // a full navigator-stack swap in the same Fabric commit — the same
+      // "addViewAt: ... already has a parent" crash fixed elsewhere in this
+      // app (see AvailableOrdersScreen's handleAcceptOrder), just at a much
+      // bigger scale since it touches the whole tree instead of one list
+      // item. Deferring the navigation until the reset has actually
+      // rendered avoids the collision.
       dispatch({ type: "LOGOUT" });
-      router.replace("/(auth)/welcome");
+      InteractionManager.runAfterInteractions(() => {
+        router.replace("/(auth)/welcome");
+      });
     }
   };
 
