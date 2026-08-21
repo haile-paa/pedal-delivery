@@ -22,9 +22,22 @@ function RootStack() {
         }}
       >
         <Stack.Screen name='index' />
-        <Stack.Screen name='(auth)' />
-        <Stack.Screen name='(customer)' />
-        <Stack.Screen name='(driver)' />
+        {/* These three routes are where the app hands off between entirely
+            different navigator groups — auth stack to customer tabs on
+            login, tabs back to auth stack on logout, driver tabs to auth
+            stack, etc. That handoff is exactly where the recurring
+            "addViewAt: failed to insert view ... already has a parent"
+            native crash has been happening (right after login, right after
+            logout, and worst when login/logout fire in quick succession).
+            It's a known react-native-screens bug on Android's Fabric
+            renderer where its view-recycling optimization can race with an
+            in-flight transition animation. Turning the animation off for
+            just these three top-level group boundaries removes that race
+            without affecting in-group screen transitions (which still use
+            the default slide). */}
+        <Stack.Screen name='(auth)' options={{ animation: "none" }} />
+        <Stack.Screen name='(customer)' options={{ animation: "none" }} />
+        <Stack.Screen name='(driver)' options={{ animation: "none" }} />
       </Stack>
     </>
   );

@@ -5,8 +5,8 @@ import React, {
   useReducer,
   ReactNode,
   useEffect,
+  useRef,
 } from "react";
-import { InteractionManager } from "react-native";
 import {
   User,
   Order,
@@ -470,6 +470,10 @@ export const AppStateProvider: React.FC<{ children: ReactNode }> = ({
 }) => {
   const [state, dispatch] = useReducer(appReducer, initialState);
   const router = useRouter();
+  // See logout() below — persists across renders so the guard actually
+  // works (a `let` declared in the render body would reset to false on
+  // every re-render, including the one LOGOUT itself triggers).
+  const isLoggingOutRef = useRef(false);
 
   useEffect(() => {
     const loadUser = async () => {
@@ -741,6 +745,8 @@ export const AppStateProvider: React.FC<{ children: ReactNode }> = ({
   };
 
   const logout = async () => {
+    if (isLoggingOutRef.current) return;
+    isLoggingOutRef.current = true;
     try {
       await authAPI.logout();
     } catch (error) {
@@ -757,23 +763,9 @@ export const AppStateProvider: React.FC<{ children: ReactNode }> = ({
       // connect() again.
       WebSocketService.disconnect();
       await AsyncStorage.multiRemove(["accessToken", "refreshToken", "user"]);
-
-      // dispatch({ type: "LOGOUT" }) resets the ENTIRE app state (cart,
-      // orders, addresses, driver data, restaurants — everything) back to
-      // initialState in one go, which re-renders every screen currently
-      // mounted under (customer)/(driver) that reads useAppState(). Calling
-      // router.replace() to swap out that whole navigator stack in the same
-      // synchronous tick as that reset landed a huge tree-wide re-render and
-      // a full navigator-stack swap in the same Fabric commit — the same
-      // "addViewAt: ... already has a parent" crash fixed elsewhere in this
-      // app (see AvailableOrdersScreen's handleAcceptOrder), just at a much
-      // bigger scale since it touches the whole tree instead of one list
-      // item. Deferring the navigation until the reset has actually
-      // rendered avoids the collision.
       dispatch({ type: "LOGOUT" });
-      InteractionManager.runAfterInteractions(() => {
-        router.replace("/(auth)/welcome");
-      });
+      router.replace("/(auth)/welcome");
+      isLoggingOutRef.current = false;
     }
   };
 
