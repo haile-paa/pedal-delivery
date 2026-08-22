@@ -33,6 +33,14 @@ type OrderRepository interface {
 	UpdatePaymentVerification(ctx context.Context, orderID primitive.ObjectID, paymentStatus string, verification *models.PaymentVerification) error
 	CancelOrder(ctx context.Context, orderID primitive.ObjectID, cancellation models.CancellationInfo) error
 	FindActiveOrders(ctx context.Context) ([]models.Order, error)
+	// FindStaleUnassignedOrders finds orders still sitting unassigned
+	// (status "accepted", no driver_id) whose created_at is older than
+	// `cutoff`. Used by the auto-cancel sweep in main.go — previously
+	// nothing ever expired these, so an order no driver picked up could
+	// sit in FindAvailableOrders' results forever (and, since that query
+	// sorted oldest-first, it would sit at the very TOP of every driver's
+	// list indefinitely).
+	FindStaleUnassignedOrders(ctx context.Context, cutoff time.Time) ([]models.Order, error)
 
 	// New methods for admin dashboard
 	CountOrders(ctx context.Context, filter interface{}) (int64, error)
@@ -202,6 +210,15 @@ func (r *orderRepository) FindAvailableOrders(ctx context.Context, driverID prim
 		"driver_id": nil,
 		// Exclude orders this specific driver already rejected
 		"rejected_by_drivers": bson.M{"$ne": driverID},
+		// Nothing ever expired an unassigned order — a customer's order
+		// that no driver ever picked up would stay in this result set
+		// forever. The 30-minute auto-cancel sweep (see
+		// FindStaleUnassignedOrders / main.go's startStaleOrderSweep)
+		// is what actually cancels these; this filter is the matching
+		// guard here so a stale order never shows up as "available" in
+		// the few seconds/minutes before that sweep runs, and so this
+		// endpoint stays correct even if the sweep is ever disabled.
+		"created_at": bson.M{"$gte": time.Now().Add(-30 * time.Minute)},
 		// NOTE: was "restaurant.location", a field that never existed on the
 		// Order document (orders only store RestaurantID, not an embedded
 		// restaurant object). That made $near match zero documents, silently,
@@ -215,8 +232,34 @@ func (r *orderRepository) FindAvailableOrders(ctx context.Context, driverID prim
 			},
 		},
 	}
-	opts := options.Find().SetLimit(50).SetSort(bson.D{{Key: "created_at", Value: 1}})
+	// Newest-first: a driver should see the freshest orders (shortest
+	// wait, food most likely still hot) at the top. The previous
+	// oldest-first sort meant that, combined with no expiry filter, the
+	// stalest order in the whole system was always pinned to the very top
+	// of every driver's list.
+	opts := options.Find().SetLimit(50).SetSort(bson.D{{Key: "created_at", Value: -1}})
 	cursor, err := r.collection.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+	var orders []models.Order
+	if err = cursor.All(ctx, &orders); err != nil {
+		return nil, err
+	}
+	return orders, nil
+}
+
+// FindStaleUnassignedOrders finds every unassigned order (any driver,
+// anywhere — not geo-filtered like FindAvailableOrders) older than
+// `cutoff`. See the auto-cancel sweep in main.go.
+func (r *orderRepository) FindStaleUnassignedOrders(ctx context.Context, cutoff time.Time) ([]models.Order, error) {
+	filter := bson.M{
+		"status":     models.OrderAccepted,
+		"driver_id":  nil,
+		"created_at": bson.M{"$lt": cutoff},
+	}
+	cursor, err := r.collection.Find(ctx, filter)
 	if err != nil {
 		return nil, err
 	}

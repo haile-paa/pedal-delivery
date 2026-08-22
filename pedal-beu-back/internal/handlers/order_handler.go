@@ -387,6 +387,23 @@ func (h *OrderHandler) CancelOrder(c *gin.Context) {
 		return
 	}
 
+	// Broadcast the cancellation so any driver currently seeing this order
+	// in their Available Orders list (or already assigned to it) has it
+	// removed live instead of sticking around until their next manual
+	// refresh — the frontend has always listened for this
+	// (AvailableOrdersScreen's handleOrderCancelled), it just never
+	// actually fired for a manual cancel because nothing broadcast it.
+	if websocket.GlobalHub != nil {
+		websocket.GlobalHub.BroadcastToRoom("drivers", websocket.WebSocketEvent{
+			Type: "order:cancelled",
+			Data: gin.H{"orderId": orderID.Hex()},
+		})
+		websocket.GlobalHub.BroadcastToRoom("order:"+orderID.Hex(), websocket.WebSocketEvent{
+			Type: "order:cancelled",
+			Data: gin.H{"orderId": orderID.Hex()},
+		})
+	}
+
 	c.JSON(http.StatusOK, gin.H{"message": "Order cancelled successfully"})
 }
 

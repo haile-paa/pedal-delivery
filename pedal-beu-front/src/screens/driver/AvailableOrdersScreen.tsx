@@ -192,12 +192,6 @@ const ACTIVE_DRIVER_STATUSES = [
   "on_the_way",
 ];
 
-// An unaccepted order is considered expired 30 minutes after creation.
-// Used to sweep stale rows out of the available-orders list client-side
-// (see the mount effect) and to drop any already-stale rows the server
-// still returns from a fetch.
-const ORDER_EXPIRY_MS = 30 * 60 * 1000;
-
 const CURRENT_ORDER_STATUS_LABELS: Record<string, string> = {
   accepted: "Heading to Restaurant",
   preparing: "Heading to Restaurant",
@@ -205,6 +199,16 @@ const CURRENT_ORDER_STATUS_LABELS: Record<string, string> = {
   picked_up: "Delivering",
   on_the_way: "Delivering",
 };
+
+// The backend now excludes/auto-cancels unassigned orders past this age
+// (see FindAvailableOrders' created_at cutoff and the sweep ticker in
+// main.go). This is a client-side belt-and-suspenders match for the same
+// window — it prunes an order that crosses 30 minutes while just sitting
+// in this screen's already-fetched list, in the gap before the backend's
+// own once-a-minute sweep would otherwise remove it.
+const STALE_ORDER_MS = 30 * 60 * 1000;
+const isStaleOrder = (createdAt: string) =>
+  Date.now() - new Date(createdAt).getTime() > STALE_ORDER_MS;
 
 const AvailableOrdersScreen: React.FC = () => {
   useKeepAwake();
@@ -218,6 +222,9 @@ const AvailableOrdersScreen: React.FC = () => {
     latitude: number;
     longitude: number;
   } | null>(null);
+  useEffect(() => {
+    driverLocationRef.current = driverLocation;
+  }, [driverLocation]);
   const [driverStats, setDriverStats] = useState<DriverStats>({
     totalDeliveries: 0,
     averageRating: 0,
@@ -242,27 +249,29 @@ const AvailableOrdersScreen: React.FC = () => {
   const [currentOrder, setCurrentOrder] = useState<Order | null>(null);
   const appState = useRef(AppState.currentState);
   const locationInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+  // handleNewOrder is passed to WebSocketService.on() from connectWebSocket,
+  // which (see wsListenersRegistered below) only runs its .on() calls once
+  // per mount — so handleNewOrder's driverLocation would otherwise be
+  // permanently frozen at whatever it was on the render connectWebSocket
+  // first ran in (usually null, before the first GPS fix ever resolves).
+  // Reading a ref instead of the closed-over state keeps distance calc
+  // live without needing to re-register the listener on every location
+  // update.
+  const driverLocationRef = useRef<typeof driverLocation>(null);
+  // Guards connectWebSocket()'s WebSocketService.on(...) calls so they
+  // only ever run once per mount. connectWebSocket() itself gets called
+  // repeatedly — on every app foreground (see isComingToForeground below)
+  // and on every online-toggle — and WebSocketService.on() has no
+  // dedup, so each of those calls was stacking 5 more listeners on top
+  // of the last. A single incoming order:new was then firing
+  // handleNewOrder (and the Alert.alert it schedules) once per
+  // accumulated listener — the repeated Alert windows attaching/detaching
+  // in quick succession is the "blink blink" on new orders, and the
+  // growing pile of duplicate work on every message is why things got
+  // slower the longer a shift went on.
+  const wsListenersRegistered = useRef(false);
 
   useEffect(() => {
-    // Listener registration happens exactly ONCE here, for the lifetime of
-    // this screen (it's a tab that stays mounted for the whole driver
-    // session). Previously these five `.on(...)` calls lived inside
-    // connectWebSocket() below, which initializeDriver() re-invokes every
-    // single time the app comes back to the foreground (see
-    // handleAppStateChange). WebSocketService.on() just pushes onto an
-    // array with no dedup, so locking/unlocking the phone N times meant N
-    // stacked copies of every listener — handleNewOrder firing N times per
-    // incoming order (N duplicate "New Order Available!" alerts, N
-    // redundant re-renders that read as the list "blinking"), and the
-    // whole screen getting progressively slower the longer the app had
-    // been open. Registering once here and connecting (idempotently) on
-    // each foreground event fixes that without losing the reconnect.
-    WebSocketService.on("connect", handleSocketConnect);
-    WebSocketService.on("disconnect", handleSocketDisconnect);
-    WebSocketService.on("order:new", handleNewOrder);
-    WebSocketService.on("order:cancelled", handleOrderCancelled);
-    WebSocketService.on("order:taken", handleOrderTaken);
-
     initializeDriver();
 
     const subscription = AppState.addEventListener(
@@ -270,44 +279,21 @@ const AvailableOrdersScreen: React.FC = () => {
       handleAppStateChange,
     );
 
-    // Orders expire 30 minutes after creation if no driver has accepted
-    // them — but nothing was ever removing an expired order from this
-    // screen client-side, so a driver who left the tab open would keep
-    // seeing (and could still try to accept) orders that should have
-    // disappeared. This sweeps the current list every 30s and drops
-    // anything past the cutoff; fetchAvailableOrders() below also drops
-    // stale rows the server still happens to return.
-    const staleSweep = setInterval(() => {
-      const cutoff = Date.now() - ORDER_EXPIRY_MS;
+    // Prunes any order that crosses the 30-minute mark while just sitting
+    // in an already-fetched list — isStaleOrder() at fetch/push time only
+    // keeps a stale one from being added in the first place.
+    const staleCheckInterval = setInterval(() => {
       setAvailableOrders((prev) =>
-        prev.filter((o) => new Date(o.createdAt).getTime() > cutoff),
+        prev.filter((order) => !isStaleOrder(order.createdAt)),
       );
-    }, 30000);
-
-    // Belt-and-suspenders refetch. The socket ("order:new"/"order:taken")
-    // is the primary way this list updates, but a single missed/duplicated
-    // message (a drop during a brief reconnect, an app-background gap,
-    // etc.) used to mean this screen's picture of "available orders" could
-    // silently drift from the server's until the driver manually pulled to
-    // refresh. Re-pulling the real list every 60s reconciles that quietly
-    // in the background — cheap, and it's what keeps this screen matching
-    // what the server actually has.
-    const refreshPoll = setInterval(() => {
-      fetchAvailableOrders();
-    }, 60000);
+    }, 60 * 1000);
 
     return () => {
       subscription.remove();
-      clearInterval(staleSweep);
-      clearInterval(refreshPoll);
+      clearInterval(staleCheckInterval);
       if (locationInterval.current) {
         clearInterval(locationInterval.current);
       }
-      WebSocketService.off("connect", handleSocketConnect);
-      WebSocketService.off("disconnect", handleSocketDisconnect);
-      WebSocketService.off("order:new", handleNewOrder);
-      WebSocketService.off("order:cancelled", handleOrderCancelled);
-      WebSocketService.off("order:taken", handleOrderTaken);
       // Not calling WebSocketService.disconnect() here — this screen is a
       // tab (see app/(driver)/_layout.tsx) that stays mounted for the
       // driver's whole session, so this cleanup only really runs at
@@ -408,28 +394,31 @@ const AvailableOrdersScreen: React.FC = () => {
         return;
       }
 
-      // Listener registration lives in the mount effect above now (once,
-      // for the screen's whole lifetime) — this just (re)connects, which
-      // is safe to call repeatedly since WebSocketService.connect() is a
-      // no-op when already OPEN/CONNECTING.
-      //
-      // connect() returns a real promise that resolves once the handshake
-      // actually completes — awaiting it here prevents any race where
-      // messages are sent before the socket is open.
+      if (!wsListenersRegistered.current) {
+        wsListenersRegistered.current = true;
+
+        WebSocketService.on("connect", () => {
+          console.log("Driver WebSocket connected");
+          setIsOnline(true);
+        });
+
+        WebSocketService.on("disconnect", () => {
+          console.log("Driver WebSocket disconnected");
+          setIsOnline(false);
+        });
+
+        WebSocketService.on("order:new", handleNewOrder);
+        WebSocketService.on("order:cancelled", handleOrderCancelled);
+        WebSocketService.on("order:taken", handleOrderTaken);
+      }
+
+      // connect() now returns a real promise that resolves once the
+      // handshake actually completes — awaiting it here prevents any
+      // race where messages are sent before the socket is open.
       await WebSocketService.connect(token);
     } catch (error) {
       console.error("WebSocket connection error:", error);
     }
-  };
-
-  const handleSocketConnect = () => {
-    console.log("Driver WebSocket connected");
-    setIsOnline(true);
-  };
-
-  const handleSocketDisconnect = () => {
-    console.log("Driver WebSocket disconnected");
-    setIsOnline(false);
   };
 
   const handleAppStateChange = (nextAppState: AppStateStatus) => {
@@ -469,11 +458,12 @@ const AvailableOrdersScreen: React.FC = () => {
 
   const handleNewOrder = (data: BackendOrder) => {
     const order = mapBackendOrder(data);
+    if (isStaleOrder(order.createdAt)) return;
     // Calculate distance if driver location is available
-    if (driverLocation) {
+    if (driverLocationRef.current) {
       const dist = calculateDistance(
-        driverLocation.latitude,
-        driverLocation.longitude,
+        driverLocationRef.current.latitude,
+        driverLocationRef.current.longitude,
         order.restaurantLocation.latitude,
         order.restaurantLocation.longitude,
       );
@@ -567,14 +557,10 @@ const AvailableOrdersScreen: React.FC = () => {
         // guard against that before mapping, which was causing
         // "Cannot read property 'map' of null".
         const rawOrders: BackendOrder[] = Array.isArray(data) ? data : [];
-        const cutoff = Date.now() - ORDER_EXPIRY_MS;
-        const freshOrders = rawOrders.filter(
-          (order) =>
-            !order.created_at ||
-            new Date(order.created_at).getTime() > cutoff,
-        );
 
-        const orders = freshOrders.map((order) => {
+        const orders = rawOrders
+          .filter((order) => !isStaleOrder(order.created_at))
+          .map((order) => {
           const mapped = mapBackendOrder(order);
           const dist = calculateDistance(
             latitude,
@@ -790,17 +776,27 @@ const AvailableOrdersScreen: React.FC = () => {
           },
         });
 
-        // Navigate to order details
-        router.push({
-          pathname: "/(driver)/order-detail" as any,
-          params: { orderId },
-        });
+        // The setAvailableOrders() above removes this card from the list in
+        // this render pass. Navigating and showing a native Alert in the
+        // very same tick landed a screen mount + dialog attach in the same
+        // Fabric commit as that card removal — the same
+        // "addViewAt: ... already has a parent" crash fixed in
+        // handleNewOrder above, just triggered from the Accept button
+        // instead. Deferring both until after the list update has actually
+        // settled avoids the collision.
+        InteractionManager.runAfterInteractions(() => {
+          // Navigate to order details
+          router.push({
+            pathname: "/(driver)/order-detail" as any,
+            params: { orderId },
+          });
 
-        Alert.alert(
-          "✅ Order Accepted!",
-          "You have accepted the order. Navigate to the restaurant for pickup.",
-          [{ text: "Proceed" }],
-        );
+          Alert.alert(
+            "✅ Order Accepted!",
+            "You have accepted the order. Navigate to the restaurant for pickup.",
+            [{ text: "Proceed" }],
+          );
+        });
       } else {
         throw new Error(data.message || "Failed to accept order");
       }
@@ -889,17 +885,26 @@ const AvailableOrdersScreen: React.FC = () => {
       if (driverLocation) {
         startLocationUpdates();
       }
-      Alert.alert(
-        "✅ You're Online",
-        "You will now receive new order notifications",
-      );
     } else {
       if (locationInterval.current) {
         clearInterval(locationInterval.current);
       }
       WebSocketService.disconnect();
-      Alert.alert("⏸️ You're Offline", "You won't receive new orders");
     }
+
+    // Same reasoning as handleAcceptOrder above: setIsOnline() re-renders
+    // the header badge/dot in this pass, so the Alert is deferred until
+    // that's settled instead of firing in the same tick.
+    InteractionManager.runAfterInteractions(() => {
+      if (newStatus) {
+        Alert.alert(
+          "✅ You're Online",
+          "You will now receive new order notifications",
+        );
+      } else {
+        Alert.alert("⏸️ You're Offline", "You won't receive new orders");
+      }
+    });
   };
 
   const handleFilterPress = (filter: keyof typeof activeFilters) => {

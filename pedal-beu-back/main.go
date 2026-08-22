@@ -34,6 +34,45 @@ import (
 
 var cld *cloudinary.Cloudinary
 
+// startStaleOrderSweep runs forever (until the process exits), cancelling
+// any order that's sat unassigned for more than 30 minutes and
+// broadcasting order:cancelled for each one — see the call site in main()
+// for the full reasoning. It's a plain ticker rather than a proper cron
+// library since this is the only scheduled job the service needs right
+// now; reach for something heavier if a second one ever gets added.
+func startStaleOrderSweep(orderService services.OrderService) {
+	const sweepInterval = 1 * time.Minute
+	const staleAfter = 30 * time.Minute
+
+	ticker := time.NewTicker(sweepInterval)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		cancelledOrders, err := orderService.AutoCancelStaleOrders(ctx, staleAfter)
+		cancel()
+
+		if err != nil {
+			log.Printf("⚠️  Stale-order sweep failed: %v", err)
+			continue
+		}
+
+		for _, order := range cancelledOrders {
+			log.Printf("⏱️  Auto-cancelled stale order %s (unassigned for over %s)", order.ID.Hex(), staleAfter)
+			if websocket.GlobalHub == nil {
+				continue
+			}
+			event := websocket.WebSocketEvent{
+				Type: "order:cancelled",
+				Data: gin.H{"orderId": order.ID.Hex()},
+			}
+			websocket.GlobalHub.BroadcastToRoom("drivers", event)
+			websocket.GlobalHub.BroadcastToRoom("order:"+order.ID.Hex(), event)
+			websocket.GlobalHub.BroadcastToRoom("user:"+order.CustomerID.Hex(), event)
+		}
+	}
+}
+
 func initCloudinary() error {
 	cloudName := os.Getenv("CLOUDINARY_CLOUD_NAME")
 	apiKey := os.Getenv("CLOUDINARY_API_KEY")
@@ -581,6 +620,15 @@ func main() {
 	// status and GPS location when the driver toggles or moves.
 	websocket.SetDriverRepository(driverRepo)
 	websocket.SetupWebSocketRoutes(router.Group(""), middleware.AuthMiddleware())
+
+	// Auto-cancel sweep: nothing previously expired an order that no
+	// driver ever accepted — FindAvailableOrders had no time cutoff, so a
+	// stale order would sit visible (and, sorted oldest-first, pinned to
+	// the very top) indefinitely. Every minute, cancel anything unassigned
+	// for more than 30 minutes and broadcast it the same way a manual
+	// cancel is broadcast, so it disappears from drivers' lists live
+	// instead of only after their next pull-to-refresh.
+	go startStaleOrderSweep(orderService)
 
 	if cfg.Server.Environment != "production" {
 		router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))

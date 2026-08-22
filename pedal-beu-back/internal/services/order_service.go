@@ -38,6 +38,10 @@ type OrderService interface {
 	GetDriverStats(ctx context.Context, driverID primitive.ObjectID) (map[string]interface{}, error)
 	GetDriverEarningsChart(ctx context.Context, driverID primitive.ObjectID, rangeType string) (map[string]interface{}, error)
 	GetDriverEarningsTransactions(ctx context.Context, driverID primitive.ObjectID, limit int64) ([]map[string]interface{}, error)
+	// AutoCancelStaleOrders cancels every unassigned order older than
+	// `olderThan` and returns the orders it cancelled, so the caller
+	// (main.go's sweep ticker) can broadcast order:cancelled for each one.
+	AutoCancelStaleOrders(ctx context.Context, olderThan time.Duration) ([]models.Order, error)
 }
 
 type orderService struct {
@@ -490,6 +494,40 @@ func (s *orderService) CancelOrder(ctx context.Context, orderID primitive.Object
 	}
 
 	return s.orderRepo.CancelOrder(ctx, orderID, cancellation)
+}
+
+// AutoCancelStaleOrders finds unassigned orders older than `olderThan` and
+// cancels each one (same CancelOrder path as a manual cancellation, so it
+// gets the same timeline entry / cancellation record), returning the
+// orders it cancelled so main.go's sweep ticker can broadcast
+// order:cancelled to the driver room and to the customer who placed each
+// one. CancelledBy is left as the zero ObjectID with Role "system" to mark
+// these as machine-initiated rather than a real user action.
+func (s *orderService) AutoCancelStaleOrders(ctx context.Context, olderThan time.Duration) ([]models.Order, error) {
+	cutoff := time.Now().Add(-olderThan)
+	stale, err := s.orderRepo.FindStaleUnassignedOrders(ctx, cutoff)
+	if err != nil {
+		return nil, err
+	}
+
+	cancelled := make([]models.Order, 0, len(stale))
+	for _, order := range stale {
+		cancellation := models.CancellationInfo{
+			Reason:      "No driver accepted this order in time",
+			CancelledBy: primitive.NilObjectID,
+			Role:        "system",
+		}
+		if err := s.orderRepo.CancelOrder(ctx, order.ID, cancellation); err != nil {
+			// One stale order failing to cancel (e.g. a driver accepted it
+			// in the split second between the find and this update, so it
+			// no longer matches CancelOrder's status filter) shouldn't
+			// stop the rest of the sweep from processing.
+			continue
+		}
+		cancelled = append(cancelled, order)
+	}
+
+	return cancelled, nil
 }
 
 func (s *orderService) RateOrder(ctx context.Context, orderID primitive.ObjectID, rating *models.OrderRating) error {
