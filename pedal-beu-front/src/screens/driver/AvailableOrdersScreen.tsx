@@ -25,6 +25,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { API_BASE_URL } from "../../utils/constants";
 import { reverseGeocodeToAddress } from "../../utils/reverseGeocode";
+import { fetchWithTimeout, FetchTimeoutError } from "../../utils/fetchWithTimeout";
 
 // Define the expected shape of a backend order (from REST or WebSocket)
 interface BackendOrder {
@@ -318,14 +319,33 @@ const AvailableOrdersScreen: React.FC = () => {
       // Connect to WebSocket
       await connectWebSocket();
 
-      // Fetch available orders using the location we just got
-      await fetchAvailableOrders(location);
+      // These three were previously sequential `await`s under one shared
+      // try/finally. Backend is on Render's free tier, which cold-starts
+      // after ~15min idle (30-90+s to wake up) — with plain fetch() and
+      // no timeout, if the *first* of these hung on a cold start, the
+      // other two never even ran, and setLoading(false) in the finally
+      // below never fired, leaving the spinner up indefinitely with no
+      // error shown (this is what showed up as Available Orders stuck on
+      // "Loading available orders..." forever). fetchWithTimeout (used
+      // inside each of these now) turns a hang into a rejection after
+      // 20s instead of never settling; running them concurrently means a
+      // slow one doesn't also delay the other two, and one timing out
+      // doesn't stop the ones that did succeed from populating.
+      const results = await Promise.allSettled([
+        fetchAvailableOrders(location),
+        fetchDriverStats(),
+        fetchCurrentOrder(),
+      ]);
 
-      // Fetch driver stats
-      await fetchDriverStats();
-
-      // Check whether an order is already in progress
-      await fetchCurrentOrder();
+      const anyTimedOut = results.some(
+        (r) => r.status === "rejected" && r.reason instanceof FetchTimeoutError,
+      );
+      if (anyTimedOut) {
+        Alert.alert(
+          "Slow connection",
+          "The server is taking longer than usual to respond (it may be waking up from being idle). Pull down to refresh in a moment.",
+        );
+      }
 
       // Start periodic location updates if online
       if (isOnline) {
@@ -543,7 +563,7 @@ const AvailableOrdersScreen: React.FC = () => {
 
       const { latitude, longitude } = loc;
       const url = `${API_BASE_URL}/driver/orders/available?lat=${latitude}&lng=${longitude}&radius=5000`;
-      const response = await fetch(url, {
+      const response = await fetchWithTimeout(url, {
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
@@ -580,6 +600,13 @@ const AvailableOrdersScreen: React.FC = () => {
       }
     } catch (error) {
       console.error("Fetch orders error:", error);
+      // A plain network/server error here is worth telling the driver
+      // about immediately (their own catch below already does that for
+      // other errors) — but a *timeout* specifically also needs to reach
+      // initializeDriver's Promise.allSettled so it can show one combined
+      // "server's waking up" message instead of stacking a separate
+      // alert per endpoint that timed out.
+      if (error instanceof FetchTimeoutError) throw error;
       Alert.alert("Error", "Could not load available orders");
     }
   };
@@ -624,7 +651,7 @@ const AvailableOrdersScreen: React.FC = () => {
   const fetchCurrentOrder = async () => {
     try {
       const token = await AsyncStorage.getItem("accessToken");
-      const response = await fetch(
+      const response = await fetchWithTimeout(
         `${API_BASE_URL}/orders/driver?page=1&limit=5`,
         {
           headers: {
@@ -644,13 +671,14 @@ const AvailableOrdersScreen: React.FC = () => {
       setCurrentOrder(active ? mapBackendOrder(active) : null);
     } catch (error) {
       console.error("Fetch current order error:", error);
+      if (error instanceof FetchTimeoutError) throw error;
     }
   };
 
   const fetchDriverStats = async () => {
     try {
       const token = await AsyncStorage.getItem("accessToken");
-      const response = await fetch(`${API_BASE_URL}/driver/stats`, {
+      const response = await fetchWithTimeout(`${API_BASE_URL}/driver/stats`, {
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
@@ -692,6 +720,7 @@ const AvailableOrdersScreen: React.FC = () => {
         averageTime: 0,
         acceptanceRate: 0,
       });
+      if (error instanceof FetchTimeoutError) throw error;
     }
   };
 

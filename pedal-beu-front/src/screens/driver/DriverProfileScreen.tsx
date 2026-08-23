@@ -20,6 +20,7 @@ import RatingStars from "../../components/driver/RatingStars";
 import AnimatedButton from "../../components/ui/AnimatedButton";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { API_BASE_URL } from "../../utils/constants";
+import { fetchWithTimeout } from "../../utils/fetchWithTimeout";
 import { authAPI } from "../../../lib/api";
 
 interface DriverProfile {
@@ -62,13 +63,17 @@ const DriverProfileScreen: React.FC = () => {
       setLoading(true);
       const token = await AsyncStorage.getItem("accessToken");
 
-      const userRes = await fetch(`${API_BASE_URL}/users/me`, {
+      // fetchWithTimeout: plain fetch() has no timeout, and Render's free
+      // tier can take 30-90s to wake from a cold start — without a
+      // timeout, a hung request here means "Loading profile..." (gated on
+      // the `loading` state this whole function wraps) never clears.
+      const userRes = await fetchWithTimeout(`${API_BASE_URL}/users/me`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!userRes.ok) throw new Error("Failed to fetch profile");
       const userData = await userRes.json();
 
-      const statsRes = await fetch(`${API_BASE_URL}/driver/stats`, {
+      const statsRes = await fetchWithTimeout(`${API_BASE_URL}/driver/stats`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       let stats: {

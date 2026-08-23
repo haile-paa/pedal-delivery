@@ -13,6 +13,7 @@ import EarningsChart from "../../components/driver/EarningsChart";
 import { useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { API_BASE_URL } from "../../utils/constants";
+import { fetchWithTimeout } from "../../utils/fetchWithTimeout";
 
 interface EarningsSummary {
   today: number;
@@ -72,7 +73,13 @@ const EarningsScreen: React.FC = () => {
       // Summary numbers come from /driver/stats (the same endpoint the
       // dashboard and profile screens use) — there's no separate
       // /driver/earnings/summary endpoint on the backend.
-      const statsRes = await fetch(`${API_BASE_URL}/driver/stats`, {
+      // fetchWithTimeout (all three calls below): plain fetch() has no
+      // timeout, and Render's free tier can take 30-90s to wake from a
+      // cold start — without a timeout, one hung request here means the
+      // "Loading earnings..." spinner (gated on the `loading` state this
+      // whole function wraps) never clears, since nothing after a hung
+      // await ever runs, including the finally block below.
+      const statsRes = await fetchWithTimeout(`${API_BASE_URL}/driver/stats`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (statsRes.ok) {
@@ -89,7 +96,7 @@ const EarningsScreen: React.FC = () => {
         });
       }
 
-      const chartRes = await fetch(
+      const chartRes = await fetchWithTimeout(
         `${API_BASE_URL}/driver/earnings/chart?range=${timeRange}`,
         { headers: { Authorization: `Bearer ${token}` } },
       );
@@ -103,7 +110,7 @@ const EarningsScreen: React.FC = () => {
         setChartError(true);
       }
 
-      const txRes = await fetch(
+      const txRes = await fetchWithTimeout(
         `${API_BASE_URL}/driver/earnings/transactions?limit=5`,
         { headers: { Authorization: `Bearer ${token}` } },
       );
