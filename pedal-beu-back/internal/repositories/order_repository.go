@@ -31,7 +31,7 @@ type OrderRepository interface {
 	AddRating(ctx context.Context, orderID primitive.ObjectID, rating models.OrderRating) error
 	UpdatePaymentStatus(ctx context.Context, orderID primitive.ObjectID, status string) error
 	UpdatePaymentVerification(ctx context.Context, orderID primitive.ObjectID, paymentStatus string, verification *models.PaymentVerification) error
-	CancelOrder(ctx context.Context, orderID primitive.ObjectID, cancellation models.CancellationInfo) error
+	CancelOrder(ctx context.Context, orderID primitive.ObjectID, cancellation models.CancellationInfo, allowedStatuses []models.OrderStatus) error
 	FindActiveOrders(ctx context.Context) ([]models.Order, error)
 	// FindStaleUnassignedOrders finds orders still sitting unassigned
 	// (status "accepted", no driver_id) whose created_at is older than
@@ -50,6 +50,9 @@ type OrderRepository interface {
 	CountByStatus(ctx context.Context, filter interface{}) (map[string]int, error)
 	RevenueByDay(ctx context.Context, days int) ([]map[string]interface{}, error)
 	GetAllOrders(ctx context.Context, pagination Pagination) ([]models.Order, int64, error)
+	// SumPlatformDeliveryCut sums the company's cut of delivery fees for
+	// orders matching filter. See implementation for the cut rule.
+	SumPlatformDeliveryCut(ctx context.Context, filter interface{}) (float64, error)
 }
 
 type Pagination struct {
@@ -415,7 +418,7 @@ func (r *orderRepository) UpdatePaymentVerification(ctx context.Context, orderID
 	return nil
 }
 
-func (r *orderRepository) CancelOrder(ctx context.Context, orderID primitive.ObjectID, cancellation models.CancellationInfo) error {
+func (r *orderRepository) CancelOrder(ctx context.Context, orderID primitive.ObjectID, cancellation models.CancellationInfo, allowedStatuses []models.OrderStatus) error {
 	cancellation.Timestamp = time.Now()
 	update := bson.M{
 		"$set": bson.M{
@@ -434,10 +437,8 @@ func (r *orderRepository) CancelOrder(ctx context.Context, orderID primitive.Obj
 		},
 	}
 	filter := bson.M{
-		"_id": orderID,
-		"status": bson.M{
-			"$in": []models.OrderStatus{models.OrderPending, models.OrderAccepted, models.OrderPreparing},
-		},
+		"_id":    orderID,
+		"status": bson.M{"$in": allowedStatuses},
 	}
 	result, err := r.collection.UpdateOne(ctx, filter, update)
 	if err != nil {
@@ -477,6 +478,47 @@ func (r *orderRepository) FindActiveOrders(ctx context.Context) ([]models.Order,
 
 func (r *orderRepository) CountOrders(ctx context.Context, filter interface{}) (int64, error) {
 	return r.collection.CountDocuments(ctx, filter)
+}
+
+// SumPlatformDeliveryCut sums the company's cut of the delivery fee for
+// orders matching filter (typically {status: delivered, created_at: ...}).
+// The cut is 50% of the delivery fee, and only applies to orders paid by
+// CBE or Telebirr transfer — that money is paid into the company account
+// first, so the company keeps its cut before crediting the driver the
+// rest. Cash-on-delivery orders are paid straight to the driver in person,
+// so the company never touches that money and takes no cut.
+func (r *orderRepository) SumPlatformDeliveryCut(ctx context.Context, filter interface{}) (float64, error) {
+	pipeline := []bson.M{
+		{"$match": filter},
+		{"$addFields": bson.M{
+			"_platform_cut": bson.M{
+				"$cond": bson.M{
+					"if": bson.M{"$in": bson.A{
+						"$payment_method",
+						bson.A{"cbe", "cbe_transfer", "telebirr", "telebirr_transfer"},
+					}},
+					"then": bson.M{"$multiply": bson.A{"$total_amount.delivery_fee", 0.5}},
+					"else": 0,
+				},
+			},
+		}},
+		{"$group": bson.M{"_id": nil, "total": bson.M{"$sum": "$_platform_cut"}}},
+	}
+	cursor, err := r.collection.Aggregate(ctx, pipeline)
+	if err != nil {
+		return 0, err
+	}
+	defer cursor.Close(ctx)
+	var result struct {
+		Total float64 `bson:"total"`
+	}
+	if cursor.Next(ctx) {
+		if err := cursor.Decode(&result); err != nil {
+			return 0, err
+		}
+		return result.Total, nil
+	}
+	return 0, nil
 }
 
 func (r *orderRepository) SumRevenue(ctx context.Context, filter interface{}) (float64, error) {

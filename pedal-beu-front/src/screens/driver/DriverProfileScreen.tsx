@@ -67,15 +67,25 @@ const DriverProfileScreen: React.FC = () => {
       // tier can take 30-90s to wake from a cold start — without a
       // timeout, a hung request here means "Loading profile..." (gated on
       // the `loading` state this whole function wraps) never clears.
-      const userRes = await fetchWithTimeout(`${API_BASE_URL}/users/me`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      // fetchWithTimeout: plain fetch() has no timeout, and Render's free
+      // tier can take 30-90s to wake from a cold start — without a
+      // timeout, a hung request here means "Loading profile..." (gated on
+      // the `loading` state this whole function wraps) never clears.
+      // userRes and statsRes don't depend on each other, so they're fired
+      // together — awaiting them one after another meant up to ~40s
+      // stacked on a cold instance even when neither one individually hit
+      // the 20s timeout.
+      const [userRes, statsRes] = await Promise.all([
+        fetchWithTimeout(`${API_BASE_URL}/users/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetchWithTimeout(`${API_BASE_URL}/driver/stats`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      ]);
       if (!userRes.ok) throw new Error("Failed to fetch profile");
       const userData = await userRes.json();
 
-      const statsRes = await fetchWithTimeout(`${API_BASE_URL}/driver/stats`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
       let stats: {
         totalDeliveries: number;
         rating: number;

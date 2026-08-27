@@ -317,10 +317,16 @@ const RestaurantDetailScreen: React.FC = () => {
 
   const cartCount = getCartCount();
   const cartTotal = getCartTotal();
-  const deliveryFee = restaurant.delivery_fee || 0;
-  const serviceCharge = cartTotal * 0.05;
-  const tax = cartTotal * 0.1;
-  const grandTotal = cartTotal + deliveryFee + serviceCharge + tax;
+  // Estimate only — the checkout sheet below recomputes this from the
+  // live GPS distance to the restaurant, and the backend always
+  // recalculates it again (and is what the order is actually charged).
+  // Formula: 40 Birr starting fee + 15 Birr per km. Falls back to 2.5km
+  // (matching CheckoutBottomSheet's own fallback) when we don't have a
+  // distance estimate for this restaurant yet.
+  const estimatedDistanceKm = restaurant.distance_km ?? 2.5;
+  const deliveryFee = 40 + 15 * estimatedDistanceKm;
+  // Service charge and tax are disabled — grand total is Subtotal + Delivery Fee only.
+  const grandTotal = cartTotal + deliveryFee;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -517,8 +523,6 @@ const RestaurantDetailScreen: React.FC = () => {
         cartItems={state.customer.cart}
         cartTotal={cartTotal}
         deliveryFee={deliveryFee}
-        serviceCharge={serviceCharge}
-        tax={tax}
         grandTotal={grandTotal}
         customerPhone={state.auth.user?.phone}
         onPlaceOrder={handlePlaceOrder} // ✅ now expects (paymentMethod, addressId)

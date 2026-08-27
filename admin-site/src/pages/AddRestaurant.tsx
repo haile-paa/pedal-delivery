@@ -9,8 +9,8 @@ interface RestaurantFormData {
   description: string;
   cuisine_type: string[];
   address: string;
-  phone: string;
-  email: string;
+  phone?: string;
+  email?: string;
   latitude: number;
   longitude: number;
   delivery_fee: number;
@@ -264,7 +264,7 @@ const AddRestaurant: React.FC = () => {
         description: data.description || "",
         cuisine_type: selectedCuisines,
         address: data.address,
-        phone: data.phone,
+        phone: data.phone || "",
         email: data.email || "",
         latitude: data.latitude || 9.032,
         longitude: data.longitude || 38.746,
@@ -457,14 +457,21 @@ const AddRestaurant: React.FC = () => {
                 <div className='grid grid-cols-2 gap-4'>
                   <div>
                     <label className='mb-1 block text-sm font-medium text-gray-700'>
-                      Phone Number
+                      Phone Number (optional)
                     </label>
                     <input
                       {...register("phone", {
-                        pattern: {
-                          value: /^\+?[0-9\s\-\(\)]+$/,
-                          message: "Please enter a valid phone number",
-                        },
+                        // Optional — only validated when the admin actually
+                        // types something. A plain `pattern` rule in
+                        // react-hook-form still runs against an empty
+                        // string (and an empty string fails this regex),
+                        // which made the field required in practice even
+                        // without a `required` rule — so validate manually
+                        // and skip the check when the field is blank.
+                        validate: (value) =>
+                          !value ||
+                          /^\+?[0-9\s\-\(\)]+$/.test(value) ||
+                          "Please enter a valid phone number",
                       })}
                       type='tel'
                       className={`w-full rounded-lg border px-4 py-3 ${
@@ -481,14 +488,18 @@ const AddRestaurant: React.FC = () => {
 
                   <div>
                     <label className='mb-1 block text-sm font-medium text-gray-700'>
-                      Email
+                      Email (optional)
                     </label>
                     <input
                       {...register("email", {
-                        pattern: {
-                          value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
-                          message: "Invalid email address",
-                        },
+                        // Optional, same reasoning as phone above — only
+                        // validated when there's actually a value to check.
+                        validate: (value) =>
+                          !value ||
+                          /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(
+                            value,
+                          ) ||
+                          "Invalid email address",
                       })}
                       type='email'
                       className='w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200'
@@ -609,7 +620,18 @@ const AddRestaurant: React.FC = () => {
                 Delivery Settings
               </h2>
               <div className='space-y-4'>
-                <div className='grid grid-cols-3 gap-4'>
+                {/* Delivery Fee is no longer set per-restaurant — the app
+                    now always charges a hardcoded 40 Birr starting fee
+                    plus 15 Birr per km (see CalculateDeliveryFee in the
+                    backend). The input below is commented out rather than
+                    deleted in case per-restaurant pricing comes back. */}
+                <div className='rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800'>
+                  Delivery fee is calculated automatically for every order:
+                  40 Birr + 15 Birr per km. It's no longer set per
+                  restaurant.
+                </div>
+                <div className='grid grid-cols-2 gap-4'>
+                  {/*
                   <div>
                     <label className='mb-1 block text-sm font-medium text-gray-700'>
                       Delivery Fee (ETB)
@@ -633,6 +655,7 @@ const AddRestaurant: React.FC = () => {
                       </p>
                     )}
                   </div>
+                  */}
 
                   <div>
                     <label className='mb-1 block text-sm font-medium text-gray-700'>

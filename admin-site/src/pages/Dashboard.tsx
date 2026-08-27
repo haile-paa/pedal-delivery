@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { FiTrendingUp, FiClock, FiUsers, FiShoppingBag } from "react-icons/fi";
+import { FiTrendingUp, FiClock, FiUsers, FiShoppingBag, FiDollarSign } from "react-icons/fi";
 import StatCard from "../components/Dashboard/StatCard";
 import RecentOrders from "../components/Dashboard/RecentOrders";
 import TopRestaurants from "../components/Dashboard/TopRestaurants";
@@ -13,6 +13,11 @@ interface DashboardStats {
   totalRevenue: number;
   avgDeliveryTime: number;
   activeDrivers: number;
+  // Company's 50% cut of delivery fees on orders paid via CBE/Telebirr
+  // transfer (cash-on-delivery orders contribute nothing here — see
+  // SumPlatformDeliveryCut on the backend).
+  companyDeliveryEarningsToday: number;
+  companyDeliveryEarningsTotal: number;
 }
 
 interface BackendOrder {
@@ -58,6 +63,8 @@ const Dashboard: React.FC = () => {
     totalRevenue: 0,
     avgDeliveryTime: 0,
     activeDrivers: 0,
+    companyDeliveryEarningsToday: 0,
+    companyDeliveryEarningsTotal: 0,
   });
   const [recentOrders, setRecentOrders] = useState<BackendOrder[]>([]);
   const [topRestaurants, setTopRestaurants] = useState<BackendRestaurant[]>([]);
@@ -107,6 +114,8 @@ const Dashboard: React.FC = () => {
           totalRevenue: 0,
           avgDeliveryTime: 0,
           activeDrivers: 0,
+          companyDeliveryEarningsToday: 0,
+          companyDeliveryEarningsTotal: 0,
         },
       );
       setRecentOrders(
@@ -198,6 +207,25 @@ const Dashboard: React.FC = () => {
           value={stats.activeDrivers}
           icon={<FiUsers className='h-6 w-6 text-orange-600' />}
           color='orange'
+        />
+      </div>
+
+      {/* Company's cut of delivery fees (50% on CBE/Telebirr-paid orders;
+          cash-on-delivery orders never touch the company account, so they
+          contribute nothing here). This is money that stayed with the
+          company rather than being paid out to a driver. */}
+      <div className='mt-4 sm:mt-6 grid grid-cols-1 gap-4 sm:gap-6 md:grid-cols-2'>
+        <StatCard
+          title="Today's Company Delivery Earnings"
+          value={`ETB ${stats.companyDeliveryEarningsToday.toLocaleString()}`}
+          icon={<FiDollarSign className='h-6 w-6 text-green-600' />}
+          color='green'
+        />
+        <StatCard
+          title='All-Time Company Delivery Earnings'
+          value={`ETB ${stats.companyDeliveryEarningsTotal.toLocaleString()}`}
+          icon={<FiDollarSign className='h-6 w-6 text-blue-600' />}
+          color='blue'
         />
       </div>
 

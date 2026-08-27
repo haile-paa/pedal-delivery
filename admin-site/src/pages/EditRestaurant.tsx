@@ -9,8 +9,8 @@ interface RestaurantFormData {
   description: string;
   cuisine_type: string[];
   address: string;
-  phone: string;
-  email: string;
+  phone?: string;
+  email?: string;
   latitude: number;
   longitude: number;
   delivery_fee: number;
@@ -303,7 +303,7 @@ const EditRestaurant: React.FC = () => {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="mb-1 block text-sm font-medium text-gray-700">
-                      Phone Number
+                      Phone Number (optional)
                     </label>
                     <input
                       {...register("phone")}
@@ -313,7 +313,7 @@ const EditRestaurant: React.FC = () => {
                   </div>
                   <div>
                     <label className="mb-1 block text-sm font-medium text-gray-700">
-                      Email
+                      Email (optional)
                     </label>
                     <input
                       {...register("email")}
@@ -399,7 +399,18 @@ const EditRestaurant: React.FC = () => {
                 Delivery Settings
               </h2>
               <div className="space-y-4">
-                <div className="grid grid-cols-3 gap-4">
+                {/* Delivery Fee is no longer set per-restaurant — the app
+                    now always charges a hardcoded 40 Birr starting fee
+                    plus 15 Birr per km (see CalculateDeliveryFee in the
+                    backend). The input below is commented out rather than
+                    deleted in case per-restaurant pricing comes back. */}
+                <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
+                  Delivery fee is calculated automatically for every order:
+                  40 Birr + 15 Birr per km. It's no longer set per
+                  restaurant.
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  {/*
                   <div>
                     <label className="mb-1 block text-sm font-medium text-gray-700">
                       Delivery Fee (ETB)
@@ -411,6 +422,7 @@ const EditRestaurant: React.FC = () => {
                       className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
                     />
                   </div>
+                  */}
                   <div>
                     <label className="mb-1 block text-sm font-medium text-gray-700">
                       Min Order (ETB)

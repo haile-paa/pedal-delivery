@@ -206,6 +206,54 @@ const OrderDetailScreen: React.FC = () => {
     }
   };
 
+  const handleCancelDelivery = () => {
+    if (!order) return;
+    Alert.alert(
+      "Cancel this delivery?",
+      "Use this only if you truly can't complete it (vehicle trouble, emergency, etc). This cancels the order — the customer will be notified and refunded per policy, this does not hand it off to another driver.",
+      [
+        { text: "Never mind", style: "cancel" },
+        {
+          text: "Cancel Delivery",
+          style: "destructive",
+          onPress: async () => {
+            setUpdating(true);
+            try {
+              const token = await AsyncStorage.getItem("accessToken");
+              const response = await fetch(
+                `${API_BASE_URL}/orders/${order.id}/cancel`,
+                {
+                  method: "POST",
+                  headers: {
+                    Authorization: `Bearer ${token}`,
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    reason: "Driver unable to complete delivery",
+                  }),
+                },
+              );
+              if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || "Failed to cancel delivery");
+              }
+              Alert.alert("Delivery Cancelled", "", [
+                {
+                  text: "OK",
+                  onPress: () => router.push("/(driver)/dashboard"),
+                },
+              ]);
+            } catch (error: any) {
+              Alert.alert("Error", error.message);
+            } finally {
+              setUpdating(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
   const handleCallCustomer = () => {
     if (!order?.customer.phone) {
       Alert.alert(
@@ -325,6 +373,7 @@ const OrderDetailScreen: React.FC = () => {
                 {order.delivery_fee.toFixed(2)} Birr
               </Text>
             </View>
+            {/* Service Charge and Tax are disabled backend-side (always 0) — hidden here to match.
             <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>Service Charge</Text>
               <Text style={styles.totalValue}>
@@ -335,6 +384,7 @@ const OrderDetailScreen: React.FC = () => {
               <Text style={styles.totalLabel}>Tax</Text>
               <Text style={styles.totalValue}>{order.tax.toFixed(2)} Birr</Text>
             </View>
+            */}
             {order.discount > 0 && (
               <View style={styles.totalRow}>
                 <Text style={styles.totalLabel}>Discount</Text>
@@ -394,6 +444,22 @@ const OrderDetailScreen: React.FC = () => {
             fullWidth
           />
         )}
+
+        {/* Escape hatch for a delivery that genuinely can't be finished —
+            previously there was no way for a driver to get out of an
+            accepted order at all once past "preparing" status, so an
+            abandoned delivery (app closed, emergency, etc) just sat as
+            this driver's permanent currentOrder forever, re-appearing on
+            Available Orders every time they opened the app. */}
+        <TouchableOpacity
+          onPress={handleCancelDelivery}
+          disabled={updating}
+          style={styles.cancelDeliveryButton}
+        >
+          <Text style={styles.cancelDeliveryButtonText}>
+            Cancel Delivery
+          </Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -521,6 +587,16 @@ const getStyles = (colors: any) =>
     fontSize: 14,
     fontWeight: "600",
     color: colors.primary,
+  },
+  cancelDeliveryButton: {
+    marginTop: 12,
+    alignItems: "center",
+    paddingVertical: 8,
+  },
+  cancelDeliveryButtonText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: colors.error,
   },
   loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
   loadingText: { marginTop: 12, fontSize: 16, color: colors.gray600 },

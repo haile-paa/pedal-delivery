@@ -53,28 +53,20 @@ const CartScreen: React.FC = () => {
   };
 
   const calculateDeliveryFee = () => {
-    if (currentRestaurant && currentRestaurant.delivery_fee !== undefined) {
-      return currentRestaurant.delivery_fee;
-    }
-    return 50.0;
+    // 40 Birr starting fee + 15 Birr per km, mirroring the backend
+    // (internal/services/order_service.go CalculateDeliveryFee). This is
+    // an estimate for the cart summary — the checkout sheet recomputes it
+    // from live GPS distance, and the backend always recalculates the
+    // authoritative figure the order is actually charged.
+    const estimatedDistanceKm = currentRestaurant?.distance_km ?? 2.5;
+    return 40 + 15 * estimatedDistanceKm;
   };
 
-  const calculateServiceCharge = () => {
-    const subtotal = calculateSubtotal();
-    return subtotal * 0.05;
-  };
-
-  const calculateTax = () => {
-    const subtotal = calculateSubtotal();
-    return subtotal * 0.1;
-  };
-
+  // Service charge and tax are disabled — grand total is Subtotal + Delivery Fee only.
   const calculateGrandTotal = () => {
     const subtotal = calculateSubtotal();
     const deliveryFee = calculateDeliveryFee();
-    const serviceCharge = calculateServiceCharge();
-    const tax = calculateTax();
-    return subtotal + deliveryFee + serviceCharge + tax;
+    return subtotal + deliveryFee;
   };
 
   const handleUpdateQuantity = (
@@ -233,8 +225,6 @@ const CartScreen: React.FC = () => {
 
   const subtotal = calculateSubtotal();
   const deliveryFee = calculateDeliveryFee();
-  const serviceCharge = calculateServiceCharge();
-  const tax = calculateTax();
   const grandTotal = calculateGrandTotal();
 
   return (
@@ -307,11 +297,14 @@ const CartScreen: React.FC = () => {
             <Text style={styles.summaryValue}>{subtotal.toFixed(2)}Birr</Text>
           </View>
           <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>{t("deliveryFee")}</Text>
+            <Text style={styles.summaryLabel}>
+              {t("deliveryFee")} (15 Birr/Km)
+            </Text>
             <Text style={styles.summaryValue}>
               {deliveryFee.toFixed(2)}Birr
             </Text>
           </View>
+          {/* Service Charge and Tax are disabled — total is Subtotal + Delivery Fee only.
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>{t("serviceCharge")} (5%)</Text>
             <Text style={styles.summaryValue}>
@@ -322,6 +315,7 @@ const CartScreen: React.FC = () => {
             <Text style={styles.summaryLabel}>{t("tax")} (10%)</Text>
             <Text style={styles.summaryValue}>{tax.toFixed(2)}Birr</Text>
           </View>
+          */}
           <View style={[styles.summaryRow, styles.totalRow]}>
             <Text style={styles.totalLabel}>{t("total")}</Text>
             <Text style={styles.totalValue}>{grandTotal.toFixed(2)}Birr</Text>
@@ -362,8 +356,6 @@ const CartScreen: React.FC = () => {
           cartItems={state.customer.cart}
           cartTotal={subtotal}
           deliveryFee={deliveryFee}
-          serviceCharge={serviceCharge}
-          tax={tax}
           grandTotal={grandTotal}
           customerPhone={state.auth.user?.phone}
           onPlaceOrder={handlePlaceOrder} // ✅ now expects (paymentMethod, addressId)

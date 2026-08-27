@@ -84,9 +84,9 @@ type OrderWithDriver struct {
 // RestaurantLocation snapshot for geo queries), so this is resolved from the
 // restaurants collection at read time rather than stored on the order.
 type RestaurantInfo struct {
-	Name     string             `json:"name"`
-	Address  string             `json:"address"`
-	Phone    string             `json:"phone,omitempty"`
+	Name     string              `json:"name"`
+	Address  string              `json:"address"`
+	Phone    string              `json:"phone,omitempty"`
 	Location *models.GeoLocation `json:"location,omitempty"`
 }
 
@@ -220,31 +220,31 @@ func (s *orderService) CreateOrder(ctx context.Context, customerID primitive.Obj
 		return nil, errors.New("address not found")
 	}
 
-	// Delivery fee: use the restaurant's own configured delivery_fee when
-	// one is set (this is the exact number the customer already saw and
-	// agreed to in the cart/checkout screens), and only fall back to the
-	// distance-based estimate for restaurants that haven't configured one.
-	// Previously this always recalculated a distance-based fee here,
-	// silently overriding whatever the customer was shown at checkout —
-	// which is why the stored order total could differ from the price the
-	// customer approved.
-	deliveryFee := restaurant.DeliveryFee
-	if deliveryFee <= 0 {
-		calculatedFee, err := s.CalculateDeliveryFee(ctx, restaurant.Location, deliveryAddress.Location)
-		if err != nil {
-			return nil, err
-		}
-		deliveryFee = calculatedFee
+	// Delivery fee is always the distance-based formula now — a hardcoded
+	// 40 Birr starting fee plus 15 Birr per km between the restaurant and
+	// the delivery address (see CalculateDeliveryFee). Restaurants used to
+	// be able to override this with their own fixed restaurant.DeliveryFee,
+	// but that let each restaurant set an arbitrary flat price instead of
+	// the distance-based one, so it's no longer used here.
+	deliveryFee, err := s.CalculateDeliveryFee(ctx, restaurant.Location, deliveryAddress.Location)
+	if err != nil {
+		return nil, err
 	}
 
 	// Calculate total amount
+	// Service charge and tax are disabled for now — checkout only shows
+	// Subtotal + Delivery Fee, and the total below only adds those two.
+	// Left the fields on OrderAmount (and zeroed here) rather than
+	// removing them, so re-enabling either later is a one-line change.
 	totalAmount := models.OrderAmount{
-		Subtotal:      subtotal,
-		DeliveryFee:   deliveryFee,
-		ServiceCharge: subtotal * 0.05, // 5% service charge
+		Subtotal:    subtotal,
+		DeliveryFee: deliveryFee,
+		// ServiceCharge: subtotal * 0.05, // 5% service charge — disabled
+		ServiceCharge: 0,
 		Discount:      0,
-		Tax:           subtotal * 0.10, // 10% tax
-		Total:         subtotal + deliveryFee + (subtotal * 0.05) + (subtotal * 0.10),
+		// Tax: subtotal * 0.10, // 10% tax — disabled
+		Tax:   0,
+		Total: subtotal + deliveryFee,
 	}
 
 	// Create order
@@ -486,14 +486,63 @@ func (s *orderService) GetAvailableOrders(ctx context.Context, driverID primitiv
 	return views, nil
 }
 
+// customerCancellableStatuses / driverCancellableStatuses: a customer can
+// only back out before the restaurant has committed real prep work; a
+// driver can abandon a delivery at any point up to actually handing it
+// over, since after accepting they're the only one who *can* resolve it
+// otherwise. Previously the repo layer hardcoded one fixed status list for
+// every caller — pending/accepted/preparing only — so once a driver's
+// order reached "ready"/"picked_up"/"on_the_way" it became permanently
+// uncancellable by anyone, with no other driver-facing way to abandon a
+// delivery either. That's the order that "stays every day": accept it,
+// close the app before delivering, and it's now stuck forever as that
+// driver's currentOrder with no path to clear it.
+var customerCancellableStatuses = []models.OrderStatus{
+	models.OrderPending, models.OrderAccepted, models.OrderPreparing,
+}
+var driverCancellableStatuses = []models.OrderStatus{
+	models.OrderAccepted, models.OrderPreparing, models.OrderReady,
+	models.OrderPickedUp, models.OrderOnTheWay,
+}
+
 func (s *orderService) CancelOrder(ctx context.Context, orderID primitive.ObjectID, userID primitive.ObjectID, userRole, reason string) error {
+	// Previously this went straight to the repo with no ownership check at
+	// all — any authenticated user, any role, could cancel any order ID as
+	// long as its status happened to match. Fetch the order first so we
+	// can actually verify the requester is allowed to touch it.
+	order, err := s.orderRepo.FindByID(ctx, orderID)
+	if err != nil {
+		return err
+	}
+	if order == nil {
+		return errors.New("order not found")
+	}
+
+	var allowedStatuses []models.OrderStatus
+	switch userRole {
+	case "customer":
+		if order.CustomerID != userID {
+			return errors.New("you can only cancel your own orders")
+		}
+		allowedStatuses = customerCancellableStatuses
+	case "driver":
+		if order.DriverID == nil || *order.DriverID != userID {
+			return errors.New("you can only cancel a delivery assigned to you")
+		}
+		allowedStatuses = driverCancellableStatuses
+	case "admin":
+		allowedStatuses = driverCancellableStatuses // superset; admin can unstick anything short of already delivered
+	default:
+		return errors.New("not authorized to cancel this order")
+	}
+
 	cancellation := models.CancellationInfo{
 		Reason:      reason,
 		CancelledBy: userID,
 		Role:        userRole,
 	}
 
-	return s.orderRepo.CancelOrder(ctx, orderID, cancellation)
+	return s.orderRepo.CancelOrder(ctx, orderID, cancellation, allowedStatuses)
 }
 
 // AutoCancelStaleOrders finds unassigned orders older than `olderThan` and
@@ -517,7 +566,7 @@ func (s *orderService) AutoCancelStaleOrders(ctx context.Context, olderThan time
 			CancelledBy: primitive.NilObjectID,
 			Role:        "system",
 		}
-		if err := s.orderRepo.CancelOrder(ctx, order.ID, cancellation); err != nil {
+		if err := s.orderRepo.CancelOrder(ctx, order.ID, cancellation, []models.OrderStatus{models.OrderAccepted}); err != nil {
 			// One stale order failing to cancel (e.g. a driver accepted it
 			// in the split second between the find and this update, so it
 			// no longer matches CancelOrder's status filter) shouldn't
@@ -630,9 +679,9 @@ func (s *orderService) CalculateDeliveryFee(ctx context.Context, restaurantLocat
 		deliveryLocation.Coordinates[0],   // lon2
 	)
 
-	// Base fee + distance fee
-	baseFee := 2.0
-	distanceFee := distance * 0.5 // $0.5 per km
+	// Delivery fee = hardcoded 40 Birr starting fee + 15 Birr per km.
+	baseFee := 40.0
+	distanceFee := distance * 15.0 // 15 Birr per km
 
 	return baseFee + distanceFee, nil
 }
@@ -771,6 +820,36 @@ func (s *orderService) GetAllOrdersEnriched(ctx context.Context, page, limit int
 	return views, total, nil
 }
 
+// isCompanyCutPaymentMethod reports whether an order's payment method is
+// one where the money passes through the company account first (CBE or
+// Telebirr transfer) rather than being handed to the driver directly
+// (cash on delivery).
+func isCompanyCutPaymentMethod(paymentMethod string) bool {
+	switch paymentMethod {
+	case "cbe", "cbe_transfer", "telebirr", "telebirr_transfer":
+		return true
+	default:
+		return false
+	}
+}
+
+// driverEarningsForOrder returns what the driver actually earns from an
+// order's delivery fee. The full delivery fee is always what the customer
+// sees at checkout and what drivers see in the available-orders list — this
+// only affects what's credited to the driver once the order is delivered.
+//
+// For CBE/Telebirr transfer orders, the customer's payment (delivery fee
+// included) lands in the company account, so the company keeps a 50% cut
+// before crediting the driver the rest. For cash-on-delivery orders, the
+// customer pays the driver in person, so the driver keeps the full delivery
+// fee and the company takes nothing.
+func driverEarningsForOrder(o models.Order) float64 {
+	if isCompanyCutPaymentMethod(o.PaymentMethod) {
+		return o.TotalAmount.DeliveryFee * 0.5
+	}
+	return o.TotalAmount.DeliveryFee
+}
+
 // GetDriverStats computes a driver's delivery/earnings/rating stats live
 // from their order history. Backs GET /api/v1/driver/stats — used by
 // DriverDashboard, DriverProfileScreen, and AvailableOrdersScreen in the app.
@@ -797,7 +876,7 @@ func (s *orderService) GetDriverStats(ctx context.Context, driverID primitive.Ob
 	for _, o := range orders {
 		if o.Status == models.OrderDelivered {
 			totalDeliveries++
-			fee := o.TotalAmount.DeliveryFee
+			fee := driverEarningsForOrder(o)
 			totalEarnings += fee
 			if o.UpdatedAt.After(startOfDay) {
 				todayEarnings += fee
@@ -894,7 +973,7 @@ func (s *orderService) GetDriverEarningsChart(ctx context.Context, driverID prim
 			if weekIdx >= numWeeks {
 				weekIdx = numWeeks - 1
 			}
-			data[weekIdx] += o.TotalAmount.DeliveryFee
+			data[weekIdx] += driverEarningsForOrder(o)
 		}
 	case "year":
 		monthNames := []string{"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"}
@@ -907,7 +986,7 @@ func (s *orderService) GetDriverEarningsChart(ctx context.Context, driverID prim
 			if o.UpdatedAt.Year() != now.Year() {
 				continue
 			}
-			data[int(o.UpdatedAt.Month())-1] += o.TotalAmount.DeliveryFee
+			data[int(o.UpdatedAt.Month())-1] += driverEarningsForOrder(o)
 		}
 	default: // "week"
 		dayNames := []string{"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"}
@@ -928,7 +1007,7 @@ func (s *orderService) GetDriverEarningsChart(ctx context.Context, driverID prim
 			if dayIdx < 0 || dayIdx > 6 {
 				continue
 			}
-			data[dayIdx] += o.TotalAmount.DeliveryFee
+			data[dayIdx] += driverEarningsForOrder(o)
 		}
 	}
 
@@ -968,10 +1047,18 @@ func (s *orderService) GetDriverEarningsTransactions(ctx context.Context, driver
 		if o.Status == models.OrderCancelled {
 			status = "failed"
 		}
+		// "amount" is what the driver was actually paid for this delivery
+		// (see driverEarningsForOrder) — cancelled orders never paid out,
+		// so those keep showing the full delivery fee as a reference figure
+		// but status "failed" makes clear nothing was earned.
+		amount := o.TotalAmount.DeliveryFee
+		if o.Status == models.OrderDelivered {
+			amount = driverEarningsForOrder(o)
+		}
 		transactions = append(transactions, map[string]interface{}{
 			"id":      o.ID.Hex(),
 			"date":    o.UpdatedAt.Format("Jan 2, 2006"),
-			"amount":  o.TotalAmount.DeliveryFee,
+			"amount":  amount,
 			"orderId": o.OrderNumber,
 			"status":  status,
 		})

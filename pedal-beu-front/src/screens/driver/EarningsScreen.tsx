@@ -73,17 +73,29 @@ const EarningsScreen: React.FC = () => {
       // Summary numbers come from /driver/stats (the same endpoint the
       // dashboard and profile screens use) — there's no separate
       // /driver/earnings/summary endpoint on the backend.
-      // fetchWithTimeout (all three calls below): plain fetch() has no
-      // timeout, and Render's free tier can take 30-90s to wake from a
-      // cold start — without a timeout, one hung request here means the
-      // "Loading earnings..." spinner (gated on the `loading` state this
-      // whole function wraps) never clears, since nothing after a hung
-      // await ever runs, including the finally block below.
-      const statsRes = await fetchWithTimeout(`${API_BASE_URL}/driver/stats`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (statsRes.ok) {
-        const data = await statsRes.json();
+      // These three don't depend on each other, but were previously
+      // awaited one after another — on a cold Render instance where each
+      // individual request can legitimately take close to the full 20s
+      // fetchWithTimeout budget, that meant up to ~60s of stacked
+      // "Loading earnings..." even though none of them technically timed
+      // out. Running them concurrently caps the wait at whichever one is
+      // slowest instead of their sum.
+      const [statsRes, chartRes, txRes] = await Promise.allSettled([
+        fetchWithTimeout(`${API_BASE_URL}/driver/stats`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetchWithTimeout(
+          `${API_BASE_URL}/driver/earnings/chart?range=${timeRange}`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        ),
+        fetchWithTimeout(
+          `${API_BASE_URL}/driver/earnings/transactions?limit=5`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        ),
+      ]);
+
+      if (statsRes.status === "fulfilled" && statsRes.value.ok) {
+        const data = await statsRes.value.json();
         setSummary({
           today: data.todayEarnings || 0,
           thisWeek: data.weekEarnings || 0,
@@ -96,12 +108,8 @@ const EarningsScreen: React.FC = () => {
         });
       }
 
-      const chartRes = await fetchWithTimeout(
-        `${API_BASE_URL}/driver/earnings/chart?range=${timeRange}`,
-        { headers: { Authorization: `Bearer ${token}` } },
-      );
-      if (chartRes.ok) {
-        const data = await chartRes.json();
+      if (chartRes.status === "fulfilled" && chartRes.value.ok) {
+        const data = await chartRes.value.json();
         setChartData({
           data: data.data || [],
           labels: data.labels || [],
@@ -110,12 +118,8 @@ const EarningsScreen: React.FC = () => {
         setChartError(true);
       }
 
-      const txRes = await fetchWithTimeout(
-        `${API_BASE_URL}/driver/earnings/transactions?limit=5`,
-        { headers: { Authorization: `Bearer ${token}` } },
-      );
-      if (txRes.ok) {
-        const data = await txRes.json();
+      if (txRes.status === "fulfilled" && txRes.value.ok) {
+        const data = await txRes.value.json();
         setTransactions(data || []);
       }
     } catch (error) {

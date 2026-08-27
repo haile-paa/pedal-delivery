@@ -30,7 +30,10 @@ interface CheckoutBottomSheetProps {
   cartItems: CartItem[];
   cartTotal: number;
   deliveryFee: number;
-  serviceCharge: number;
+  // Service charge and tax are disabled (checkout only shows Subtotal +
+  // Delivery Fee) — kept optional here for backward compatibility with
+  // any caller still passing them, but no longer required or displayed.
+  serviceCharge?: number;
   tax?: number;
   grandTotal: number;
   onPlaceOrder: (paymentMethod: string, addressId: string) => Promise<Order>;
@@ -54,6 +57,16 @@ const CBE_PAYMENT_NAME = "Wubshet Kindie Alebachew";
 const TELEBIRR_PAYMENT_NAME = "Wubshet Kindie";
 const TELEBIRR_PAYMENT_PHONE = "0909585090";
 
+// Delivery fee formula: a hardcoded 40 Birr starting fee plus 15 Birr for
+// every km between the restaurant and the delivery address. This mirrors
+// the backend's CalculateDeliveryFee exactly (internal/services/order_service.go)
+// so what the customer sees here matches what the order is actually
+// charged — the backend always recalculates this itself rather than
+// trusting anything sent from the app, so keep both in sync if this ever
+// changes.
+const DELIVERY_BASE_FEE = 40;
+const DELIVERY_FEE_PER_KM = 15;
+
 const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
   visible,
   onClose,
@@ -61,7 +74,7 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
   cartItems,
   cartTotal,
   deliveryFee,
-  serviceCharge,
+  serviceCharge = 0,
   tax = 0,
   grandTotal,
   onPlaceOrder,
@@ -276,6 +289,18 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
     );
   };
 
+  // Delivery fee, recomputed from the live GPS distance to the restaurant
+  // whenever we have one (see DELIVERY_BASE_FEE/DELIVERY_FEE_PER_KM above).
+  // Falls back to the deliveryFee prop until the first location fix comes
+  // in, so the sheet doesn't flash 0.00 Birr while getUserLocation() runs.
+  // Service charge and tax are no longer part of the total — checkout only
+  // shows Subtotal + Delivery Fee.
+  const computedDeliveryFee =
+    distanceToRestaurant !== null
+      ? DELIVERY_BASE_FEE + DELIVERY_FEE_PER_KM * distanceToRestaurant
+      : deliveryFee;
+  const computedGrandTotal = cartTotal + computedDeliveryFee;
+
   const handleClose = () => {
     Animated.timing(translateY, {
       toValue: 500,
@@ -319,14 +344,14 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
     if (isTransferPayment && !transactionReference.trim()) {
       Alert.alert(
         "Transaction Reference Required",
-        `Pay ${grandTotal.toFixed(2)} Birr, then enter the transfer reference so we can verify your payment.`,
+        `Pay ${computedGrandTotal.toFixed(2)} Birr, then enter the transfer reference so we can verify your payment.`,
       );
       return;
     }
     if (isTransferPayment && !paymentProof) {
       Alert.alert(
         "Payment Screenshot Required",
-        `Attach the screenshot after paying ${grandTotal.toFixed(2)} Birr.`,
+        `Attach the screenshot after paying ${computedGrandTotal.toFixed(2)} Birr.`,
       );
       return;
     }
@@ -367,7 +392,7 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
             ? "cbe_transfer"
             : "telebirr_transfer";
         const verificationAmount =
-          createdOrder.total_amount?.total || grandTotal;
+          createdOrder.total_amount?.total || computedGrandTotal;
 
         try {
           const verificationResponse = await orderAPI.verifyPayment(
@@ -676,7 +701,7 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
               {isTransferPayment && (
                 <View style={styles.verificationCard}>
                   <Text style={styles.verificationTitle}>
-                    Pay exactly {grandTotal.toFixed(2)} Birr first
+                    Pay exactly {computedGrandTotal.toFixed(2)} Birr first
                   </Text>
                   {/* Receiver details - now with broken lines and copyable account/phone */}
                   <View style={styles.receiverBox}>
@@ -726,7 +751,7 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
                     after automatic verification or admin approval.
                   </Text>
                   <Text style={styles.estimatedAmountText}>
-                    Amount to pay now: {grandTotal.toFixed(2)} Birr
+                    Amount to pay now: {computedGrandTotal.toFixed(2)} Birr
                   </Text>
                   <TextInput
                     style={styles.referenceInput}
@@ -781,11 +806,17 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
                   </Text>
                 </View>
                 <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>Delivery Fee</Text>
+                  <Text style={styles.summaryLabel}>
+                    Delivery Fee (15 Birr/Km)
+                  </Text>
                   <Text style={styles.summaryValue}>
-                    {deliveryFee.toFixed(2)} Birr
+                    {computedDeliveryFee.toFixed(2)} Birr
                   </Text>
                 </View>
+                {/* Service Charge and Tax are disabled — checkout only shows
+                    Subtotal + Delivery Fee. Re-enable by restoring these
+                    two rows (and adding serviceCharge/tax back into
+                    computedGrandTotal) if they come back later.
                 <View style={styles.summaryRow}>
                   <Text style={styles.summaryLabel}>Service Charge (5%)</Text>
                   <Text style={styles.summaryValue}>
@@ -796,11 +827,12 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
                   <Text style={styles.summaryLabel}>Tax (10%)</Text>
                   <Text style={styles.summaryValue}>{tax.toFixed(2)} Birr</Text>
                 </View>
+                */}
                 <View style={styles.divider} />
                 <View style={styles.summaryRow}>
                   <Text style={styles.grandTotalLabel}>Total</Text>
                   <Text style={styles.grandTotalValue}>
-                    {grandTotal.toFixed(2)} Birr
+                    {computedGrandTotal.toFixed(2)} Birr
                   </Text>
                 </View>
               </View>
@@ -881,7 +913,7 @@ const CheckoutBottomSheet: React.FC<CheckoutBottomSheetProps> = ({
                 <>
                   <Text style={styles.placeOrderText}>
                     {isTransferPayment ? "I Paid, Verify Order" : "Place Order"}{" "}
-                    • {grandTotal.toFixed(2)} Birr
+                    • {computedGrandTotal.toFixed(2)} Birr
                   </Text>
                   <Ionicons
                     name='arrow-forward'

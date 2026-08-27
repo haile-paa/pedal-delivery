@@ -174,6 +174,26 @@ func (h *AdminHandler) GetDashboardStats(c *gin.Context) {
 		avgDeliveryTime = 0
 	}
 
+	// Company's cut of today's delivery fees (50% of the delivery fee on
+	// delivered orders paid via CBE/Telebirr transfer — see
+	// SumPlatformDeliveryCut). This is money that stayed in the company
+	// account rather than being paid out to a driver.
+	companyDeliveryEarningsToday, err := h.orderRepo.SumPlatformDeliveryCut(ctx, bson.M{
+		"created_at": bson.M{"$gte": startOfDay, "$lt": endOfDay},
+		"status":     models.OrderDelivered,
+	})
+	if err != nil {
+		companyDeliveryEarningsToday = 0
+	}
+
+	// All-time company cut of delivery fees, same rule, no date filter.
+	companyDeliveryEarningsTotal, err := h.orderRepo.SumPlatformDeliveryCut(ctx, bson.M{
+		"status": models.OrderDelivered,
+	})
+	if err != nil {
+		companyDeliveryEarningsTotal = 0
+	}
+
 	// Active drivers (online and not on break)
 	activeDrivers, err := h.driverRepo.CountActive(ctx)
 	if err != nil {
@@ -218,6 +238,11 @@ func (h *AdminHandler) GetDashboardStats(c *gin.Context) {
 			"totalRevenue":    revenueToday,
 			"avgDeliveryTime": avgDeliveryTime,
 			"activeDrivers":   activeDrivers,
+			// Company's 50% cut of delivery fees on CBE/Telebirr-paid
+			// orders — cash-on-delivery orders contribute nothing here
+			// since that money never touches the company account.
+			"companyDeliveryEarningsToday": companyDeliveryEarningsToday,
+			"companyDeliveryEarningsTotal": companyDeliveryEarningsTotal,
 		},
 		"recentOrders":    recentOrders,
 		"topRestaurants":  topRestaurants,
