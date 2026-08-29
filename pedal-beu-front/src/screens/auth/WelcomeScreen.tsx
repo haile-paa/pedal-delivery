@@ -200,22 +200,31 @@ const WelcomeScreen: React.FC = () => {
           },
         });
 
-        // dispatch(LOGIN_SUCCESS) resets/populates the whole app state and
-        // re-renders this screen's tree; router.replace() then swaps out
-        // the entire auth navigator for the customer/driver stack. Firing
-        // both in the same tick is the same class of Fabric mounting-race
-        // crash noted above for the location-permission dialog
-        // ("addViewAt: ... already has a parent") — see also
-        // AppStateContext.logout(), which has the mirror-image version of
-        // this bug on sign-out. Deferring the navigation until the state
-        // update has actually rendered avoids the collision.
-        InteractionManager.runAfterInteractions(() => {
-          if (data.user.role === "driver") {
-            router.replace("/(driver)/dashboard");
-          } else {
-            router.replace("/(customer)/home");
-          }
-        });
+        // This used to defer router.replace() with
+        // InteractionManager.runAfterInteractions(), on the theory that
+        // firing it in the same tick as dispatch(LOGIN_SUCCESS) caused a
+        // Fabric mounting-race crash ("addViewAt: ... already has a
+        // parent") that force-closes the whole app right after tapping
+        // Sign In (confirmed on video — the app drops straight to the
+        // Android home screen a beat after "Signing in..." appears).
+        // That wrapping didn't actually fix it, and register.tsx's
+        // handleRegister does this exact dispatch-then-replace with no
+        // wrapping and no crash — so this now matches that proven-working
+        // pattern instead. Explicitly stopping every Reanimated loop
+        // driving this screen right before the navigation call (the same
+        // belt-and-braces already used in goToPhoneScreen above) removes
+        // the other half of that race: nothing is still writing to the UI
+        // thread when the screen unmounts.
+        cancelAnimation(pulseAnim);
+        cancelAnimation(logoScale);
+        cancelAnimation(logoOpacity);
+        cancelAnimation(textSlide);
+
+        if (data.user.role === "driver") {
+          router.replace("/(driver)/dashboard");
+        } else {
+          router.replace("/(customer)/home");
+        }
       } else {
         Alert.alert("Error", data.error || "Invalid phone number or password");
       }
