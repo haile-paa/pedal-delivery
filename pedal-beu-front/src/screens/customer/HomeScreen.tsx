@@ -9,6 +9,7 @@ import {
   StatusBar,
   Alert,
   TouchableOpacity,
+  InteractionManager,
 } from "react-native";
 import { useAppState } from "../../context/AppStateContext";
 import { Restaurant } from "../../types";
@@ -288,9 +289,28 @@ const HomeScreen: React.FC = () => {
     if (shouldFetchRef.current) {
       shouldFetchRef.current = false;
 
-      fetchTimeoutRef.current = setTimeout(() => {
-        initialize();
-      }, 100) as unknown as number;
+      // This screen is reached two ways: signing in / registering (where
+      // router.replace() just swapped out the previous screen — auth
+      // WelcomeScreen or the email-verification screen — for this one in
+      // the same beat as a LOGIN_SUCCESS state update), or navigating here
+      // normally once already logged in. In the first case, the OS
+      // location-permission dialog is a native overlay, and firing it
+      // while that screen-swap's Fabric commit is still in flight is the
+      // exact same class of mounting-race crash documented in
+      // WelcomeScreen.tsx's handleSignIn ("addViewAt: ... already has a
+      // parent") — except here it force-closes the *new* screen's mount
+      // instead of the old one's unmount, which is why it was still
+      // reproducible after hardening the sign-in side alone. A flat 100ms
+      // guess wasn't a reliable enough signal that the transition had
+      // actually settled. InteractionManager.runAfterInteractions() is —
+      // it's the same primitive already used elsewhere in this app for
+      // this exact problem — so wait for that first, then keep a short
+      // extra delay after it as cheap additional insurance.
+      InteractionManager.runAfterInteractions(() => {
+        fetchTimeoutRef.current = setTimeout(() => {
+          initialize();
+        }, 300) as unknown as number;
+      });
     }
 
     return () => {
