@@ -271,6 +271,36 @@ const AvailableOrdersScreen: React.FC = () => {
   // growing pile of duplicate work on every message is why things got
   // slower the longer a shift went on.
   const wsListenersRegistered = useRef(false);
+  // Guards against overlapping initializeDriver() runs. Every one of those
+  // calls does setLoading(true) ... await ... setLoading(false), and until
+  // now nothing stopped a second call from starting before the first had
+  // finished (e.g. a second AppState "foreground" transition arriving
+  // while the first initializeDriver() was still mid-flight on a slow/
+  // cold-starting backend). Two overlapping runs race to flip `loading`
+  // independently of each other, and whichever finishes last wins — which
+  // is exactly the rapid Loading-spinner/order-card flicker this was
+  // causing on screen. Only one run is now allowed in flight at a time;
+  // anything that fires while one is already running is simply skipped
+  // (whatever triggered it — foreground, mount, a retry — the in-flight
+  // run is already about to fetch the same fresh data anyway).
+  const isInitializingRef = useRef(false);
+  // Second video (VID_20260829_001136_416.mp4) showed the Loading-spinner/
+  // order-card flicker continuing non-stop for the full ~9s clip, not just
+  // a couple of overlapping calls settling out — so on top of blocking
+  // *overlapping* runs (isInitializingRef above), something is also firing
+  // brand new initializeDriver() calls back-to-back, in rapid sequence,
+  // indefinitely. The most likely trigger is handleAppStateChange: some
+  // Android builds are known to fire spurious/rapid AppState "change"
+  // events (edge panels, always-on-display, split screen, etc.) that don't
+  // correspond to any real backgrounding, and each one this screen reads
+  // as "coming to foreground" and re-runs the whole init sequence. Rather
+  // than trying to filter which AppState events are "real" (device/OS-
+  // specific and unreliable to detect from JS), this throttles
+  // initializeDriver() itself: no matter what's calling it or how often,
+  // it won't actually re-run within MIN_REINIT_INTERVAL_MS of its last
+  // run. The very first call (on mount) always goes through.
+  const lastInitAtRef = useRef(0);
+  const MIN_REINIT_INTERVAL_MS = 4000;
 
   useEffect(() => {
     initializeDriver();
@@ -304,10 +334,47 @@ const AvailableOrdersScreen: React.FC = () => {
       // below on every single app backgrounding (see the removed branch),
       // which permanently blocked websocket.service.ts's own auto-
       // reconnect until this screen happened to reconnect it again.
+      //
+      // We DO still detach this screen's own 5 listeners here, though.
+      // wsListenersRegistered only stops connectWebSocket() from
+      // double-registering *within a single mount* — if this screen ever
+      // does unmount and remount (a future navigation change, Fast
+      // Refresh in dev, etc.) while the guard flag itself isn't reset,
+      // the old listeners were never removed from the shared
+      // WebSocketService singleton, so the next mount's connectWebSocket()
+      // piled a second full set on top. Every subsequent WS event then
+      // fired every stacked copy — extra Alerts, and overlapping
+      // setLoading()/setAvailableOrders() calls racing each other, which
+      // is what showed up on screen as the Loading-spinner/order-card
+      // flicker. Removing them here (and resetting the guard) makes a
+      // remount start clean instead of stacking onto whatever the last
+      // mount left behind.
+      if (wsListenersRegistered.current) {
+        WebSocketService.off("connect", handleWSConnect);
+        WebSocketService.off("disconnect", handleWSDisconnect);
+        WebSocketService.off("order:new", handleNewOrder);
+        WebSocketService.off("order:cancelled", handleOrderCancelled);
+        WebSocketService.off("order:taken", handleOrderTaken);
+        wsListenersRegistered.current = false;
+      }
     };
   }, []);
 
   const initializeDriver = async () => {
+    if (isInitializingRef.current) {
+      console.log("initializeDriver already in progress — skipping overlap");
+      return;
+    }
+    const now = Date.now();
+    if (
+      lastInitAtRef.current !== 0 &&
+      now - lastInitAtRef.current < MIN_REINIT_INTERVAL_MS
+    ) {
+      console.log("initializeDriver called too soon — throttling");
+      return;
+    }
+    lastInitAtRef.current = now;
+    isInitializingRef.current = true;
     try {
       setLoading(true);
 
@@ -356,6 +423,7 @@ const AvailableOrdersScreen: React.FC = () => {
       Alert.alert("Error", "Failed to initialize driver app");
     } finally {
       setLoading(false);
+      isInitializingRef.current = false;
     }
   };
 
@@ -405,6 +473,16 @@ const AvailableOrdersScreen: React.FC = () => {
     }, 10000); // every 10 seconds
   };
 
+  const handleWSConnect = () => {
+    console.log("Driver WebSocket connected");
+    setIsOnline(true);
+  };
+
+  const handleWSDisconnect = () => {
+    console.log("Driver WebSocket disconnected");
+    setIsOnline(false);
+  };
+
   const connectWebSocket = async () => {
     try {
       const token = await AsyncStorage.getItem("accessToken");
@@ -417,15 +495,8 @@ const AvailableOrdersScreen: React.FC = () => {
       if (!wsListenersRegistered.current) {
         wsListenersRegistered.current = true;
 
-        WebSocketService.on("connect", () => {
-          console.log("Driver WebSocket connected");
-          setIsOnline(true);
-        });
-
-        WebSocketService.on("disconnect", () => {
-          console.log("Driver WebSocket disconnected");
-          setIsOnline(false);
-        });
+        WebSocketService.on("connect", handleWSConnect);
+        WebSocketService.on("disconnect", handleWSDisconnect);
 
         WebSocketService.on("order:new", handleNewOrder);
         WebSocketService.on("order:cancelled", handleOrderCancelled);
