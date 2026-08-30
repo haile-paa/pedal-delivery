@@ -1,10 +1,45 @@
 import { Stack } from "expo-router";
+import { enableScreens } from "react-native-screens";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AppStateProvider } from "../src/context/AppStateContext";
 import { ThemeProvider, useTheme } from "../src/context/ThemeContext";
 import { LanguageProvider } from "../src/context/LanguageContext";
 import { StatusBar } from "expo-status-bar";
+
+// The adb logcat you sent nails this down exactly:
+//   java.lang.IllegalStateException: addViewAt: failed to insert view
+//   [850] into parent [858] at index 0
+//   Caused by: The specified child already has a parent. You must call
+//   removeView() on the child's parent first.
+// That's not a bug in this app's code — it's a currently-open, unfixed bug
+// in react-native-screens' "View Recycling" feature on Android's Fabric
+// renderer (software-mansion/react-native-screens#3249, and the related
+// #2803). In short: when Fabric mounts a screen, react-native-screens
+// tries to reuse ("recycle") a native view that's still attached to its
+// previous parent, and Fabric's mounting layer refuses the double-parent —
+// crashing the whole app. It's a timing/ordering bug between two native
+// systems, not something reachable by rearranging our own JS event
+// handlers or navigation calls (which is why the double-submit guard and
+// the animation-cancel/InteractionManager changes didn't stop it — they
+// were reasonable things to rule out, but this crash was never in our
+// code to begin with).
+//
+// react-native-screens' own README documents the official workaround for
+// exactly this class of problem: enableScreens(false) makes every
+// navigator in the app fall back to plain React Native Views instead of
+// native Screen components, which sidesteps the recycling bug entirely.
+// This does cost a little of the native performance/memory optimization
+// react-native-screens normally provides — screen transitions are a
+// little less GPU-optimized — but it trades that for the app no longer
+// hard-crashing on login/logout. Worth revisiting (i.e. removing this)
+// once react-native-screens ships a fixed release including the fix for
+// #3249.
+//
+// This MUST run before any navigator/screen renders, so it's called here
+// at module scope — outside and before the RootLayout component below —
+// rather than inside a useEffect.
+enableScreens(false);
 
 function RootStack() {
   const { colors, isDark } = useTheme();
