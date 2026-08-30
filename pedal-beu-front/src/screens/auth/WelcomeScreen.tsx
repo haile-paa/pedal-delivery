@@ -43,6 +43,24 @@ const WelcomeScreen: React.FC = () => {
   const [email, setEmail] = useState(""); // kept for the old email+phone-first flow — see below (commented out)
   const [loading, setLoading] = useState(false);
   const phoneInputRef = useRef<TextInput>(null);
+  // Hard guard against handleSignIn running twice concurrently. The
+  // password field wires BOTH onSubmitEditing (fires on the keyboard's
+  // "done" key) and the Sign In button's onPress to this same handler,
+  // and nothing stopped both from firing within the same instant (keyboard
+  // "done" + a thumb already resting on/near the button as it shifts into
+  // place while the keyboard collapses is a very common real double-tap).
+  // Two concurrent calls each independently run dispatch(LOGIN_SUCCESS) +
+  // router.replace() to the same destination — two overlapping navigation
+  // commits racing to mount the same screen — which is exactly the Fabric
+  // crash confirmed via adb logcat: "addViewAt: ... The specified child
+  // already has a parent." register.tsx's handleRegister never had this
+  // exposure (its password fields have no onSubmitEditing wired to
+  // submit — only the button's onPress), which is why only Sign In (both
+  // customer and driver, since this handler is shared by both) crashed.
+  // A ref is used rather than the `loading` state so the guard is
+  // synchronous and immediate — it can't be fooled by two same-tick calls
+  // both reading a stale `loading === false` before either render commits.
+  const isSigningInRef = useRef(false);
 
   const handlePhoneNumberChange = useCallback((text: string) => {
     const cleaned = text.replace(/[^0-9]/g, "");
@@ -139,6 +157,10 @@ const WelcomeScreen: React.FC = () => {
   // one — that race crashed the app on Android. Do not add it back here.
 
   const handleSignIn = async () => {
+    if (isSigningInRef.current) {
+      return;
+    }
+
     Keyboard.dismiss();
 
     if (!phoneNumber.trim()) {
@@ -156,6 +178,7 @@ const WelcomeScreen: React.FC = () => {
       return;
     }
 
+    isSigningInRef.current = true;
     setLoading(true);
 
     try {
@@ -232,6 +255,7 @@ const WelcomeScreen: React.FC = () => {
       Alert.alert("Error", "Server error. Try again.");
     } finally {
       setLoading(false);
+      isSigningInRef.current = false;
     }
   };
 
@@ -474,6 +498,19 @@ const WelcomeScreen: React.FC = () => {
                   />
                 </TouchableOpacity>
               </View>
+              <TouchableOpacity
+                style={styles.forgotPasswordLink}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  router.push("/(auth)/forgot-password");
+                }}
+                disabled={loading}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Text style={styles.forgotPasswordLinkText}>
+                  Forgot password?
+                </Text>
+              </TouchableOpacity>
             </View>
 
             <View style={styles.nextButtonContainer}>
@@ -752,6 +789,18 @@ const getStyles = (colors: any) =>
       color: colors.gray500,
       marginTop: 12,
       textAlign: "center",
+    },
+    forgotPasswordLink: {
+      alignSelf: "flex-end",
+      marginTop: 12,
+      maxWidth: 350,
+      width: "100%",
+    },
+    forgotPasswordLinkText: {
+      textAlign: "right",
+      color: colors.primary,
+      fontSize: 14,
+      fontWeight: "600",
     },
     nextButtonContainer: {
       alignItems: "center",

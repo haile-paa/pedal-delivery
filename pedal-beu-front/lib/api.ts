@@ -327,6 +327,51 @@ export const authAPI = {
     }
   },
 
+  // Step 1 of the forgot-password flow (used by both customers and
+  // drivers — they share the same User records/login). Sends a 6-digit
+  // OTP to the account's email (matches backend's ForgotPasswordByEmail —
+  // phone-based reset was disabled server-side in favor of email).
+  forgotPassword: async (
+    email: string,
+  ): Promise<{ success: boolean; error?: string }> => {
+    try {
+      await api.post("/auth/forgot-password", { email: email.trim() });
+      return { success: true };
+    } catch (error: any) {
+      return {
+        success: false,
+        error:
+          error.response?.data?.error ||
+          "Failed to send reset code. Please try again.",
+      };
+    }
+  },
+
+  // Step 2 — verifies the OTP from that email and sets the new password.
+  // No tokens come back from this endpoint (see backend ResetPassword) —
+  // the person still signs in normally afterward with the new password.
+  resetPassword: async (
+    email: string,
+    otp: string,
+    newPassword: string,
+  ): Promise<{ success: boolean; error?: string }> => {
+    try {
+      await api.post("/auth/reset-password", {
+        email: email.trim(),
+        otp: otp.trim(),
+        new_password: newPassword,
+      });
+      return { success: true };
+    } catch (error: any) {
+      return {
+        success: false,
+        error:
+          error.response?.data?.error ||
+          "Failed to reset password. Please try again.",
+      };
+    }
+  },
+
   // Driver login — accepts username OR phone number + password (credentials created by admin)
   driverLogin: async (data: {
     login: string; // username or phone number
