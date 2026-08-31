@@ -209,6 +209,7 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
     case "SET_ERROR":
       return { ...state, ui: { ...state.ui, error: action.payload } };
     case "LOGIN_SUCCESS":
+      console.log(`[CRASH-TRACE] ${Date.now()} appReducer LOGIN_SUCCESS case executing`);
       return {
         ...state,
         auth: {

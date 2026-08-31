@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   Alert,
   Keyboard,
   InteractionManager,
+  ActivityIndicator,
 } from "react-native";
 import Animated, {
   useSharedValue,
@@ -61,6 +62,46 @@ const WelcomeScreen: React.FC = () => {
   // synchronous and immediate — it can't be fooled by two same-tick calls
   // both reading a stale `loading === false` before either render commits.
   const isSigningInRef = useRef(false);
+  // See handleSignIn below and the render's early-return for
+  // `transitioning`: this screen keeps an unusually heavy tree mounted at
+  // all times (two full sub-screens, each with their own LinearGradient
+  // and looping Reanimated animations — see the "Both screens stay
+  // mounted at all times" comment further down). Neither
+  // enableScreens(false) (app/_layout.tsx) nor guarding against a double
+  // sign-in call removed the "addViewAt: ... already has a parent" crash
+  // confirmed via adb logcat, which means it isn't view-recycling or a
+  // duplicate call — it's this screen's own heavy tree still being torn
+  // down in the same commit as the next screen's mount. `transitioning`
+  // swaps this screen's whole render out for a single trivial View
+  // *before* router.replace() is called, so whatever Fabric has to
+  // reconcile at the moment of the actual screen swap is as small as
+  // possible.
+  const [transitioning, setTransitioning] = useState(false);
+  const pendingRouteRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!transitioning || !pendingRouteRef.current) {
+      return;
+    }
+    console.log(
+      `[CRASH-TRACE] ${Date.now()} transitioning=true committed, requesting frame before navigate`,
+    );
+    // Wait for the simplified tree above to actually commit (its own,
+    // separate Fabric frame) before tearing this screen down entirely —
+    // that's the whole point of splitting this into two steps instead of
+    // calling router.replace() directly.
+    const frame = requestAnimationFrame(() => {
+      const route = pendingRouteRef.current;
+      pendingRouteRef.current = null;
+      console.log(
+        `[CRASH-TRACE] ${Date.now()} frame fired, calling router.replace(${route})`,
+      );
+      if (route) {
+        router.replace(route as any);
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [transitioning]);
 
   const handlePhoneNumberChange = useCallback((text: string) => {
     const cleaned = text.replace(/[^0-9]/g, "");
@@ -213,6 +254,7 @@ const WelcomeScreen: React.FC = () => {
           await AsyncStorage.setItem("refreshToken", refreshToken);
         }
         await AsyncStorage.setItem("user", JSON.stringify(data.user));
+        console.log(`[CRASH-TRACE] ${Date.now()} tokens stored, about to dispatch LOGIN_SUCCESS`);
 
         dispatch({
           type: "LOGIN_SUCCESS",
@@ -222,32 +264,30 @@ const WelcomeScreen: React.FC = () => {
             role: data.user.role,
           },
         });
+        console.log(`[CRASH-TRACE] ${Date.now()} dispatch(LOGIN_SUCCESS) returned`);
 
-        // This used to defer router.replace() with
-        // InteractionManager.runAfterInteractions(), on the theory that
-        // firing it in the same tick as dispatch(LOGIN_SUCCESS) caused a
-        // Fabric mounting-race crash ("addViewAt: ... already has a
-        // parent") that force-closes the whole app right after tapping
-        // Sign In (confirmed on video — the app drops straight to the
-        // Android home screen a beat after "Signing in..." appears).
-        // That wrapping didn't actually fix it, and register.tsx's
-        // handleRegister does this exact dispatch-then-replace with no
-        // wrapping and no crash — so this now matches that proven-working
-        // pattern instead. Explicitly stopping every Reanimated loop
-        // driving this screen right before the navigation call (the same
-        // belt-and-braces already used in goToPhoneScreen above) removes
-        // the other half of that race: nothing is still writing to the UI
-        // thread when the screen unmounts.
+        // Two earlier fixes here (deferring with InteractionManager, then
+        // matching register.tsx's immediate dispatch-then-replace) did not
+        // stop the Fabric "addViewAt: ... already has a parent" crash
+        // (confirmed via adb logcat on real devices, twice, with the
+        // double-submit guard above also in place and ruled out). Rather
+        // than call router.replace() directly from here, hand off to the
+        // transitioning effect above: it swaps this screen's whole heavy
+        // tree out for a single trivial View first, waits for that to
+        // actually commit, and only then calls router.replace(). See the
+        // comment on `transitioning` near the top of this component for
+        // the full reasoning.
         cancelAnimation(pulseAnim);
         cancelAnimation(logoScale);
         cancelAnimation(logoOpacity);
         cancelAnimation(textSlide);
+        console.log(`[CRASH-TRACE] ${Date.now()} animations cancelled, setting transitioning=true`);
 
-        if (data.user.role === "driver") {
-          router.replace("/(driver)/dashboard");
-        } else {
-          router.replace("/(customer)/home");
-        }
+        pendingRouteRef.current =
+          data.user.role === "driver"
+            ? "/(driver)/dashboard"
+            : "/(customer)/home";
+        setTransitioning(true);
       } else {
         Alert.alert("Error", data.error || "Invalid phone number or password");
       }
@@ -414,6 +454,25 @@ const WelcomeScreen: React.FC = () => {
         backgroundColor={showPhoneScreen ? "#f8fafc" : "#667eea"}
       />
 
+      {transitioning ? (
+        // See the `transitioning` comment near the top of this component.
+        // This replaces the entire dual-screen tree below (LinearGradient
+        // backgrounds, looping Reanimated animations, multiple inputs)
+        // with a single plain View for the one frame before navigation
+        // actually happens, so Fabric never has to reconcile that whole
+        // heavy tree in the same commit as the next screen mounting.
+        (() => {
+          console.log(
+            `[CRASH-TRACE] ${Date.now()} rendering transitioning=true (simplified) tree`,
+          );
+          return (
+            <View style={styles.transitioningContainer}>
+              <ActivityIndicator size='large' color={colors.primary} />
+            </View>
+          );
+        })()
+      ) : (
+        <>
       {/* Both screens stay mounted at all times; only their visibility and
           interactivity toggle. Never conditionally mount/unmount these —
           doing so previously crashed the app on Android (Fabric tried to
@@ -608,6 +667,8 @@ const WelcomeScreen: React.FC = () => {
             </View>
           </View>
         </View>
+        </>
+      )}
     </View>
   );
 };
@@ -617,6 +678,12 @@ const getStyles = (colors: any) =>
   StyleSheet.create({
     container: {
       flex: 1,
+      backgroundColor: colors.background,
+    },
+    transitioningContainer: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
       backgroundColor: colors.background,
     },
     screen: {
