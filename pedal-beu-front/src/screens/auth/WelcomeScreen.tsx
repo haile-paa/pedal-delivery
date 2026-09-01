@@ -83,9 +83,6 @@ const WelcomeScreen: React.FC = () => {
     if (!transitioning || !pendingRouteRef.current) {
       return;
     }
-    console.log(
-      `[CRASH-TRACE] ${Date.now()} transitioning=true committed, requesting frame before navigate`,
-    );
     // Wait for the simplified tree above to actually commit (its own,
     // separate Fabric frame) before tearing this screen down entirely —
     // that's the whole point of splitting this into two steps instead of
@@ -93,9 +90,6 @@ const WelcomeScreen: React.FC = () => {
     const frame = requestAnimationFrame(() => {
       const route = pendingRouteRef.current;
       pendingRouteRef.current = null;
-      console.log(
-        `[CRASH-TRACE] ${Date.now()} frame fired, calling router.replace(${route})`,
-      );
       if (route) {
         router.replace(route as any);
       }
@@ -254,7 +248,6 @@ const WelcomeScreen: React.FC = () => {
           await AsyncStorage.setItem("refreshToken", refreshToken);
         }
         await AsyncStorage.setItem("user", JSON.stringify(data.user));
-        console.log(`[CRASH-TRACE] ${Date.now()} tokens stored, about to dispatch LOGIN_SUCCESS`);
 
         dispatch({
           type: "LOGIN_SUCCESS",
@@ -264,7 +257,6 @@ const WelcomeScreen: React.FC = () => {
             role: data.user.role,
           },
         });
-        console.log(`[CRASH-TRACE] ${Date.now()} dispatch(LOGIN_SUCCESS) returned`);
 
         // Two earlier fixes here (deferring with InteractionManager, then
         // matching register.tsx's immediate dispatch-then-replace) did not
@@ -276,12 +268,13 @@ const WelcomeScreen: React.FC = () => {
         // tree out for a single trivial View first, waits for that to
         // actually commit, and only then calls router.replace(). See the
         // comment on `transitioning` near the top of this component for
-        // the full reasoning.
+        // the full reasoning. Confirmed fixed via adb logcat across
+        // multiple repeated sign-in/logout cycles on both customer and
+        // driver accounts, real devices, real dev-client builds.
         cancelAnimation(pulseAnim);
         cancelAnimation(logoScale);
         cancelAnimation(logoOpacity);
         cancelAnimation(textSlide);
-        console.log(`[CRASH-TRACE] ${Date.now()} animations cancelled, setting transitioning=true`);
 
         pendingRouteRef.current =
           data.user.role === "driver"
@@ -461,16 +454,9 @@ const WelcomeScreen: React.FC = () => {
         // with a single plain View for the one frame before navigation
         // actually happens, so Fabric never has to reconcile that whole
         // heavy tree in the same commit as the next screen mounting.
-        (() => {
-          console.log(
-            `[CRASH-TRACE] ${Date.now()} rendering transitioning=true (simplified) tree`,
-          );
-          return (
-            <View style={styles.transitioningContainer}>
-              <ActivityIndicator size='large' color={colors.primary} />
-            </View>
-          );
-        })()
+        <View style={styles.transitioningContainer}>
+          <ActivityIndicator size='large' color={colors.primary} />
+        </View>
       ) : (
         <>
       {/* Both screens stay mounted at all times; only their visibility and

@@ -111,7 +111,6 @@ const QuickActionButton: React.FC<{
 };
 
 const DriverDashboard: React.FC = () => {
-  console.log(`[CRASH-TRACE] ${Date.now()} DriverDashboard function body executing (render)`);
   useKeepAwake();
 
   const { colors, isDark } = useTheme();

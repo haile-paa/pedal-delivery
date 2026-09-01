@@ -26,7 +26,6 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 
 const HomeScreen: React.FC = () => {
-  console.log(`[CRASH-TRACE] ${Date.now()} HomeScreen function body executing (render)`);
   const { colors, isDark } = useTheme();
   const { t } = useLanguage();
   const styles = getStyles(colors);
@@ -50,7 +49,6 @@ const HomeScreen: React.FC = () => {
   const shouldFetchRef = useRef(true);
 
   useEffect(() => {
-    console.log(`[CRASH-TRACE] ${Date.now()} HomeScreen mount useEffect (user log) fired`);
     console.log("HomeScreen - current user:", state.auth.user);
   }, [state.auth.user]);
 
